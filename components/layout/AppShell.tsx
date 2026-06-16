@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { usePathname } from 'next/navigation'
 import Sidebar from './Sidebar'
 import Topbar from './Topbar'
+import NavigationProgress from './NavigationProgress'
 import { Zap } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -52,6 +53,7 @@ export default function AppShell({ children, companyName, isDemo }: AppShellProp
 
   return (
     <div className="flex h-screen bg-slate-50 overflow-hidden">
+      <NavigationProgress />
       <Sidebar
         companyName={companyName}
         open={sidebarOpen}
