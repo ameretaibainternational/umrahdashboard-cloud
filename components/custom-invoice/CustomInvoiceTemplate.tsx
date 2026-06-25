@@ -230,8 +230,8 @@ const CustomInvoiceTemplate = forwardRef<HTMLDivElement, Props>(
 
           {/* Payment Method */}
           <T x={439.9} y={178.6} bold>Payment Method</T>
-          <T right={559} y={199.5} nowrap>{invoice.payment_bank_name}:</T>
-          <T x={448.9} y={220.1}>{invoice.payment_account_number}</T>
+          <T right={547} y={199.5} nowrap>{invoice.payment_bank_name}:</T>
+          <T right={559} y={220.1} nowrap>{invoice.payment_account_number}</T>
 
           {/* Table */}
           <TableHeader hasPaxPrice={hasPaxPrice} hdrY={294.1} hrY={322.8} />
