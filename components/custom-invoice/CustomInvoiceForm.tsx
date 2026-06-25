@@ -1,15 +1,13 @@
 'use client'
 
-import { useState, useRef, useTransition } from 'react'
+import { useState, useRef } from 'react'
 import { useReactToPrint } from 'react-to-print'
-import { toast } from 'sonner'
-import { Plus, Trash2, Download, Save, Loader2, ChevronDown, ChevronUp } from 'lucide-react'
+import { Plus, Trash2, Download, ChevronDown, ChevronUp } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import CustomInvoiceTemplate from './CustomInvoiceTemplate'
-import { createCustomInvoice } from '@/app/actions/custom-invoices'
 import type { InvoiceSettings, CustomInvoice, CustomInvoiceLineItem } from '@/lib/types'
 
 // ─── Local line-item state (strings for inputs) ──────────────────────────────
@@ -124,6 +122,7 @@ export default function CustomInvoiceForm({ settings, existingInvoices }: Props)
   const today = new Date().toISOString().split('T')[0]
 
   // Form state
+  const [invoiceNumber, setInvoiceNumber] = useState('ATI-001')
   const [date, setDate]             = useState(today)
   const [billedName, setBilledName] = useState('')
   const [billedAddr, setBilledAddr] = useState('')
@@ -136,11 +135,9 @@ export default function CustomInvoiceForm({ settings, existingInvoices }: Props)
   const [location, setLocation]     = useState(settings?.contact_location ?? '')
   const [rows, setRows]             = useState<LineItemDraft[]>([newRow(uid())])
   const [showForm, setShowForm]     = useState(true)
-  const [savedInvoice, setSavedInvoice] = useState<CustomInvoice | null>(null)
-  const [printTarget, setPrintTarget]   = useState<CustomInvoice | null>(null)
+  const [printTarget, setPrintTarget] = useState<CustomInvoice | null>(null)
 
-  const printRef  = useRef<HTMLDivElement>(null)
-  const [isPending, startTransition] = useTransition()
+  const printRef = useRef<HTMLDivElement>(null)
 
   // Currency lock: if the first row has use_pax_price checked, its currency applies to all rows
   const lockedCurrency = rows[0]?.use_pax_price ? (rows[0].pax_price_unit || 'PKR') : null
@@ -150,9 +147,9 @@ export default function CustomInvoiceForm({ settings, existingInvoices }: Props)
     ? 1
     : 1 + Math.ceil((rows.length - 5) / 9)
 
-  // Live invoice preview (uses a placeholder number until saved)
+  // Live invoice preview — reflects form state in real-time
   const previewInvoice = buildInvoice(
-    savedInvoice?.invoice_number ?? 'ATI-???',
+    invoiceNumber || 'ATI-001',
     date,
     billedName || 'Client Name',
     billedAddr || 'Address',
@@ -205,50 +202,13 @@ export default function CustomInvoiceForm({ settings, existingInvoices }: Props)
   function addRow() { setRows(prev => [...prev, newRow(uid(), lockedCurrency ?? 'PKR')]) }
   function removeRow(id: string) { setRows(prev => prev.filter(r => r.id !== id)) }
 
-  async function handleSave() {
-    if (!billedName.trim()) { toast.error('Please enter a Billed To name.'); return }
-    if (!rows.some(r => r.service.trim())) { toast.error('Add at least one service line.'); return }
-
-    const items = rows.map(r => buildLineItem(r, lockedCurrency))
-    const total    = items.reduce((s, i) => s + i.total, 0)
-    const received = items.reduce((s, i) => s + i.received, 0)
-
-    startTransition(async () => {
-      const res = await createCustomInvoice({
-        invoice_date: date,
-        billed_to_name: billedName,
-        billed_to_address: billedAddr,
-        billed_to_client_number: billedPhone,
-        payment_bank_name: bankName,
-        payment_account_number: accountNo,
-        terms_text: terms,
-        contact_phone: phone,
-        contact_email: email,
-        contact_location: location,
-        line_items: items,
-        total,
-        received,
-        remaining: total - received,
-      })
-      if ('error' in res && res.error) {
-        toast.error(res.error)
-        return
-      }
-      const inv: CustomInvoice = {
-        ...previewInvoice,
-        id: res.id!,
-        invoice_number: res.invoice_number!,
-        created_at: new Date().toISOString(),
-      }
-      setSavedInvoice(inv)
-      setPrintTarget(inv)
-      toast.success(`Invoice ${res.invoice_number} saved!`)
-    })
+  function handleDownload() {
+    setPrintTarget(previewInvoice)
+    setTimeout(() => handlePrint(), 50)
   }
 
   function handlePrintCurrent(inv: CustomInvoice) {
     setPrintTarget(inv)
-    // Give React a tick to update printTarget before printing
     setTimeout(() => handlePrint(), 50)
   }
 
@@ -269,10 +229,21 @@ export default function CustomInvoiceForm({ settings, existingInvoices }: Props)
               {/* ── LEFT: form — capped at ~45% so the preview gets more room ── */}
               <div className="flex-1 min-w-0 max-w-[580px] space-y-5">
 
-                {/* Date */}
-                <div className="space-y-1.5">
-                  <Label className="text-xs">Invoice Date</Label>
-                  <Input type="date" value={date} onChange={e => setDate(e.target.value)} className="h-9 w-48" />
+                {/* Invoice Number + Date */}
+                <div className="flex flex-wrap gap-3">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Invoice Number</Label>
+                    <Input
+                      placeholder="ATI-001"
+                      value={invoiceNumber}
+                      onChange={e => setInvoiceNumber(e.target.value)}
+                      className="h-9 w-36"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Invoice Date</Label>
+                    <Input type="date" value={date} onChange={e => setDate(e.target.value)} className="h-9 w-48" />
+                  </div>
                 </div>
 
                 {/* Billed To */}
@@ -487,26 +458,12 @@ export default function CustomInvoiceForm({ settings, existingInvoices }: Props)
                 {/* Actions */}
                 <div className="flex gap-3 pt-2">
                   <Button
-                    onClick={handleSave}
-                    disabled={isPending}
+                    onClick={handleDownload}
                     className="bg-navy hover:bg-navy-2 text-white"
                   >
-                    {isPending
-                      ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Saving…</>
-                      : <><Save className="w-4 h-4 mr-2" />Save Invoice</>
-                    }
+                    <Download className="w-4 h-4 mr-2" />
+                    Download Invoice
                   </Button>
-
-                  {savedInvoice && (
-                    <Button
-                      variant="outline"
-                      onClick={() => handlePrintCurrent(savedInvoice)}
-                      className="border-navy text-navy hover:bg-navy hover:text-white"
-                    >
-                      <Download className="w-4 h-4 mr-2" />
-                      Download {savedInvoice.invoice_number}
-                    </Button>
-                  )}
                 </div>
               </div>
 

@@ -13,11 +13,11 @@ const ROWS_PC = 9   // continuation pages (compact header, more room)
 const P1_ROW_NO_Y0  = 335.5
 const P1_ROW_DAT_Y0 = 339.7
 
-// Continuation page row start positions (compact header at top)
-const C_HDR_Y      = 60
-const C_HR_Y       = 88
-const C_ROW_NO_Y0  = 101
-const C_ROW_DAT_Y0 = 105.2
+// Continuation page row start positions — large top padding keeps rows lower on the page
+const C_HDR_Y      = 160
+const C_HR_Y       = 188
+const C_ROW_NO_Y0  = 201
+const C_ROW_DAT_Y0 = 205.2
 
 function fmtDate(iso: string) {
   const d = new Date(iso + 'T00:00:00')
