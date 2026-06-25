@@ -206,28 +206,26 @@ export default function CustomInvoiceForm({ settings, existingInvoices }: Props)
       const pages = Array.from(wrapper.querySelectorAll('[data-invoice-root]')) as HTMLElement[]
       if (pages.length === 0) throw new Error('No invoice pages found')
 
-      const [{ default: html2canvas }, { jsPDF }] = await Promise.all([
-        import('html2canvas'),
+      // html-to-image uses the browser's native SVG foreignObject renderer —
+      // it supports modern CSS (oklch, lab, etc.) unlike html2canvas which has
+      // its own CSS parser that chokes on Tailwind v4 color functions.
+      const [{ toJpeg }, { jsPDF }] = await Promise.all([
+        import('html-to-image'),
         import('jspdf'),
       ])
 
       const pdf = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' })
 
       for (let i = 0; i < pages.length; i++) {
-        const canvas = await html2canvas(pages[i], {
-          scale: 2,
-          useCORS: true,
-          allowTaint: true,
+        const dataUrl = await toJpeg(pages[i], {
+          quality: 0.92,
           backgroundColor: '#121117',
-          logging: false,
-          imageTimeout: 30000,
-          // Prevent html2canvas from using the scrolled position of the window
-          scrollX: 0,
-          scrollY: 0,
+          pixelRatio: 2,
+          skipFonts: false,
+          cacheBust: false,
         })
-        const imgData = canvas.toDataURL('image/jpeg', 0.92)
         if (i > 0) pdf.addPage()
-        pdf.addImage(imgData, 'JPEG', 0, 0, 210, 297)
+        pdf.addImage(dataUrl, 'JPEG', 0, 0, 210, 297)
       }
 
       const filename = (inv.invoice_number || 'invoice').replace(/[^a-zA-Z0-9-_]/g, '-')
