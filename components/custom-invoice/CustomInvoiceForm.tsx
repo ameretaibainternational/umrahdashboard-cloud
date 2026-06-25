@@ -206,47 +206,58 @@ export default function CustomInvoiceForm({ settings, existingInvoices }: Props)
       const pages = Array.from(wrapper.querySelectorAll('[data-invoice-root]')) as HTMLElement[]
       if (pages.length === 0) throw new Error('No invoice pages found')
 
-      // html2canvas re-implements CSS pixel-by-pixel — unlike html-to-image's
-      // SVG foreignObject approach it renders background-image correctly on
-      // iOS Safari and handles position:fixed elements properly.
-      // The only issue with html2canvas is that its CSS parser rejects modern
-      // color functions (oklch, lab) used by Tailwind v4. We fix this in the
-      // onclone callback by stripping all external stylesheets — safe because
-      // the invoice template is 100% inline-styled.
       const [{ default: html2canvas }, { jsPDF }] = await Promise.all([
         import('html2canvas'),
         import('jspdf'),
       ])
 
-      const pdf = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' })
       const origin = window.location.origin
 
+      // ── Pre-fetch the background image and convert to data URL ────────────
+      // Embedding it directly into jsPDF bypasses html2canvas's JPEG re-compression
+      // pipeline so the background goes into the PDF at its native quality.
+      const bgDataUrl = await fetch(`${origin}/invoice-empty.jpg`)
+        .then(r => r.blob())
+        .then(blob => new Promise<string>((res, rej) => {
+          const fr = new FileReader()
+          fr.onload = () => res(fr.result as string)
+          fr.onerror = rej
+          fr.readAsDataURL(blob)
+        }))
+
+      const pdf = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' })
+
       for (let i = 0; i < pages.length; i++) {
+        if (i > 0) pdf.addPage()
+
+        // Layer 1 — background at full native quality (no re-encoding)
+        pdf.addImage(bgDataUrl, 'JPEG', 0, 0, 210, 297)
+
+        // Layer 2 — invoice content (text, numbers, lines) with transparent bg
+        // html2canvas re-implements CSS pixel-by-pixel so it works on iOS Safari
+        // and with position:fixed elements. We strip Tailwind stylesheets in
+        // onclone so its CSS parser never encounters lab()/oklch() color functions.
         const canvas = await html2canvas(pages[i], {
-          scale: 3,   // 3× → ~1786px wide ≈ 214 DPI — keeps fine background details sharp
+          scale: 3,
           useCORS: true,
           allowTaint: true,
-          backgroundColor: '#121117',
+          backgroundColor: null,  // transparent — background is a separate layer
           logging: false,
           imageTimeout: 30000,
           scrollX: 0,
           scrollY: 0,
           onclone: (clonedDoc: Document) => {
-            // Strip Tailwind/app stylesheets so html2canvas never sees lab()/oklch()
             clonedDoc.querySelectorAll('style, link[rel="stylesheet"]').forEach(el => el.remove())
-            // Convert relative background-image URLs to absolute so iOS Safari
-            // can fetch them (e.g. /invoice-empty.jpg → https://domain/invoice-empty.jpg)
-            clonedDoc.querySelectorAll<HTMLElement>('*').forEach(el => {
-              const bg = el.style.backgroundImage
-              if (bg && bg.includes("url('/")) {
-                el.style.backgroundImage = bg.replace(/url\('\/([^']+)'\)/g, `url('${origin}/$1')`)
-              }
+            // Remove background from page elements — already added as Layer 1
+            clonedDoc.querySelectorAll<HTMLElement>('[data-invoice-root]').forEach(el => {
+              el.style.backgroundImage = 'none'
+              el.style.backgroundColor = 'transparent'
             })
           },
         })
-        const imgData = canvas.toDataURL('image/jpeg', 0.98)  // near-lossless — preserves fine details
-        if (i > 0) pdf.addPage()
-        pdf.addImage(imgData, 'JPEG', 0, 0, 210, 297)
+        // PNG preserves transparency so text/lines stay crisp over the background
+        const contentDataUrl = canvas.toDataURL('image/png')
+        pdf.addImage(contentDataUrl, 'PNG', 0, 0, 210, 297)
       }
 
       const filename = (inv.invoice_number || 'invoice').replace(/[^a-zA-Z0-9-_]/g, '-')
