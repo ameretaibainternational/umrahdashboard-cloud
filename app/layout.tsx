@@ -11,8 +11,8 @@ const poppins = Poppins({
 })
 
 export const metadata: Metadata = {
-  title: 'Fast Travels CRM',
-  description: 'Umrah Package Management System',
+  title: 'Umrah Dashboard',
+  description: 'Umrah Management System',
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

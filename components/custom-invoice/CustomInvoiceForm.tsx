@@ -289,7 +289,7 @@ export default function CustomInvoiceForm({ settings, existingInvoices }: Props)
                 <div>
                   <div className="flex items-center justify-between mb-2">
                     <p className="text-xs font-semibold text-navy uppercase tracking-wide">Line Items</p>
-                    <Button type="button" size="sm" variant="outline" onClick={addRow} className="h-7 text-xs gap-1">
+                    <Button type="button" size="sm" variant="outline" onClick={addRow} className="h-7 text-xs gap-1 border-navy text-white bg-navy hover:text-navy">
                       <Plus className="w-3 h-3" /> Add Row
                     </Button>
                   </div>

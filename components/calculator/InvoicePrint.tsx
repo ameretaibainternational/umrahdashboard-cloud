@@ -190,7 +190,7 @@ const InvoicePrint = forwardRef<HTMLDivElement, Props>(function InvoicePrint(
           <p style={{ fontWeight: 600, marginBottom: '4px', color: '#6b7280' }}>Terms & Conditions:</p>
           <p>• Package rates are valid at time of booking. Changes in airline fares or visa fees may affect the final price.</p>
           <p>• Advance payment confirms the booking. Remaining balance due before departure.</p>
-          <p>• Fast Travels & Tours is not responsible for visa rejection or flight cancellations by the airline.</p>
+          <p>• We are not responsible for visa rejection or flight cancellations by the airline.</p>
         </div>
 
         {/* Footer */}

@@ -11,7 +11,7 @@ A modern, fast Umrah package management CRM built with Next.js 16, Supabase, and
 - **UI:** Tailwind CSS + shadcn/ui
 - **Hosting:** Netlify
 
----
+---     
 
 ## Setup Instructions
 
