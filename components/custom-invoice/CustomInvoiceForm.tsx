@@ -97,7 +97,7 @@ function buildInvoice(
 function ScaledPreview({ children }: { children: React.ReactNode }) {
   const CANVAS_W = 595.5
   // Larger preview container — matches the wider right column
-  const containerW = 580
+  const containerW = 640
   const scale = containerW / CANVAS_W
 
   return (
@@ -415,12 +415,14 @@ export default function CustomInvoiceForm({ settings, existingInvoices }: Props)
                                   // Currency is auto-derived — show as static label
                                   <span className="text-xs text-muted-foreground font-medium w-10 shrink-0">{rowCurrency}</span>
                                 ) : (
-                                  <Input
-                                    placeholder="PKR"
-                                    value={row.total_unit}
+                                  <select
+                                    value={row.total_unit || 'PKR'}
                                     onChange={e => updateRow(row.id, { total_unit: e.target.value })}
-                                    className="h-8 text-sm w-16"
-                                  />
+                                    className="h-8 text-sm rounded-md border border-input bg-background px-2"
+                                  >
+                                    <option value="PKR">PKR</option>
+                                    <option value="SAR">SAR</option>
+                                  </select>
                                 )}
                               </div>
                             </div>
