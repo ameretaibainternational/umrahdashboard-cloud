@@ -224,13 +224,13 @@ const CustomInvoiceTemplate = forwardRef<HTMLDivElement, Props>(
 
           {/* Billed To */}
           <T x={59.5} y={176.0} bold>Billed To</T>
-          <T x={59.5} y={195.3}><span style={{ fontWeight: 700 }}>Name: </span>{invoice.billed_to_name}</T>
-          <T x={59.8} y={214.9}><span style={{ fontWeight: 700 }}>Address: </span>{invoice.billed_to_address}</T>
-          <T x={59.8} y={237.7}><span style={{ fontWeight: 700 }}>Client Number: </span>{invoice.billed_to_client_number}</T>
+          <T x={59.5} y={195.3}><span style={{ fontWeight: 500 }}>Name: </span>{invoice.billed_to_name}</T>
+          <T x={59.8} y={214.9}><span style={{ fontWeight: 500 }}>Address: </span>{invoice.billed_to_address}</T>
+          <T x={59.8} y={237.7}><span style={{ fontWeight: 500 }}>Client Number: </span>{invoice.billed_to_client_number}</T>
 
           {/* Payment Method */}
-          <T x={429.9} y={178.6} bold>Payment Method</T>
-          <T x={475.2} y={199.5}>{invoice.payment_bank_name}:</T>
+          <T x={439.9} y={178.6} bold>Payment Method</T>
+          <T right={559} y={199.5} nowrap>{invoice.payment_bank_name}:</T>
           <T x={448.9} y={220.1}>{invoice.payment_account_number}</T>
 
           {/* Table */}
