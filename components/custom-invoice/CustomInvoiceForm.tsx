@@ -223,7 +223,7 @@ export default function CustomInvoiceForm({ settings, existingInvoices }: Props)
 
       for (let i = 0; i < pages.length; i++) {
         const canvas = await html2canvas(pages[i], {
-          scale: 2,
+          scale: 3,   // 3× → ~1786px wide ≈ 214 DPI — keeps fine background details sharp
           useCORS: true,
           allowTaint: true,
           backgroundColor: '#121117',
@@ -244,7 +244,7 @@ export default function CustomInvoiceForm({ settings, existingInvoices }: Props)
             })
           },
         })
-        const imgData = canvas.toDataURL('image/jpeg', 0.92)
+        const imgData = canvas.toDataURL('image/jpeg', 0.98)  // near-lossless — preserves fine details
         if (i > 0) pdf.addPage()
         pdf.addImage(imgData, 'JPEG', 0, 0, 210, 297)
       }
