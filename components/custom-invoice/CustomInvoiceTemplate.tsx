@@ -87,7 +87,11 @@ const CustomInvoiceTemplate = forwardRef<HTMLDivElement, Props>(
           backgroundColor: '#121117',
           fontFamily: "'Poppins', 'Segoe UI', sans-serif",
           overflow: 'hidden',
-        }}
+          // Force browsers to print background image and colors
+          WebkitPrintColorAdjust: 'exact',
+          printColorAdjust: 'exact',
+          colorAdjust: 'exact',
+        } as React.CSSProperties}
       >
         {/* ── HEADER ──────────────────────────────────────────────────── */}
 

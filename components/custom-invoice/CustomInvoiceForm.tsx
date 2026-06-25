@@ -151,7 +151,11 @@ export default function CustomInvoiceForm({ settings, existingInvoices }: Props)
   // Print handler — prints whichever invoice is set as printTarget
   const handlePrint = useReactToPrint({
     contentRef: printRef,
-    pageStyle: '@page { size: A4 portrait; margin: 0; } body { margin: 0; }',
+    pageStyle: `
+      @page { size: A4 portrait; margin: 0; }
+      body { margin: 0; padding: 0; }
+      * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; color-adjust: exact !important; }
+    `,
     documentTitle: printTarget?.invoice_number ?? 'ATI-Invoice',
   })
 
@@ -277,10 +281,6 @@ export default function CustomInvoiceForm({ settings, existingInvoices }: Props)
 
                   <div className="space-y-3">
                     {rows.map((row, idx) => {
-                      const autoTotal = row.use_pax_price && row.pax_price
-                        ? (toNum(row.pax_price) * (toNum(row.total_pax) || 1)).toString()
-                        : undefined
-
                       return (
                         <div key={row.id} className="border rounded-lg p-3 space-y-3 bg-slate-50/50">
                           <div className="flex items-center justify-between">
@@ -323,7 +323,9 @@ export default function CustomInvoiceForm({ settings, existingInvoices }: Props)
                                     value={row.pax_price}
                                     onChange={e => {
                                       const val = e.target.value
-                                      updateRow(row.id, { pax_price: val, total: autoTotal ?? '' })
+                                      // Compute total from the NEW pax_price, not the stale render value
+                                      const newTotal = toNum(val) * (toNum(row.total_pax) || 1)
+                                      updateRow(row.id, { pax_price: val, total: newTotal > 0 ? String(newTotal) : '' })
                                     }}
                                     className="h-8 text-sm"
                                   />
@@ -343,7 +345,15 @@ export default function CustomInvoiceForm({ settings, existingInvoices }: Props)
                               <Input
                                 type="number" min="1"
                                 value={row.total_pax}
-                                onChange={e => updateRow(row.id, { total_pax: e.target.value })}
+                                onChange={e => {
+                                  const val = e.target.value
+                                  if (row.use_pax_price && row.pax_price) {
+                                    const newTotal = toNum(row.pax_price) * (toNum(val) || 1)
+                                    updateRow(row.id, { total_pax: val, total: String(newTotal) })
+                                  } else {
+                                    updateRow(row.id, { total_pax: val })
+                                  }
+                                }}
                                 className="h-8 text-sm"
                               />
                             </div>
@@ -353,7 +363,7 @@ export default function CustomInvoiceForm({ settings, existingInvoices }: Props)
                               <Label className="text-xs">Total</Label>
                               <div className="flex gap-1">
                                 <Input
-                                  placeholder={row.use_pax_price ? String(toNum(row.pax_price) * (toNum(row.total_pax) || 1)) : '798000'}
+                                  placeholder={row.use_pax_price && row.pax_price ? String(toNum(row.pax_price) * (toNum(row.total_pax) || 1)) : '798000'}
                                   value={row.total}
                                   onChange={e => updateRow(row.id, { total: e.target.value })}
                                   className="h-8 text-sm"
