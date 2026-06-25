@@ -1,7 +1,6 @@
 'use client'
 
-import { useState, useRef } from 'react'
-import { useReactToPrint } from 'react-to-print'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import { Plus, Trash2, Download, ChevronDown, ChevronUp } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -96,17 +95,32 @@ const PAGE_H = 842  // matches template page height
 
 function ScaledPreview({ children, totalPages }: { children: React.ReactNode; totalPages: number }) {
   const CANVAS_W = 595.5
-  const containerW = 490
-  const scale = containerW / CANVAS_W
-  // Each page is PAGE_H; add a small visible gap between pages in the preview
+  const MAX_W = 490
   const GAP = 8
   const totalCanvasH = PAGE_H * totalPages + GAP * (totalPages - 1)
+
+  const outerRef = useRef<HTMLDivElement>(null)
+  const [containerW, setContainerW] = useState(MAX_W)
+
+  useEffect(() => {
+    const el = outerRef.current
+    if (!el) return
+    const update = (w: number) => setContainerW(Math.min(MAX_W, Math.max(160, w)))
+    update(el.clientWidth)
+    const obs = new ResizeObserver(entries => update(entries[0].contentRect.width))
+    obs.observe(el)
+    return () => obs.disconnect()
+  }, [])
+
+  const scale = containerW / CANVAS_W
   const scaledH = Math.round(totalCanvasH * scale)
 
   return (
-    <div style={{ width: containerW, height: scaledH, overflow: 'hidden', borderRadius: 8, boxShadow: '0 4px 24px rgba(0,0,0,0.18)' }}>
-      <div style={{ transform: `scale(${scale})`, transformOrigin: 'top left', width: CANVAS_W, height: totalCanvasH }}>
-        {children}
+    <div ref={outerRef} style={{ width: '100%', maxWidth: MAX_W }}>
+      <div style={{ width: containerW, height: scaledH, overflow: 'hidden', borderRadius: 8, boxShadow: '0 4px 24px rgba(0,0,0,0.18)' }}>
+        <div style={{ transform: `scale(${scale})`, transformOrigin: 'top left', width: CANVAS_W, height: totalCanvasH }}>
+          {children}
+        </div>
       </div>
     </div>
   )
@@ -138,6 +152,7 @@ export default function CustomInvoiceForm({ settings, existingInvoices }: Props)
   const [printTarget, setPrintTarget] = useState<CustomInvoice | null>(null)
 
   const printRef = useRef<HTMLDivElement>(null)
+  const [isDownloading, setIsDownloading] = useState(false)
 
   // Currency lock: if the first row has use_pax_price checked, its currency applies to all rows
   const lockedCurrency = rows[0]?.use_pax_price ? (rows[0].pax_price_unit || 'PKR') : null
@@ -164,41 +179,57 @@ export default function CustomInvoiceForm({ settings, existingInvoices }: Props)
     lockedCurrency,
   )
 
-  // Print handler — prints whichever invoice is set as printTarget
-  const handlePrint = useReactToPrint({
-    contentRef: printRef,
-    pageStyle: `
-      @page { size: A4 portrait; margin: 0mm; }
-      html, body { margin: 0 !important; padding: 0 !important; }
-      * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; color-adjust: exact !important; }
-      /*
-       * A4 at 96dpi = 793.7px wide. Template is 595.5px wide.
-       * zoom = 793.7 / 595.5 = 1.3328 fills the page edge-to-edge.
-       * Template height is 842px (< 842.25) so after zoom (×1.3328 = 1122.4px)
-       * it stays just under A4 height (1122.5px) — no blank extra page.
-       * Each data-invoice-root div = one physical print page.
-       */
-      div[data-invoice-root] {
-        zoom: 1.3328 !important;
-        margin: 0 !important;
-        display: block !important;
-        overflow: hidden !important;
-        page-break-after: always !important;
-        page-break-inside: avoid !important;
-        break-after: page !important;
+  // html2canvas + jsPDF — generates a real PDF file and downloads it directly,
+  // no browser print dialog, works on all devices including mobile.
+  const downloadAsPdf = useCallback(async (inv: CustomInvoice) => {
+    setIsDownloading(true)
+    setPrintTarget(inv)
+
+    // Wait for React to render the hidden template
+    await new Promise(r => setTimeout(r, 120))
+
+    try {
+      const wrapper = printRef.current
+      if (!wrapper) return
+
+      const pages = Array.from(wrapper.querySelectorAll('[data-invoice-root]')) as HTMLElement[]
+      if (pages.length === 0) return
+
+      // Temporarily position at top-left so html2canvas can capture correctly
+      const prev = wrapper.style.cssText
+      wrapper.style.cssText = 'position:fixed;top:0;left:0;z-index:-9999;opacity:0;pointer-events:none;'
+      await new Promise(r => setTimeout(r, 60))
+
+      const [{ default: html2canvas }, { jsPDF }] = await Promise.all([
+        import('html2canvas'),
+        import('jspdf'),
+      ])
+
+      const pdf = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' })
+
+      for (let i = 0; i < pages.length; i++) {
+        const canvas = await html2canvas(pages[i], {
+          scale: 2,
+          useCORS: true,
+          allowTaint: true,
+          backgroundColor: '#121117',
+          logging: false,
+          imageTimeout: 15000,
+        })
+        const imgData = canvas.toDataURL('image/jpeg', 0.93)
+        if (i > 0) pdf.addPage()
+        pdf.addImage(imgData, 'JPEG', 0, 0, 210, 297)
       }
-      div[data-invoice-root]:last-child {
-        page-break-after: avoid !important;
-        break-after: avoid !important;
-      }
-      /* Collapse the preview gap so it never generates a blank middle page */
-      div[data-invoice-wrapper] {
-        display: block !important;
-        gap: 0 !important;
-      }
-    `,
-    documentTitle: printTarget?.invoice_number ?? 'ATI-Invoice',
-  })
+
+      const filename = (inv.invoice_number || 'invoice').replace(/[^a-zA-Z0-9-_]/g, '-')
+      pdf.save(`${filename}.pdf`)
+
+      wrapper.style.cssText = prev
+    } finally {
+      setIsDownloading(false)
+      setPrintTarget(null)
+    }
+  }, [])
 
   function updateRow(id: string, patch: Partial<LineItemDraft>) {
     setRows(prev => prev.map(r => r.id === id ? { ...r, ...patch } : r))
@@ -207,15 +238,8 @@ export default function CustomInvoiceForm({ settings, existingInvoices }: Props)
   function addRow() { setRows(prev => [...prev, newRow(uid(), lockedCurrency ?? 'PKR')]) }
   function removeRow(id: string) { setRows(prev => prev.filter(r => r.id !== id)) }
 
-  function handleDownload() {
-    setPrintTarget(previewInvoice)
-    setTimeout(() => handlePrint(), 50)
-  }
-
-  function handlePrintCurrent(inv: CustomInvoice) {
-    setPrintTarget(inv)
-    setTimeout(() => handlePrint(), 50)
-  }
+  function handleDownload() { downloadAsPdf(previewInvoice) }
+  function handlePrintCurrent(inv: CustomInvoice) { downloadAsPdf(inv) }
 
   return (
     <div className="space-y-6">
@@ -464,16 +488,17 @@ export default function CustomInvoiceForm({ settings, existingInvoices }: Props)
                 <div className="flex gap-3 pt-2">
                   <Button
                     onClick={handleDownload}
+                    disabled={isDownloading}
                     className="bg-navy hover:bg-navy-2 text-white"
                   >
                     <Download className="w-4 h-4 mr-2" />
-                    Download Invoice
+                    {isDownloading ? 'Generating PDF…' : 'Download Invoice'}
                   </Button>
                 </div>
               </div>
 
               {/* ── RIGHT: live preview ──────────────────────────── */}
-              <div className="flex-shrink-0">
+              <div className="min-w-0 w-full xl:flex-1">
                 <p className="text-xs text-muted-foreground mb-2 font-medium">
                   Live Preview {previewTotalPages > 1 && <span className="text-muted-foreground/60">({previewTotalPages} pages)</span>}
                 </p>
