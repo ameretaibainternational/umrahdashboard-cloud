@@ -3,7 +3,7 @@
 import { useState, useRef, useTransition } from 'react'
 import { useReactToPrint } from 'react-to-print'
 import { toast } from 'sonner'
-import { Plus, Trash2, Printer, Save, Loader2, ChevronDown, ChevronUp } from 'lucide-react'
+import { Plus, Trash2, Download, Save, Loader2, ChevronDown, ChevronUp } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -25,8 +25,8 @@ interface LineItemDraft {
   received: string
 }
 
-function newRow(id: string): LineItemDraft {
-  return { id, service: '', use_pax_price: false, pax_price: '', pax_price_unit: '', total_pax: '1', total: '', total_unit: '', received: '0' }
+function newRow(id: string, defaultCurrency = 'PKR'): LineItemDraft {
+  return { id, service: '', use_pax_price: false, pax_price: '', pax_price_unit: defaultCurrency, total_pax: '1', total: '', total_unit: '', received: '0' }
 }
 
 let _id = 0
@@ -35,17 +35,21 @@ const uid = () => String(++_id)
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 function toNum(s: string) { const n = parseFloat(s.replace(/,/g, '')); return isNaN(n) ? 0 : n }
 
-function buildLineItem(d: LineItemDraft): CustomInvoiceLineItem {
+// globalCurrency = locked invoice currency derived from first row with use_pax_price
+function buildLineItem(d: LineItemDraft, globalCurrency: string | null): CustomInvoiceLineItem {
   const pax_price = d.use_pax_price && d.pax_price !== '' ? toNum(d.pax_price) : null
   const total_pax = toNum(d.total_pax) || 1
   const total = d.total !== '' ? toNum(d.total) : (pax_price != null ? pax_price * total_pax : 0)
+  // When pax price is used, currency is always the global (or row's own) currency
+  const paxUnit = d.use_pax_price ? (globalCurrency ?? d.pax_price_unit) : d.pax_price_unit
   return {
     service: d.service,
     pax_price,
-    pax_price_unit: d.pax_price_unit,
+    pax_price_unit: paxUnit,
     total_pax,
     total,
-    total_unit: d.total_unit,
+    // Inherit currency from pax price when checkbox is active; otherwise use manual input
+    total_unit: d.use_pax_price ? paxUnit : d.total_unit,
     received: toNum(d.received),
   }
 }
@@ -63,8 +67,9 @@ function buildInvoice(
   email: string,
   location: string,
   rows: LineItemDraft[],
+  globalCurrency: string | null,
 ): CustomInvoice {
-  const items = rows.map(buildLineItem)
+  const items = rows.map(r => buildLineItem(r, globalCurrency))
   const total    = items.reduce((s, i) => s + i.total, 0)
   const received = items.reduce((s, i) => s + i.received, 0)
   return {
@@ -132,6 +137,9 @@ export default function CustomInvoiceForm({ settings, existingInvoices }: Props)
   const printRef  = useRef<HTMLDivElement>(null)
   const [isPending, startTransition] = useTransition()
 
+  // Currency lock: if the first row has use_pax_price checked, its currency applies to all rows
+  const lockedCurrency = rows[0]?.use_pax_price ? (rows[0].pax_price_unit || 'PKR') : null
+
   // Live invoice preview (uses a placeholder number until saved)
   const previewInvoice = buildInvoice(
     savedInvoice?.invoice_number ?? 'ATI-???',
@@ -146,6 +154,7 @@ export default function CustomInvoiceForm({ settings, existingInvoices }: Props)
     email,
     location,
     rows,
+    lockedCurrency,
   )
 
   // Print handler — prints whichever invoice is set as printTarget
@@ -173,14 +182,14 @@ export default function CustomInvoiceForm({ settings, existingInvoices }: Props)
     setRows(prev => prev.map(r => r.id === id ? { ...r, ...patch } : r))
   }
 
-  function addRow() { setRows(prev => [...prev, newRow(uid())]) }
+  function addRow() { setRows(prev => [...prev, newRow(uid(), lockedCurrency ?? 'PKR')]) }
   function removeRow(id: string) { setRows(prev => prev.filter(r => r.id !== id)) }
 
   async function handleSave() {
     if (!billedName.trim()) { toast.error('Please enter a Billed To name.'); return }
     if (!rows.some(r => r.service.trim())) { toast.error('Add at least one service line.'); return }
 
-    const items = rows.map(buildLineItem)
+    const items = rows.map(r => buildLineItem(r, lockedCurrency))
     const total    = items.reduce((s, i) => s + i.total, 0)
     const received = items.reduce((s, i) => s + i.received, 0)
 
@@ -291,6 +300,11 @@ export default function CustomInvoiceForm({ settings, existingInvoices }: Props)
 
                   <div className="space-y-3">
                     {rows.map((row, idx) => {
+                      // The effective currency for this row: locked by row 0 if it has use_pax_price, else own
+                      const isFirstPaxRow = idx === 0
+                      const rowCurrency = lockedCurrency && !isFirstPaxRow ? lockedCurrency : (row.pax_price_unit || 'PKR')
+                      const currencyLocked = !!lockedCurrency && !isFirstPaxRow
+
                       return (
                         <div key={row.id} className="border rounded-lg p-3 space-y-3 bg-slate-50/50">
                           <div className="flex items-center justify-between">
@@ -321,7 +335,13 @@ export default function CustomInvoiceForm({ settings, existingInvoices }: Props)
                                   type="checkbox"
                                   id={`pax-${row.id}`}
                                   checked={row.use_pax_price}
-                                  onChange={e => updateRow(row.id, { use_pax_price: e.target.checked })}
+                                  onChange={e => {
+                                    // When enabling pax price, inherit locked currency if applicable
+                                    updateRow(row.id, {
+                                      use_pax_price: e.target.checked,
+                                      pax_price_unit: e.target.checked ? rowCurrency : row.pax_price_unit,
+                                    })
+                                  }}
                                   className="w-3.5 h-3.5 accent-navy"
                                 />
                                 <Label htmlFor={`pax-${row.id}`} className="text-xs cursor-pointer">1 Pax Price</Label>
@@ -333,18 +353,21 @@ export default function CustomInvoiceForm({ settings, existingInvoices }: Props)
                                     value={row.pax_price}
                                     onChange={e => {
                                       const val = e.target.value
-                                      // Compute total from the NEW pax_price, not the stale render value
                                       const newTotal = toNum(val) * (toNum(row.total_pax) || 1)
                                       updateRow(row.id, { pax_price: val, total: newTotal > 0 ? String(newTotal) : '' })
                                     }}
                                     className="h-8 text-sm"
                                   />
-                                  <Input
-                                    placeholder="SAR"
-                                    value={row.pax_price_unit}
+                                  {/* SAR / PKR dropdown — disabled for non-first rows when currency is locked */}
+                                  <select
+                                    value={rowCurrency}
+                                    disabled={currencyLocked}
                                     onChange={e => updateRow(row.id, { pax_price_unit: e.target.value })}
-                                    className="h-8 text-sm w-16"
-                                  />
+                                    className="h-8 text-sm rounded-md border border-input bg-background px-2 disabled:cursor-not-allowed disabled:opacity-60"
+                                  >
+                                    <option value="PKR">PKR</option>
+                                    <option value="SAR">SAR</option>
+                                  </select>
                                 </div>
                               )}
                             </div>
@@ -368,22 +391,27 @@ export default function CustomInvoiceForm({ settings, existingInvoices }: Props)
                               />
                             </div>
 
-                            {/* Total */}
+                            {/* Total — no currency field when pax price is active (inherited automatically) */}
                             <div className="space-y-1.5">
                               <Label className="text-xs">Total</Label>
-                              <div className="flex gap-1">
+                              <div className="flex gap-1 items-center">
                                 <Input
                                   placeholder={row.use_pax_price && row.pax_price ? String(toNum(row.pax_price) * (toNum(row.total_pax) || 1)) : '798000'}
                                   value={row.total}
                                   onChange={e => updateRow(row.id, { total: e.target.value })}
                                   className="h-8 text-sm"
                                 />
-                                <Input
-                                  placeholder="PKR"
-                                  value={row.total_unit}
-                                  onChange={e => updateRow(row.id, { total_unit: e.target.value })}
-                                  className="h-8 text-sm w-16"
-                                />
+                                {row.use_pax_price ? (
+                                  // Currency is auto-derived — show as static label
+                                  <span className="text-xs text-muted-foreground font-medium w-10 shrink-0">{rowCurrency}</span>
+                                ) : (
+                                  <Input
+                                    placeholder="PKR"
+                                    value={row.total_unit}
+                                    onChange={e => updateRow(row.id, { total_unit: e.target.value })}
+                                    className="h-8 text-sm w-16"
+                                  />
+                                )}
                               </div>
                             </div>
                           </div>
@@ -453,8 +481,8 @@ export default function CustomInvoiceForm({ settings, existingInvoices }: Props)
                       onClick={() => handlePrintCurrent(savedInvoice)}
                       className="border-navy text-navy hover:bg-navy hover:text-white"
                     >
-                      <Printer className="w-4 h-4 mr-2" />
-                      Print {savedInvoice.invoice_number}
+                      <Download className="w-4 h-4 mr-2" />
+                      Download {savedInvoice.invoice_number}
                     </Button>
                   )}
                 </div>
@@ -496,8 +524,8 @@ export default function CustomInvoiceForm({ settings, existingInvoices }: Props)
                       onClick={() => handlePrintCurrent(inv)}
                       className="h-7 text-xs gap-1"
                     >
-                      <Printer className="w-3 h-3" />
-                      Print
+                      <Download className="w-3 h-3" />
+                      Download
                     </Button>
                   </div>
                 </div>

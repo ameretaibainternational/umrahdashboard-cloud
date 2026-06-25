@@ -73,6 +73,17 @@ const CustomInvoiceTemplate = forwardRef<HTMLDivElement, Props>(
     const hasPaxPrice = invoice.line_items.some(
       item => item.pax_price != null && item.pax_price > 0
     )
+    // Derive the invoice-level currency from the first line item that has a currency set
+    const invoiceCurrency =
+      invoice.line_items.find(i => i.pax_price != null && i.pax_price_unit)?.pax_price_unit ||
+      invoice.line_items.find(i => i.total_unit)?.total_unit ||
+      ''
+
+    // Derive invoice-level currency for the summary totals section
+    const invoiceCurrency =
+      invoice.line_items.find(i => i.pax_price != null && i.pax_price_unit)?.pax_price_unit ||
+      invoice.line_items.find(i => i.total_unit)?.total_unit ||
+      ''
 
     return (
       <div
@@ -225,14 +236,14 @@ const CustomInvoiceTemplate = forwardRef<HTMLDivElement, Props>(
 
         {/* Summary column — LEFT-aligned (different rule from table data) */}
         <T x={376.1} y={547.0} bold>Total</T>
-        <T x={463.9} y={547.0}>{fmtNum(invoice.total)}</T>
+        <T x={463.9} y={547.0}>{fmtNum(invoice.total, invoiceCurrency || undefined)}</T>
 
         {/* "Recieved" summary label — Regular (not bold, per spec) */}
         <T x={376.1} y={572.8}>Recieved</T>
-        <T x={463.9} y={572.8}>{fmtNum(invoice.received)}</T>
+        <T x={463.9} y={572.8}>{fmtNum(invoice.received, invoiceCurrency || undefined)}</T>
 
         <T x={376.1} y={599.7} bold>Remaining</T>
-        <T x={463.9} y={599.7}>{fmtNum(invoice.remaining)}</T>
+        <T x={463.9} y={599.7}>{fmtNum(invoice.remaining, invoiceCurrency || undefined)}</T>
 
         {/* ── FOOTER ──────────────────────────────────────────────────── */}
 
