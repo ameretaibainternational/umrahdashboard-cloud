@@ -39,6 +39,13 @@ export default function AppShell({ children, companyName, isDemo }: AppShellProp
     } catch { /* localStorage unavailable */ }
   }, [])
 
+  // Auto-collapse sidebar on routes that need more horizontal space
+  useEffect(() => {
+    if (pathname.startsWith('/custom-invoices')) {
+      setSidebarCollapsed(true)
+    }
+  }, [pathname])
+
   function handleToggleCollapse() {
     setSidebarCollapsed(prev => {
       const next = !prev

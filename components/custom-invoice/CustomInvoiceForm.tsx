@@ -96,8 +96,8 @@ function buildInvoice(
 // ─── ScaledPreview ────────────────────────────────────────────────────────────
 function ScaledPreview({ children }: { children: React.ReactNode }) {
   const CANVAS_W = 595.5
-  // Fixed preview container width — scaled down to fit sidebar
-  const containerW = 340
+  // Larger preview container — matches the wider right column
+  const containerW = 490
   const scale = containerW / CANVAS_W
 
   return (
@@ -162,17 +162,28 @@ export default function CustomInvoiceForm({ settings, existingInvoices }: Props)
     contentRef: printRef,
     pageStyle: `
       @page { size: A4 portrait; margin: 0mm; }
-      html, body { margin: 0 !important; padding: 0 !important; overflow: hidden; }
+      html, body {
+        margin: 0 !important;
+        padding: 0 !important;
+        width: 210mm;
+        height: 297mm;
+        overflow: hidden !important;
+        max-height: 297mm !important;
+      }
       * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; color-adjust: exact !important; }
       /*
        * A4 at 96dpi = 793.7px wide. Template is 595.5px wide.
        * zoom = 793.7 / 595.5 = 1.3328 fills the page edge-to-edge.
+       * We constrain to exactly one page by clamping the height.
        */
       div[data-invoice-root] {
         zoom: 1.3328 !important;
         transform-origin: top left !important;
         margin: 0 !important;
         display: block !important;
+        overflow: hidden !important;
+        page-break-after: avoid !important;
+        page-break-inside: avoid !important;
       }
     `,
     documentTitle: printTarget?.invoice_number ?? 'ATI-Invoice',
@@ -246,8 +257,8 @@ export default function CustomInvoiceForm({ settings, existingInvoices }: Props)
         {showForm && (
           <CardContent>
             <div className="flex gap-6 flex-wrap xl:flex-nowrap">
-              {/* ── LEFT: form ──────────────────────────────────── */}
-              <div className="flex-1 min-w-0 space-y-5">
+              {/* ── LEFT: form — capped at ~45% so the preview gets more room ── */}
+              <div className="flex-1 min-w-0 max-w-[480px] space-y-5">
 
                 {/* Date */}
                 <div className="space-y-1.5">
