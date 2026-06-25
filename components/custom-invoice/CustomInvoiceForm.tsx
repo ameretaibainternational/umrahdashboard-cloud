@@ -97,7 +97,7 @@ function buildInvoice(
 function ScaledPreview({ children }: { children: React.ReactNode }) {
   const CANVAS_W = 595.5
   // Larger preview container — matches the wider right column
-  const containerW = 490
+  const containerW = 660
   const scale = containerW / CANVAS_W
 
   return (
@@ -162,28 +162,27 @@ export default function CustomInvoiceForm({ settings, existingInvoices }: Props)
     contentRef: printRef,
     pageStyle: `
       @page { size: A4 portrait; margin: 0mm; }
-      html, body {
-        margin: 0 !important;
-        padding: 0 !important;
-        width: 210mm;
-        height: 297mm;
-        overflow: hidden !important;
-        max-height: 297mm !important;
-      }
+      html, body { margin: 0 !important; padding: 0 !important; }
       * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; color-adjust: exact !important; }
       /*
        * A4 at 96dpi = 793.7px wide. Template is 595.5px wide.
        * zoom = 793.7 / 595.5 = 1.3328 fills the page edge-to-edge.
-       * We constrain to exactly one page by clamping the height.
+       * Template height is 842px (< 842.25) so after zoom (×1.3328 = 1122.4px)
+       * it stays just under A4 height (1122.5px) — no blank extra page.
+       * Each data-invoice-root div = one physical print page.
        */
       div[data-invoice-root] {
         zoom: 1.3328 !important;
-        transform-origin: top left !important;
         margin: 0 !important;
         display: block !important;
         overflow: hidden !important;
-        page-break-after: avoid !important;
+        page-break-after: always !important;
         page-break-inside: avoid !important;
+        break-after: page !important;
+      }
+      div[data-invoice-root]:last-child {
+        page-break-after: avoid !important;
+        break-after: avoid !important;
       }
     `,
     documentTitle: printTarget?.invoice_number ?? 'ATI-Invoice',

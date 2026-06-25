@@ -1,9 +1,23 @@
 import { forwardRef } from 'react'
-import type { CustomInvoice } from '@/lib/types'
+import type { CustomInvoice, CustomInvoiceLineItem } from '@/lib/types'
 
-// ─── Canvas constants (1pt = 1px) ────────────────────────────────────────────
+// ─── Canvas constants ─────────────────────────────────────────────────────────
 const W = 595.5
-const ROW_H = 41.4   // pt per table row
+const ROW_H = 41.4
+
+// Max rows that fit per page (≤9 rows always end before y=530 where terms begin)
+const ROWS_P1 = 5   // page 1 (has full header, so less vertical room)
+const ROWS_PC = 9   // continuation pages (compact header, more room)
+
+// Page 1 row start positions
+const P1_ROW_NO_Y0  = 335.5
+const P1_ROW_DAT_Y0 = 339.7
+
+// Continuation page row start positions (compact header at top)
+const C_HDR_Y      = 60
+const C_HR_Y       = 88
+const C_ROW_NO_Y0  = 101
+const C_ROW_DAT_Y0 = 105.2
 
 function fmtDate(iso: string) {
   const d = new Date(iso + 'T00:00:00')
@@ -18,10 +32,9 @@ function fmtNum(n: number, unit?: string) {
   return unit ? `${s} ${unit}` : s
 }
 
-// Helper: absolutely-positioned text node
+// ─── Absolutely-positioned text node ─────────────────────────────────────────
 function T({
-  x, y, right: r, bold, size = 12, color = '#fefefe', children, nowrap, maxW,
-  href,
+  x, y, right: r, bold, size = 12, color = '#fefefe', children, nowrap, maxW, href,
 }: {
   x?: number; y: number; right?: number
   bold?: boolean; size?: number; color?: string
@@ -39,227 +52,247 @@ function T({
     whiteSpace: nowrap ? 'nowrap' : undefined,
     maxWidth: maxW ? `${maxW}px` : undefined,
   }
-
-  if (href) {
-    return (
-      <a href={href} style={{ ...style, textDecoration: 'none' }}>
-        {children}
-      </a>
-    )
-  }
+  if (href) return <a href={href} style={{ ...style, textDecoration: 'none' }}>{children}</a>
   return <div style={style}>{children}</div>
 }
 
-// Helper: horizontal rule
+// ─── Horizontal rule ─────────────────────────────────────────────────────────
 function HR({ x1, x2, y }: { x1: number; x2: number; y: number }) {
   return (
     <div style={{
       position: 'absolute',
-      left: `${x1}px`,
-      top: `${y}px`,
-      width: `${x2 - x1}px`,
-      height: '0.75px',
+      left: `${x1}px`, top: `${y}px`,
+      width: `${x2 - x1}px`, height: '0.75px',
       backgroundColor: '#ffffff',
     }} />
   )
 }
 
-// ─── Main component ───────────────────────────────────────────────────────────
+// ─── Shared page background style ────────────────────────────────────────────
+// Height is 842px (not 842.25) to prevent a 0.3px overflow that causes a blank extra page.
+const PAGE_BG: React.CSSProperties = {
+  position: 'relative',
+  width: `${W}px`,
+  height: '842px',
+  backgroundImage: 'url(/invoice-empty.jpg)',
+  backgroundSize: 'cover',
+  backgroundPosition: 'center top',
+  backgroundColor: '#121117',
+  fontFamily: "'Poppins', 'Segoe UI', sans-serif",
+  overflow: 'hidden',
+  WebkitPrintColorAdjust: 'exact',
+  printColorAdjust: 'exact',
+  colorAdjust: 'exact',
+} as React.CSSProperties
 
+// ─── Shared table header row ──────────────────────────────────────────────────
+function TableHeader({ hasPaxPrice, hdrY, hrY }: { hasPaxPrice: boolean; hdrY: number; hrY: number }) {
+  return (
+    <>
+      <T x={35.9}  y={hdrY} bold>No</T>
+      <T x={76.5}  y={hdrY} bold>Service</T>
+      {hasPaxPrice && <T x={215.7} y={hdrY} bold>1 Pax Price</T>}
+      <T x={318.6} y={hdrY} bold>Total Pax</T>
+      <T x={439.7} y={hdrY} bold>Total</T>
+      <T x={493.3} y={hdrY} bold>Recieved</T>
+      <HR x1={26} x2={547} y={hrY} />
+    </>
+  )
+}
+
+// ─── Table rows ───────────────────────────────────────────────────────────────
+function TableRows({
+  items, rowOffset, hasPaxPrice, rowNoY0, rowDatY0,
+}: {
+  items: CustomInvoiceLineItem[]
+  rowOffset: number
+  hasPaxPrice: boolean
+  rowNoY0: number
+  rowDatY0: number
+}) {
+  return (
+    <>
+      {items.map((item, i) => {
+        const yNo   = rowNoY0  + i * ROW_H
+        const yData = rowDatY0 + i * ROW_H
+        return (
+          <div key={i}>
+            <T x={30.6} y={yNo}>{rowOffset + i + 1}</T>
+            <T x={69.7} y={yNo} maxW={140}>
+              <span style={{ lineHeight: '10.5px', display: 'block' }}>{item.service}</span>
+            </T>
+            {hasPaxPrice && item.pax_price != null && (
+              <T x={214.5} y={yData} nowrap>
+                {fmtNum(item.pax_price, item.pax_price_unit || undefined)}
+              </T>
+            )}
+            <T x={324.6} y={yData}>{item.total_pax}</T>
+            <T right={479.6} y={yData} nowrap>
+              {fmtNum(item.total, item.total_unit || undefined)}
+            </T>
+            <T right={557.0} y={yData} nowrap>{fmtNum(item.received)}</T>
+          </div>
+        )
+      })}
+    </>
+  )
+}
+
+// ─── Terms + Totals + Footer section ─────────────────────────────────────────
+// Always rendered at fixed Y positions (all ≤9 rows end before y=530).
+function TermsSection({ invoice, invoiceCurrency }: { invoice: CustomInvoice; invoiceCurrency: string }) {
+  return (
+    <>
+      <HR x1={26} x2={547} y={530.3} />
+      <T x={35.9} y={547.0} bold color="#ffffff">Terms and Condition</T>
+      <T x={35.9} y={562.4} size={7.7} color="#a7a7a7" maxW={268}>
+        <span style={{ lineHeight: '10.5px', display: 'block' }}>{invoice.terms_text}</span>
+      </T>
+      <T x={35.9} y={614.3} size={7.7} color="#a7a7a7" maxW={268}>
+        <span style={{ lineHeight: '10.5px' }}>Note: </span>
+        <span style={{ fontWeight: 700, lineHeight: '10.5px' }}>
+          All bookings are non-changeable and non refundable.
+        </span>
+      </T>
+
+      <T x={376.1} y={547.0} bold>Total</T>
+      <T x={463.9} y={547.0}>{fmtNum(invoice.total, invoiceCurrency || undefined)}</T>
+      <T x={376.1} y={572.8}>Recieved</T>
+      <T x={463.9} y={572.8}>{fmtNum(invoice.received, invoiceCurrency || undefined)}</T>
+      <T x={376.1} y={599.7} bold>Remaining</T>
+      <T x={463.9} y={599.7}>{fmtNum(invoice.remaining, invoiceCurrency || undefined)}</T>
+
+      <HR x1={48.5} x2={547} y={638.6} />
+      <T x={35.9} y={695.4} bold color="#ffffff">Contact Us:</T>
+      <T x={35.9} y={714.8} size={10} color="#ffffff">{invoice.contact_phone}</T>
+      <T x={35.9} y={733.3} size={10} color="#ffffff" href={`mailto:${invoice.contact_email}`}>
+        {invoice.contact_email}
+      </T>
+      <T x={35.9} y={751.6} size={10} color="#ffffff">{invoice.contact_location}</T>
+    </>
+  )
+}
+
+// ─── Main component ───────────────────────────────────────────────────────────
 interface Props { invoice: CustomInvoice }
 
 const CustomInvoiceTemplate = forwardRef<HTMLDivElement, Props>(
   function CustomInvoiceTemplate({ invoice }, ref) {
-    const hasPaxPrice = invoice.line_items.some(
-      item => item.pax_price != null && item.pax_price > 0
-    )
-    // Derive the invoice-level currency from the first line item that has a currency set
+    const items = invoice.line_items
+    const hasPaxPrice = items.some(i => i.pax_price != null && i.pax_price > 0)
     const invoiceCurrency =
-      invoice.line_items.find(i => i.pax_price != null && i.pax_price_unit)?.pax_price_unit ||
-      invoice.line_items.find(i => i.total_unit)?.total_unit ||
-      ''
+      items.find(i => i.pax_price != null && i.pax_price_unit)?.pax_price_unit ||
+      items.find(i => i.total_unit)?.total_unit || ''
+
+    // ── Split items across pages ──────────────────────────────────────────────
+    const page1Items = items.slice(0, ROWS_P1)
+    const contItems  = items.slice(ROWS_P1)
+
+    const contPages: CustomInvoiceLineItem[][] = []
+    for (let i = 0; i < contItems.length; i += ROWS_PC) {
+      contPages.push(contItems.slice(i, i + ROWS_PC))
+    }
+
+    const totalPages   = 1 + contPages.length
+    const isMultiPage  = contPages.length > 0
+    const page1IsLast  = !isMultiPage
 
     return (
-      <div
-        ref={ref}
-        data-invoice-root
-        style={{
-          position: 'relative',
-          width: `${W}px`,
-          height: '842.25px',
-          backgroundImage: 'url(/invoice-empty.jpg)',
-          backgroundSize: 'cover',
-          backgroundPosition: 'center top',
-          backgroundColor: '#121117',
-          fontFamily: "'Poppins', 'Segoe UI', sans-serif",
-          overflow: 'hidden',
-          // Force browsers to print background image and colors
-          WebkitPrintColorAdjust: 'exact',
-          printColorAdjust: 'exact',
-          colorAdjust: 'exact',
-        } as React.CSSProperties}
-      >
-        {/* ── HEADER ──────────────────────────────────────────────────── */}
+      // Wrapper div holds all pages; each data-invoice-root page gets its own print page
+      <div ref={ref}>
 
-        {/* "INVOICE" title — centered */}
-        <div style={{
-          position: 'absolute',
-          top: '58.5px',
-          left: 0,
-          width: '100%',
-          textAlign: 'center',
-          fontWeight: 700,
-          fontSize: '54px',
-          color: '#ffffff',
-          lineHeight: 1,
-          fontFamily: "'Poppins', 'Segoe UI', sans-serif",
-        }}>
-          INVOICE
+        {/* ── PAGE 1 ─────────────────────────────────────────────────── */}
+        <div data-invoice-root style={PAGE_BG}>
+
+          {/* INVOICE title */}
+          <div style={{
+            position: 'absolute', top: '58.5px', left: 0, width: '100%',
+            textAlign: 'center', fontWeight: 700, fontSize: '54px',
+            color: '#ffffff', lineHeight: 1, fontFamily: "'Poppins', 'Segoe UI', sans-serif",
+          }}>
+            INVOICE
+          </div>
+
+          <T x={253.3} y={124.9} nowrap>
+            <span style={{ fontWeight: 700 }}>Invoice ID: </span>
+            <span style={{ fontWeight: 400 }}>{invoice.invoice_number}</span>
+          </T>
+          <T x={424.9} y={122.3} nowrap>
+            <span style={{ fontWeight: 700 }}>Date: </span>
+            <span style={{ fontWeight: 400 }}>{fmtDate(invoice.invoice_date)}</span>
+          </T>
+
+          {/* Billed To */}
+          <T x={59.5} y={176.0} bold>Billed To</T>
+          <T x={59.5} y={195.3}><span style={{ fontWeight: 700 }}>Name: </span>{invoice.billed_to_name}</T>
+          <T x={59.8} y={214.9}><span style={{ fontWeight: 700 }}>Address: </span>{invoice.billed_to_address}</T>
+          <T x={59.8} y={237.7}><span style={{ fontWeight: 700 }}>Client Number: </span>{invoice.billed_to_client_number}</T>
+
+          {/* Payment Method */}
+          <T x={429.9} y={178.6} bold>Payment Method</T>
+          <T x={475.2} y={199.5}>{invoice.payment_bank_name}:</T>
+          <T x={448.9} y={220.1}>{invoice.payment_account_number}</T>
+
+          {/* Table */}
+          <TableHeader hasPaxPrice={hasPaxPrice} hdrY={294.1} hrY={322.8} />
+          <TableRows
+            items={page1Items}
+            rowOffset={0}
+            hasPaxPrice={hasPaxPrice}
+            rowNoY0={P1_ROW_NO_Y0}
+            rowDatY0={P1_ROW_DAT_Y0}
+          />
+
+          {/* "Continued" note on page 1 when there are more pages */}
+          {isMultiPage && (
+            <>
+              <T x={35.9}  y={557} size={9} color="#a7a7a7">— Continued on next page —</T>
+              <T right={559} y={557} size={9} color="#a7a7a7" nowrap>Page 1 of {totalPages}</T>
+            </>
+          )}
+
+          {/* Terms section only on page 1 if this IS the last page */}
+          {page1IsLast && (
+            <TermsSection invoice={invoice} invoiceCurrency={invoiceCurrency} />
+          )}
         </div>
 
-        {/* Invoice ID — bold label + regular value inline */}
-        <T x={253.3} y={124.9} nowrap>
-          <span style={{ fontWeight: 700 }}>Invoice ID: </span>
-          <span style={{ fontWeight: 400 }}>{invoice.invoice_number}</span>
-        </T>
-
-        {/* Date — bold label + regular value inline */}
-        <T x={424.9} y={122.3} nowrap>
-          <span style={{ fontWeight: 700 }}>Date: </span>
-          <span style={{ fontWeight: 400 }}>{fmtDate(invoice.invoice_date)}</span>
-        </T>
-
-        {/* ── BILLED TO / PAYMENT METHOD ──────────────────────────────── */}
-
-        <T x={59.5} y={176.0} bold>Billed To</T>
-
-        <T x={59.5} y={195.3}>
-          <span style={{ fontWeight: 700 }}>Name: </span>{invoice.billed_to_name}
-        </T>
-
-        <T x={59.8} y={214.9}>
-          <span style={{ fontWeight: 700 }}>Address: </span>{invoice.billed_to_address}
-        </T>
-
-        <T x={59.8} y={237.7}>
-          <span style={{ fontWeight: 700 }}>Client Number: </span>{invoice.billed_to_client_number}
-        </T>
-
-        <T x={429.9} y={178.6} bold>Payment Method</T>
-
-        {/* Bank name on its own line with trailing colon */}
-        <T x={475.2} y={199.5}>{invoice.payment_bank_name}:</T>
-
-        {/* Account number on its own line */}
-        <T x={448.9} y={220.1}>{invoice.payment_account_number}</T>
-
-        {/* ── TABLE HEADERS ───────────────────────────────────────────── */}
-
-        <T x={35.9}  y={294.1} bold>No</T>
-        <T x={76.5}  y={294.1} bold>Service</T>
-        {hasPaxPrice && <T x={215.7} y={294.1} bold>1 Pax Price</T>}
-        <T x={318.6} y={294.1} bold>Total Pax</T>
-        <T x={439.7} y={294.1} bold>Total</T>
-        {/* "Recieved" — replicate original misspelling exactly */}
-        <T x={493.3} y={294.1} bold>Recieved</T>
-
-        <HR x1={26} x2={547} y={322.8} />
-
-        {/* ── TABLE ROWS ──────────────────────────────────────────────── */}
-
-        {invoice.line_items.map((item, i) => {
-          const yNo   = 335.5 + i * ROW_H
-          const yData = 339.7 + i * ROW_H
+        {/* ── CONTINUATION PAGES ─────────────────────────────────────── */}
+        {contPages.map((pageItems, pi) => {
+          const pageNum  = pi + 2
+          const isLast   = pi === contPages.length - 1
+          const rowOffset = ROWS_P1 + pi * ROWS_PC
 
           return (
-            <div key={i}>
-              {/* Row number */}
-              <T x={30.6} y={yNo}>{i + 1}</T>
+            <div key={pi} data-invoice-root style={PAGE_BG}>
 
-              {/* Service (max ~140pt, multi-line at ~10.5pt line-height) */}
-              <T x={69.7} y={yNo} maxW={140}>
-                <span style={{ lineHeight: '10.5px', display: 'block' }}>
-                  {item.service}
-                </span>
+              {/* Compact page indicator */}
+              <T x={35.9}  y={28} size={9} color="#a7a7a7">
+                Invoice {invoice.invoice_number} — continued
+              </T>
+              <T right={559} y={28} size={9} color="#a7a7a7" nowrap>
+                Page {pageNum} of {totalPages}
               </T>
 
-              {/* Pax Price (conditional) */}
-              {hasPaxPrice && item.pax_price != null && (
-                <T x={214.5} y={yData} nowrap>
-                  {fmtNum(item.pax_price, item.pax_price_unit || undefined)}
-                </T>
+              {/* Table header repeated for context */}
+              <TableHeader hasPaxPrice={hasPaxPrice} hdrY={C_HDR_Y} hrY={C_HR_Y} />
+
+              {/* Rows for this page */}
+              <TableRows
+                items={pageItems}
+                rowOffset={rowOffset}
+                hasPaxPrice={hasPaxPrice}
+                rowNoY0={C_ROW_NO_Y0}
+                rowDatY0={C_ROW_DAT_Y0}
+              />
+
+              {/* Terms + totals + footer only on the last page */}
+              {isLast && (
+                <TermsSection invoice={invoice} invoiceCurrency={invoiceCurrency} />
               )}
-
-              {/* Total Pax */}
-              <T x={324.6} y={yData}>{item.total_pax}</T>
-
-              {/* Total — RIGHT-aligned, right edge at 479.6 */}
-              <T right={479.6} y={yData} nowrap>
-                {fmtNum(item.total, item.total_unit || undefined)}
-              </T>
-
-              {/* Received — RIGHT-aligned, right edge at 557.0 */}
-              <T right={557.0} y={yData} nowrap>
-                {fmtNum(item.received)}
-              </T>
             </div>
           )
         })}
-
-        {/* ── TERMS & TOTALS SECTION ──────────────────────────────────── */}
-
-        <HR x1={26} x2={547} y={530.3} />
-
-        {/* "Terms and Condition" — singular, replicate exactly */}
-        <T x={35.9} y={547.0} bold color="#ffffff">Terms and Condition</T>
-
-        {/* Terms body paragraph */}
-        <T x={35.9} y={562.4} size={7.7} color="#a7a7a7" maxW={268}>
-          <span style={{ lineHeight: '10.5px', display: 'block' }}>
-            {invoice.terms_text}
-          </span>
-        </T>
-
-        {/* Note line */}
-        <T x={35.9} y={614.3} size={7.7} color="#a7a7a7" maxW={268}>
-          <span style={{ lineHeight: '10.5px' }}>Note: </span>
-          <span style={{ fontWeight: 700, lineHeight: '10.5px' }}>
-            All bookings are non-changeable and non refundable.
-          </span>
-        </T>
-
-        {/* Summary column — LEFT-aligned (different rule from table data) */}
-        <T x={376.1} y={547.0} bold>Total</T>
-        <T x={463.9} y={547.0}>{fmtNum(invoice.total, invoiceCurrency || undefined)}</T>
-
-        {/* "Recieved" summary label — Regular (not bold, per spec) */}
-        <T x={376.1} y={572.8}>Recieved</T>
-        <T x={463.9} y={572.8}>{fmtNum(invoice.received, invoiceCurrency || undefined)}</T>
-
-        <T x={376.1} y={599.7} bold>Remaining</T>
-        <T x={463.9} y={599.7}>{fmtNum(invoice.remaining, invoiceCurrency || undefined)}</T>
-
-        {/* ── FOOTER ──────────────────────────────────────────────────── */}
-
-        <HR x1={48.5} x2={547} y={638.6} />
-
-        <T x={35.9} y={695.4} bold color="#ffffff">Contact Us:</T>
-
-        <T x={35.9} y={714.8} size={10} color="#ffffff">
-          {invoice.contact_phone}
-        </T>
-
-        {/* Email as clickable mailto link */}
-        <T
-          x={35.9} y={733.3} size={10} color="#ffffff"
-          href={`mailto:${invoice.contact_email}`}
-        >
-          {invoice.contact_email}
-        </T>
-
-        <T x={35.9} y={751.6} size={10} color="#ffffff">
-          {invoice.contact_location}
-        </T>
       </div>
     )
   }
