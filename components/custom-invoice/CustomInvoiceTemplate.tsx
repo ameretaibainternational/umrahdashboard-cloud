@@ -79,12 +79,6 @@ const CustomInvoiceTemplate = forwardRef<HTMLDivElement, Props>(
       invoice.line_items.find(i => i.total_unit)?.total_unit ||
       ''
 
-    // Derive invoice-level currency for the summary totals section
-    const invoiceCurrency =
-      invoice.line_items.find(i => i.pax_price != null && i.pax_price_unit)?.pax_price_unit ||
-      invoice.line_items.find(i => i.total_unit)?.total_unit ||
-      ''
-
     return (
       <div
         ref={ref}
