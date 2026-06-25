@@ -191,6 +191,11 @@ export default function CustomInvoiceForm({ settings, existingInvoices }: Props)
         page-break-after: avoid !important;
         break-after: avoid !important;
       }
+      /* Collapse the preview gap so it never generates a blank middle page */
+      div[data-invoice-wrapper] {
+        display: block !important;
+        gap: 0 !important;
+      }
     `,
     documentTitle: printTarget?.invoice_number ?? 'ATI-Invoice',
   })

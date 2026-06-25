@@ -198,10 +198,8 @@ const CustomInvoiceTemplate = forwardRef<HTMLDivElement, Props>(
     const page1IsLast  = !isMultiPage
 
     return (
-      // Wrapper div holds all pages; each data-invoice-root page gets its own print page
-      // The 8px gap between page divs is visible in the live preview but hidden when printing
-      // (print CSS targets data-invoice-root directly and doesn't see the gap)
-      <div ref={ref} style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+      // data-invoice-wrapper: flex gap visible in preview; collapsed to block in print CSS
+      <div ref={ref} data-invoice-wrapper style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
 
         {/* ── PAGE 1 ─────────────────────────────────────────────────── */}
         <div data-invoice-root style={PAGE_BG}>
@@ -269,9 +267,7 @@ const CustomInvoiceTemplate = forwardRef<HTMLDivElement, Props>(
             <div key={pi} data-invoice-root style={PAGE_BG}>
 
               {/* Compact page indicator */}
-              <T x={35.9}  y={28} size={9} color="#a7a7a7">
-                Invoice {invoice.invoice_number} — continued
-              </T>
+              
               <T right={559} y={28} size={9} color="#a7a7a7" nowrap>
                 Page {pageNum} of {totalPages}
               </T>
