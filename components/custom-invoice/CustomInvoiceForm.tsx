@@ -97,7 +97,7 @@ function buildInvoice(
 function ScaledPreview({ children }: { children: React.ReactNode }) {
   const CANVAS_W = 595.5
   // Larger preview container — matches the wider right column
-  const containerW = 660
+  const containerW = 580
   const scale = containerW / CANVAS_W
 
   return (
@@ -257,7 +257,7 @@ export default function CustomInvoiceForm({ settings, existingInvoices }: Props)
           <CardContent>
             <div className="flex gap-6 flex-wrap xl:flex-nowrap">
               {/* ── LEFT: form — capped at ~45% so the preview gets more room ── */}
-              <div className="flex-1 min-w-0 max-w-[480px] space-y-5">
+              <div className="flex-1 min-w-0 max-w-[580px] space-y-5">
 
                 {/* Date */}
                 <div className="space-y-1.5">
@@ -337,9 +337,9 @@ export default function CustomInvoiceForm({ settings, existingInvoices }: Props)
                             />
                           </div>
 
-                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                          <div className="flex flex-wrap gap-3 items-end">
                             {/* Pax toggle + price */}
-                            <div className="col-span-2 space-y-1.5">
+                            <div className="space-y-1.5 w-[190px] shrink-0">
                               <div className="flex items-center gap-2">
                                 <input
                                   type="checkbox"
@@ -366,7 +366,7 @@ export default function CustomInvoiceForm({ settings, existingInvoices }: Props)
                                       const newTotal = toNum(val) * (toNum(row.total_pax) || 1)
                                       updateRow(row.id, { pax_price: val, total: newTotal > 0 ? String(newTotal) : '' })
                                     }}
-                                    className="h-8 text-sm"
+                                    className="h-8 text-sm w-26"
                                   />
                                   {/* SAR / PKR dropdown — disabled for non-first rows when currency is locked */}
                                   <select
@@ -383,7 +383,7 @@ export default function CustomInvoiceForm({ settings, existingInvoices }: Props)
                             </div>
 
                             {/* Total Pax */}
-                            <div className="space-y-1.5">
+                            <div className="space-y-1.5 w-[80px] shrink-0">
                               <Label className="text-xs">Total Pax</Label>
                               <Input
                                 type="number" min="1"
@@ -402,7 +402,7 @@ export default function CustomInvoiceForm({ settings, existingInvoices }: Props)
                             </div>
 
                             {/* Total — no currency field when pax price is active (inherited automatically) */}
-                            <div className="space-y-1.5">
+                            <div className="space-y-1.5 w-[150px] shrink-0">
                               <Label className="text-xs">Total</Label>
                               <div className="flex gap-1 items-center">
                                 <Input
