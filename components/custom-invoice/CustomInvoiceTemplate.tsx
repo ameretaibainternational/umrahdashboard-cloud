@@ -199,7 +199,9 @@ const CustomInvoiceTemplate = forwardRef<HTMLDivElement, Props>(
 
     return (
       // Wrapper div holds all pages; each data-invoice-root page gets its own print page
-      <div ref={ref}>
+      // The 8px gap between page divs is visible in the live preview but hidden when printing
+      // (print CSS targets data-invoice-root directly and doesn't see the gap)
+      <div ref={ref} style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
 
         {/* ── PAGE 1 ─────────────────────────────────────────────────── */}
         <div data-invoice-root style={PAGE_BG}>

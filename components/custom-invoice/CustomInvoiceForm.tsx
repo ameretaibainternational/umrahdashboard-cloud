@@ -94,15 +94,20 @@ function buildInvoice(
 }
 
 // ─── ScaledPreview ────────────────────────────────────────────────────────────
-function ScaledPreview({ children }: { children: React.ReactNode }) {
+const PAGE_H = 842  // matches template page height
+
+function ScaledPreview({ children, totalPages }: { children: React.ReactNode; totalPages: number }) {
   const CANVAS_W = 595.5
-  // Larger preview container — matches the wider right column
-  const containerW = 640
+  const containerW = 490
   const scale = containerW / CANVAS_W
+  // Each page is PAGE_H; add a small visible gap between pages in the preview
+  const GAP = 8
+  const totalCanvasH = PAGE_H * totalPages + GAP * (totalPages - 1)
+  const scaledH = Math.round(totalCanvasH * scale)
 
   return (
-    <div style={{ width: containerW, height: Math.round(842.25 * scale), overflow: 'hidden', borderRadius: 8, boxShadow: '0 4px 24px rgba(0,0,0,0.18)' }}>
-      <div style={{ transform: `scale(${scale})`, transformOrigin: 'top left', width: CANVAS_W, height: 842.25 }}>
+    <div style={{ width: containerW, height: scaledH, overflow: 'hidden', borderRadius: 8, boxShadow: '0 4px 24px rgba(0,0,0,0.18)' }}>
+      <div style={{ transform: `scale(${scale})`, transformOrigin: 'top left', width: CANVAS_W, height: totalCanvasH }}>
         {children}
       </div>
     </div>
@@ -139,6 +144,11 @@ export default function CustomInvoiceForm({ settings, existingInvoices }: Props)
 
   // Currency lock: if the first row has use_pax_price checked, its currency applies to all rows
   const lockedCurrency = rows[0]?.use_pax_price ? (rows[0].pax_price_unit || 'PKR') : null
+
+  // Total pages for live preview (mirrors template split logic)
+  const previewTotalPages = rows.length <= 5
+    ? 1
+    : 1 + Math.ceil((rows.length - 5) / 9)
 
   // Live invoice preview (uses a placeholder number until saved)
   const previewInvoice = buildInvoice(
@@ -502,8 +512,10 @@ export default function CustomInvoiceForm({ settings, existingInvoices }: Props)
 
               {/* ── RIGHT: live preview ──────────────────────────── */}
               <div className="flex-shrink-0">
-                <p className="text-xs text-muted-foreground mb-2 font-medium">Live Preview</p>
-                <ScaledPreview>
+                <p className="text-xs text-muted-foreground mb-2 font-medium">
+                  Live Preview {previewTotalPages > 1 && <span className="text-muted-foreground/60">({previewTotalPages} pages)</span>}
+                </p>
+                <ScaledPreview totalPages={previewTotalPages}>
                   <CustomInvoiceTemplate invoice={previewInvoice} />
                 </ScaledPreview>
               </div>
