@@ -119,7 +119,7 @@ function TableRows({
           <div key={i}>
             <T x={30.6} y={yNo}>{rowOffset + i + 1}</T>
             <T x={69.7} y={yNo} maxW={140}>
-              <span style={{ lineHeight: '10.5px', display: 'block' }}>{item.service}</span>
+              <span style={{ lineHeight: '15px', display: 'block' }}>{item.service}</span>
             </T>
             {hasPaxPrice && item.pax_price != null && (
               <T x={214.5} y={yData} nowrap>
@@ -231,7 +231,7 @@ const CustomInvoiceTemplate = forwardRef<HTMLDivElement, Props>(
           {/* Payment Method */}
           <T x={439.9} y={178.6} bold>Payment Method</T>
           <T right={547} y={199.5} nowrap>{invoice.payment_bank_name}:</T>
-          <T right={559} y={220.1} nowrap>{invoice.payment_account_number}</T>
+          <T right={547} y={220.1} nowrap>{invoice.payment_account_number}</T>
 
           {/* Table */}
           <TableHeader hasPaxPrice={hasPaxPrice} hdrY={294.1} hrY={322.8} />
