@@ -206,26 +206,47 @@ export default function CustomInvoiceForm({ settings, existingInvoices }: Props)
       const pages = Array.from(wrapper.querySelectorAll('[data-invoice-root]')) as HTMLElement[]
       if (pages.length === 0) throw new Error('No invoice pages found')
 
-      // html-to-image uses the browser's native SVG foreignObject renderer —
-      // it supports modern CSS (oklch, lab, etc.) unlike html2canvas which has
-      // its own CSS parser that chokes on Tailwind v4 color functions.
-      const [{ toJpeg }, { jsPDF }] = await Promise.all([
-        import('html-to-image'),
+      // html2canvas re-implements CSS pixel-by-pixel — unlike html-to-image's
+      // SVG foreignObject approach it renders background-image correctly on
+      // iOS Safari and handles position:fixed elements properly.
+      // The only issue with html2canvas is that its CSS parser rejects modern
+      // color functions (oklch, lab) used by Tailwind v4. We fix this in the
+      // onclone callback by stripping all external stylesheets — safe because
+      // the invoice template is 100% inline-styled.
+      const [{ default: html2canvas }, { jsPDF }] = await Promise.all([
+        import('html2canvas'),
         import('jspdf'),
       ])
 
       const pdf = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' })
+      const origin = window.location.origin
 
       for (let i = 0; i < pages.length; i++) {
-        const dataUrl = await toJpeg(pages[i], {
-          quality: 0.92,
+        const canvas = await html2canvas(pages[i], {
+          scale: 2,
+          useCORS: true,
+          allowTaint: true,
           backgroundColor: '#121117',
-          pixelRatio: 2,
-          skipFonts: false,
-          cacheBust: false,
+          logging: false,
+          imageTimeout: 30000,
+          scrollX: 0,
+          scrollY: 0,
+          onclone: (clonedDoc: Document) => {
+            // Strip Tailwind/app stylesheets so html2canvas never sees lab()/oklch()
+            clonedDoc.querySelectorAll('style, link[rel="stylesheet"]').forEach(el => el.remove())
+            // Convert relative background-image URLs to absolute so iOS Safari
+            // can fetch them (e.g. /invoice-empty.jpg → https://domain/invoice-empty.jpg)
+            clonedDoc.querySelectorAll<HTMLElement>('*').forEach(el => {
+              const bg = el.style.backgroundImage
+              if (bg && bg.includes("url('/")) {
+                el.style.backgroundImage = bg.replace(/url\('\/([^']+)'\)/g, `url('${origin}/$1')`)
+              }
+            })
+          },
         })
+        const imgData = canvas.toDataURL('image/jpeg', 0.92)
         if (i > 0) pdf.addPage()
-        pdf.addImage(dataUrl, 'JPEG', 0, 0, 210, 297)
+        pdf.addImage(imgData, 'JPEG', 0, 0, 210, 297)
       }
 
       const filename = (inv.invoice_number || 'invoice').replace(/[^a-zA-Z0-9-_]/g, '-')
