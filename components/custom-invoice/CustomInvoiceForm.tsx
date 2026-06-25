@@ -152,9 +152,19 @@ export default function CustomInvoiceForm({ settings, existingInvoices }: Props)
   const handlePrint = useReactToPrint({
     contentRef: printRef,
     pageStyle: `
-      @page { size: A4 portrait; margin: 0; }
-      body { margin: 0; padding: 0; }
+      @page { size: A4 portrait; margin: 0mm; }
+      html, body { margin: 0 !important; padding: 0 !important; overflow: hidden; }
       * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; color-adjust: exact !important; }
+      /*
+       * A4 at 96dpi = 793.7px wide. Template is 595.5px wide.
+       * zoom = 793.7 / 595.5 = 1.3328 fills the page edge-to-edge.
+       */
+      div[data-invoice-root] {
+        zoom: 1.3328 !important;
+        transform-origin: top left !important;
+        margin: 0 !important;
+        display: block !important;
+      }
     `,
     documentTitle: printTarget?.invoice_number ?? 'ATI-Invoice',
   })

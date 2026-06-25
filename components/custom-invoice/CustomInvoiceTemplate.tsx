@@ -77,6 +77,7 @@ const CustomInvoiceTemplate = forwardRef<HTMLDivElement, Props>(
     return (
       <div
         ref={ref}
+        data-invoice-root
         style={{
           position: 'relative',
           width: `${W}px`,
