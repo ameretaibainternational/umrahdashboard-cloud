@@ -149,10 +149,12 @@ export default function CustomInvoiceForm({ settings, existingInvoices }: Props)
   const [location, setLocation]     = useState(settings?.contact_location ?? '')
   const [rows, setRows]             = useState<LineItemDraft[]>([newRow(uid())])
   const [showForm, setShowForm]     = useState(true)
-  const [printTarget, setPrintTarget] = useState<CustomInvoice | null>(null)
 
   const printRef = useRef<HTMLDivElement>(null)
   const [isDownloading, setIsDownloading] = useState(false)
+  // captureInvoice: when set, the hidden template renders this instead of previewInvoice
+  // (used for saved-invoice downloads so we can capture a different invoice)
+  const [captureInvoice, setCaptureInvoice] = useState<CustomInvoice | null>(null)
 
   // Currency lock: if the first row has use_pax_price checked, its currency applies to all rows
   const lockedCurrency = rows[0]?.use_pax_price ? (rows[0].pax_price_unit || 'PKR') : null
@@ -179,26 +181,30 @@ export default function CustomInvoiceForm({ settings, existingInvoices }: Props)
     lockedCurrency,
   )
 
-  // html2canvas + jsPDF — generates a real PDF file and downloads it directly,
-  // no browser print dialog, works on all devices including mobile.
-  const downloadAsPdf = useCallback(async (inv: CustomInvoice) => {
-    setIsDownloading(true)
-    setPrintTarget(inv)
+  // The hidden template always renders either the live preview or a saved invoice.
+  // Key: NEVER conditionally unmount this template — html2canvas needs it already
+  // in the DOM before we call it. Also: no opacity:0 or visibility:hidden on the
+  // wrapper (html2canvas respects those and produces a blank/transparent canvas).
+  // Instead we rely on z-index:-9999 + pointer-events:none to keep it invisible.
+  const hiddenInvoice = captureInvoice ?? previewInvoice
 
-    // Wait for React to render the hidden template
-    await new Promise(r => setTimeout(r, 120))
+  // html2canvas + jsPDF — real PDF, direct download, no browser print dialog.
+  const downloadAsPdf = useCallback(async (inv: CustomInvoice, isSaved = false) => {
+    setIsDownloading(true)
+
+    // For saved invoices we need to switch the hidden template content first.
+    if (isSaved) {
+      setCaptureInvoice(inv)
+      // Give React two animation frames to commit the new render
+      await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))
+    }
 
     try {
       const wrapper = printRef.current
-      if (!wrapper) return
+      if (!wrapper) throw new Error('Template ref not ready')
 
       const pages = Array.from(wrapper.querySelectorAll('[data-invoice-root]')) as HTMLElement[]
-      if (pages.length === 0) return
-
-      // Temporarily position at top-left so html2canvas can capture correctly
-      const prev = wrapper.style.cssText
-      wrapper.style.cssText = 'position:fixed;top:0;left:0;z-index:-9999;opacity:0;pointer-events:none;'
-      await new Promise(r => setTimeout(r, 60))
+      if (pages.length === 0) throw new Error('No invoice pages found')
 
       const [{ default: html2canvas }, { jsPDF }] = await Promise.all([
         import('html2canvas'),
@@ -214,20 +220,24 @@ export default function CustomInvoiceForm({ settings, existingInvoices }: Props)
           allowTaint: true,
           backgroundColor: '#121117',
           logging: false,
-          imageTimeout: 15000,
+          imageTimeout: 30000,
+          // Prevent html2canvas from using the scrolled position of the window
+          scrollX: 0,
+          scrollY: 0,
         })
-        const imgData = canvas.toDataURL('image/jpeg', 0.93)
+        const imgData = canvas.toDataURL('image/jpeg', 0.92)
         if (i > 0) pdf.addPage()
         pdf.addImage(imgData, 'JPEG', 0, 0, 210, 297)
       }
 
       const filename = (inv.invoice_number || 'invoice').replace(/[^a-zA-Z0-9-_]/g, '-')
       pdf.save(`${filename}.pdf`)
-
-      wrapper.style.cssText = prev
+    } catch (err) {
+      console.error('[PDF] generation error:', err)
+      alert(`PDF could not be generated: ${err instanceof Error ? err.message : String(err)}`)
     } finally {
       setIsDownloading(false)
-      setPrintTarget(null)
+      if (isSaved) setCaptureInvoice(null)
     }
   }, [])
 
@@ -238,8 +248,8 @@ export default function CustomInvoiceForm({ settings, existingInvoices }: Props)
   function addRow() { setRows(prev => [...prev, newRow(uid(), lockedCurrency ?? 'PKR')]) }
   function removeRow(id: string) { setRows(prev => prev.filter(r => r.id !== id)) }
 
-  function handleDownload() { downloadAsPdf(previewInvoice) }
-  function handlePrintCurrent(inv: CustomInvoice) { downloadAsPdf(inv) }
+  function handleDownload() { downloadAsPdf(previewInvoice, false) }
+  function handlePrintCurrent(inv: CustomInvoice) { downloadAsPdf(inv, true) }
 
   return (
     <div className="space-y-6">
@@ -546,11 +556,15 @@ export default function CustomInvoiceForm({ settings, existingInvoices }: Props)
         </Card>
       )}
 
-      {/* ── Hidden print target ──────────────────────────────────────── */}
-      <div style={{ position: 'fixed', top: '-9999px', left: '-9999px', zIndex: -1 }}>
-        {printTarget && (
-          <CustomInvoiceTemplate ref={printRef} invoice={printTarget} />
-        )}
+      {/*
+        ── Hidden capture target ─────────────────────────────────────────
+        Always rendered (never conditionally unmounted) so printRef is
+        always valid when the download button is clicked.
+        Positioned at top:0 left:0 behind all content — NO opacity/visibility
+        tricks because html2canvas honours those and produces a blank canvas.
+      */}
+      <div style={{ position: 'fixed', top: 0, left: 0, zIndex: -9999, pointerEvents: 'none' }}>
+        <CustomInvoiceTemplate ref={printRef} invoice={hiddenInvoice} />
       </div>
     </div>
   )
