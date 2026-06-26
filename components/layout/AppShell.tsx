@@ -1,21 +1,24 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { usePathname } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import Sidebar from './Sidebar'
 import Topbar from './Topbar'
 import NavigationProgress from './NavigationProgress'
+import StorageWarningBanner from '@/components/storage/StorageWarningBanner'
 import { Zap } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { canAccessRoute, getDefaultRoute, isAdminPermission } from '@/lib/permissions'
+import type { StaffPermission } from '@/lib/types'
 
 const pageTitles: Record<string, string> = {
   '/dashboard': 'Dashboard',
   '/calculator': 'Umrah Calculator',
   '/bookings': 'Bookings',
-  '/customers': 'Customers',
   '/invoices': 'Invoices',
+  '/custom-invoices': 'Custom Invoices',
+  '/hotel-voucher': 'Hotel Voucher',
   '/accounts': 'Accounts',
-  '/reports': 'Reports',
   '/users': 'Users & Staff',
 }
 
@@ -23,14 +26,16 @@ interface AppShellProps {
   children: React.ReactNode
   companyName: string
   isDemo?: boolean
+  permission: StaffPermission
+  storageTotalBytes?: number
 }
 
-export default function AppShell({ children, companyName, isDemo }: AppShellProps) {
+export default function AppShell({ children, companyName, isDemo, permission, storageTotalBytes = 0 }: AppShellProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const pathname = usePathname()
+  const router = useRouter()
 
-  // Restore collapsed state from localStorage after hydration
   useEffect(() => {
     try {
       if (localStorage.getItem('ft_sidebar_collapsed') === '1') {
@@ -39,12 +44,17 @@ export default function AppShell({ children, companyName, isDemo }: AppShellProp
     } catch { /* localStorage unavailable */ }
   }, [])
 
-  // Auto-collapse sidebar on routes that need more horizontal space
   useEffect(() => {
-    if (pathname.startsWith('/custom-invoices')) {
+    if (pathname.startsWith('/custom-invoices') || pathname.startsWith('/umrah-poster')) {
       setSidebarCollapsed(true)
     }
   }, [pathname])
+
+  useEffect(() => {
+    if (!canAccessRoute(permission, pathname)) {
+      router.replace(getDefaultRoute(permission))
+    }
+  }, [permission, pathname, router])
 
   function handleToggleCollapse() {
     setSidebarCollapsed(prev => {
@@ -56,7 +66,7 @@ export default function AppShell({ children, companyName, isDemo }: AppShellProp
 
   const title = pathname.startsWith('/settings')
     ? 'Settings'
-    : pageTitles[pathname] ?? 'Fast Travels CRM'
+    : pageTitles[pathname] ?? 'Amere Taiba International'
 
   return (
     <div className="flex h-screen bg-slate-50 overflow-hidden">
@@ -67,6 +77,7 @@ export default function AppShell({ children, companyName, isDemo }: AppShellProp
         onClose={() => setSidebarOpen(false)}
         collapsed={sidebarCollapsed}
         onToggleCollapse={handleToggleCollapse}
+        permission={permission}
       />
 
       <div
@@ -84,9 +95,13 @@ export default function AppShell({ children, companyName, isDemo }: AppShellProp
             </p>
           </div>
         )}
+        {isAdminPermission(permission) && (
+          <StorageWarningBanner totalBytes={storageTotalBytes} />
+        )}
         <Topbar
           title={title}
           onMenuClick={() => setSidebarOpen(true)}
+          storageTotalBytes={isAdminPermission(permission) ? storageTotalBytes : undefined}
         />
         <main className="flex-1 overflow-y-auto p-4 md:p-6">
           {children}

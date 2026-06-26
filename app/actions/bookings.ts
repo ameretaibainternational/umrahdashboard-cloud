@@ -3,6 +3,9 @@
 import { revalidatePath } from 'next/cache'
 import { isDemoMode } from '@/lib/is-demo'
 import { demoStore } from '@/lib/demo-store'
+import { friendlyDbError } from '@/lib/friendly-db-error'
+import { requireModeratorFeature } from '@/lib/permissions-server'
+import { hasDirectDb, isPostgresAuthError, markDirectDbAuthFailed } from '@/lib/sql'
 
 type BookingPayload = {
   customer_name: string; airline_name: string
@@ -16,37 +19,87 @@ type BookingPayload = {
   booking_date?: string
 }
 
+const REVALIDATE_PATHS = ['/bookings', '/dashboard', '/accounts', '/reports', '/customers', '/invoices']
+
 export async function createBooking(payload: BookingPayload) {
+  const ctx = await requireModeratorFeature('bookings')
+  if ('error' in ctx) return ctx
+
   if (isDemoMode()) {
-    demoStore.addBooking({ ...payload, booking_date: payload.booking_date ?? new Date().toISOString().split('T')[0] })
-    revalidatePath('/bookings'); revalidatePath('/dashboard')
-    revalidatePath('/accounts'); revalidatePath('/reports')
-    revalidatePath('/customers'); revalidatePath('/invoices')
+    demoStore.addBooking({
+      ...payload,
+      booking_date: payload.booking_date ?? new Date().toISOString().split('T')[0],
+      created_by: ctx.userId,
+    })
+    REVALIDATE_PATHS.forEach(p => revalidatePath(p))
     return { success: true }
   }
 
-  const { createClient } = await import('@/lib/supabase/server')
-  const supabase = await createClient()
-  const { error } = await supabase.from('bookings').insert(payload)
-  if (error) return { error: error.message }
+  try {
+    if (hasDirectDb()) {
+      try {
+        const { insertBooking } = await import('@/lib/crm-db')
+        await insertBooking({
+          ...payload,
+          booking_date: payload.booking_date ?? new Date().toISOString().split('T')[0],
+          created_by: ctx.userId,
+        })
+        REVALIDATE_PATHS.forEach(p => revalidatePath(p))
+        return { success: true }
+      } catch (error) {
+        if (!isPostgresAuthError(error)) throw error
+        markDirectDbAuthFailed()
+      }
+    }
 
-  revalidatePath('/bookings'); revalidatePath('/dashboard')
-  revalidatePath('/accounts'); revalidatePath('/reports')
-  revalidatePath('/customers'); revalidatePath('/invoices')
+    const { createClient } = await import('@/lib/supabase/server')
+    const supabase = await createClient()
+    const { error } = await supabase.from('bookings').insert({ ...payload, created_by: ctx.userId })
+    if (error) return { error: friendlyDbError(error.message) }
+  } catch (e) {
+    return { error: friendlyDbError(e instanceof Error ? e.message : 'Save failed') }
+  }
+
+  REVALIDATE_PATHS.forEach(p => revalidatePath(p))
   return { success: true }
 }
 
 export async function deleteBooking(id: string) {
+  const ctx = await requireModeratorFeature('bookings')
+  if ('error' in ctx) return ctx
+
   if (isDemoMode()) {
+    const booking = demoStore.bookings.find(b => b.id === id)
+    if (!booking) return { error: 'Booking not found.' }
+    if (!ctx.isAdmin && booking.created_by !== ctx.userId) {
+      return { error: 'You can only delete your own bookings.' }
+    }
     demoStore.deleteBooking(id)
   } else {
-    const { createClient } = await import('@/lib/supabase/server')
-    const supabase = await createClient()
-    await supabase.from('bookings').delete().eq('id', id)
+    try {
+      if (hasDirectDb()) {
+        const { deleteBookingById, getBookingOwner } = await import('@/lib/crm-db')
+        if (!ctx.isAdmin) {
+          const owner = await getBookingOwner(id)
+          if (owner === undefined) return { error: 'Booking not found.' }
+          if (owner !== ctx.userId) return { error: 'You can only delete your own bookings.' }
+        }
+        await deleteBookingById(id)
+      } else {
+        const { createClient } = await import('@/lib/supabase/server')
+        const supabase = await createClient()
+        if (!ctx.isAdmin) {
+          const { data: booking } = await supabase.from('bookings').select('created_by').eq('id', id).single()
+          if (!booking) return { error: 'Booking not found.' }
+          if (booking.created_by !== ctx.userId) return { error: 'You can only delete your own bookings.' }
+        }
+        await supabase.from('bookings').delete().eq('id', id)
+      }
+    } catch (e) {
+      return { error: friendlyDbError(e instanceof Error ? e.message : 'Delete failed') }
+    }
   }
 
-  revalidatePath('/bookings'); revalidatePath('/dashboard')
-  revalidatePath('/accounts'); revalidatePath('/reports')
-  revalidatePath('/customers'); revalidatePath('/invoices')
+  REVALIDATE_PATHS.forEach(p => revalidatePath(p))
   return { success: true }
 }

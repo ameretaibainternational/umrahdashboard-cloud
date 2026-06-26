@@ -18,7 +18,7 @@ A modern, fast Umrah package management CRM built with Next.js 16, Supabase, and
 ### 1. Create a Supabase Project
 
 1. Go to [https://supabase.com](https://supabase.com) and create a free project
-2. In the **SQL Editor**, run the entire contents of `supabase/migrations/001_initial.sql`
+2. In the **SQL Editor**, run migrations in order: `001_initial.sql` through `006_r2_storage.sql`
 3. This creates all tables, RLS policies, and seeds 33 hotels, 4 airlines, and default settings
 
 ### 2. Configure Environment Variables
@@ -29,9 +29,21 @@ Edit `.env.local` with your Supabase credentials:
 NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
 SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+
+# Cloudflare R2 — PDF storage for custom invoices & hotel vouchers
+R2_ACCOUNT_ID=your-cloudflare-account-id
+R2_ACCESS_KEY_ID=your-r2-access-key
+R2_SECRET_ACCESS_KEY=your-r2-secret-key
+R2_BUCKET_NAME=umrah-dashboard-files
+
+# Direct Postgres — required for custom invoices & hotel vouchers (bypasses Supabase Data API)
+# Supabase → Settings → Database → Connection string → URI (Transaction pooler, port 6543)
+DATABASE_URL=postgresql://postgres.rvucrtiahhuadbezhnbs:[YOUR-PASSWORD]@aws-0-ap-southeast-1.pooler.supabase.com:6543/postgres
 ```
 
-Find these in your Supabase project: **Settings → API**
+Find Supabase keys in your project: **Settings → API**
+
+Create an R2 bucket in Cloudflare (**R2 → Create bucket**), then generate an API token scoped to that bucket only. R2 requires a card on file but stays free under 10 GB/month.
 
 ### 3. Create Your First Admin User
 

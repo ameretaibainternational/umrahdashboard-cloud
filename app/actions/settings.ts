@@ -9,7 +9,22 @@ async function getSupabase() {
   return createClient()
 }
 
+async function requireSettingsAccess() {
+  const { requireAdmin } = await import('@/lib/permissions-server')
+  const ctx = await requireAdmin()
+  if ('error' in ctx) return ctx
+  return null
+}
+
+async function requireFullAccess() {
+  const { requireAdmin } = await import('@/lib/permissions-server')
+  const ctx = await requireAdmin()
+  if ('error' in ctx) return ctx
+  return null
+}
+
 export async function updateVisa(formData: FormData) {
+  const guard = await requireSettingsAccess(); if (guard) return guard
   const payload = {
     visa_rate_1_pax:    Number(formData.get('visa_rate_1_pax')),
     visa_rate_2_pax:    Number(formData.get('visa_rate_2_pax')),
@@ -33,6 +48,7 @@ export async function updateVisa(formData: FormData) {
 }
 
 export async function updateZiarats(formData: FormData) {
+  const guard = await requireSettingsAccess(); if (guard) return guard
   const payload = {
     makkah_ziarat_rate: Number(formData.get('makkah_ziarat_rate')),
     madina_ziarat_rate: Number(formData.get('madina_ziarat_rate')),
@@ -50,6 +66,7 @@ export async function updateZiarats(formData: FormData) {
 }
 
 export async function updateCurrency(formData: FormData) {
+  const guard = await requireSettingsAccess(); if (guard) return guard
   const payload = { sar_to_pkr: Number(formData.get('sar_to_pkr')) }
   if (isDemoMode()) {
     Object.assign(demoStore.currency, payload)
@@ -64,6 +81,7 @@ export async function updateCurrency(formData: FormData) {
 }
 
 export async function updateTransport(formData: FormData) {
+  const guard = await requireSettingsAccess(); if (guard) return guard
   if (isDemoMode()) {
     for (const type of ['bus', 'private'] as const) {
       for (let pax = 1; pax <= 4; pax++) {
@@ -87,6 +105,7 @@ export async function updateTransport(formData: FormData) {
 }
 
 export async function upsertAirline(formData: FormData) {
+  const guard = await requireSettingsAccess(); if (guard) return guard
   const id = formData.get('id') as string | null
   const payload = {
     name: (formData.get('name') as string).trim(),
@@ -106,6 +125,7 @@ export async function upsertAirline(formData: FormData) {
 }
 
 export async function deleteAirline(id: string) {
+  const guard = await requireSettingsAccess(); if (guard) return guard
   if (isDemoMode()) demoStore.deleteAirline(id)
   else {
     const sb = await getSupabase()
@@ -116,6 +136,7 @@ export async function deleteAirline(id: string) {
 }
 
 export async function upsertHotel(formData: FormData) {
+  const guard = await requireSettingsAccess(); if (guard) return guard
   const id = formData.get('id') as string | null
   const payload = {
     city: formData.get('city') as 'Makkah' | 'Madinah',
@@ -139,6 +160,7 @@ export async function upsertHotel(formData: FormData) {
 }
 
 export async function deleteHotel(id: string) {
+  const guard = await requireSettingsAccess(); if (guard) return guard
   if (isDemoMode()) demoStore.deleteHotel(id)
   else {
     const sb = await getSupabase()
@@ -149,6 +171,7 @@ export async function deleteHotel(id: string) {
 }
 
 export async function updateCompany(formData: FormData) {
+  const guard = await requireFullAccess(); if (guard) return guard
   const payload = {
     name: (formData.get('name') as string).trim(),
     license: (formData.get('license') as string) || '',

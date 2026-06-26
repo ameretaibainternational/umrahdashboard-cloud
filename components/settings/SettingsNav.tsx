@@ -12,6 +12,8 @@ const tabs = [
   { href: '/settings/ziarats',   label: 'Ziarats' },
   { href: '/settings/currency',  label: 'Currency' },
   { href: '/settings/company',   label: 'Company' },
+  { href: '/settings/invoices',  label: 'Invoices' },
+  { href: '/settings/storage',   label: 'Storage' },
 ]
 
 export default function SettingsNav() {

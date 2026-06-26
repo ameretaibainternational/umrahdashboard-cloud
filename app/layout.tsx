@@ -11,13 +11,22 @@ const poppins = Poppins({
 })
 
 export const metadata: Metadata = {
-  title: 'Umrah Dashboard',
-  description: 'Umrah Management System',
+  title: 'Amere Taiba International',
+  description: 'Amere Taiba International - Umrah Management System',
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" className={poppins.variable} suppressHydrationWarning>
+      <head>
+        <link
+          rel="preload"
+          href="https://cdn.jsdelivr.net/gh/tariq-abdullah/urdu-web-font-CDN/JameelNooriNastaleeq.woff"
+          as="font"
+          type="font/woff"
+          crossOrigin="anonymous"
+        />
+      </head>
       <body>
         {children}
         <Toaster position="bottom-right" richColors />

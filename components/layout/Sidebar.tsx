@@ -3,25 +3,26 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import {
-  LayoutDashboard, Calculator, BookOpen, Users, FileText,
-  Wallet, BarChart3, Settings, UserCog, LogOut, Plane, X,
-  PanelLeftClose, PanelLeftOpen, Receipt,
+  LayoutDashboard, Calculator, BookOpen, FileText,
+  Wallet, Settings, UserCog, LogOut, X,
+  PanelLeftClose, PanelLeftOpen, Receipt, BedDouble,
 } from 'lucide-react'
 import { logout } from '@/app/actions/auth'
 import { cn } from '@/lib/utils'
+import { isAdminPermission, isViewerPermission } from '@/lib/permissions'
+import type { StaffPermission } from '@/lib/types'
 
-const navItems = [
-  { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { href: '/calculator', label: 'Umrah Calculator', icon: Calculator },
-  { href: '/bookings', label: 'Bookings', icon: BookOpen },
-  { href: '/customers', label: 'Customers', icon: Users },
-  { href: '/invoices', label: 'Invoices', icon: FileText },
-  { href: '/custom-invoices', label: 'Custom Invoices', icon: Receipt },
-  { href: '/accounts', label: 'Accounts', icon: Wallet },
-  { href: '/reports', label: 'Reports', icon: BarChart3 },
-  { href: '/settings/visa', label: 'Settings', icon: Settings },
-  { href: '/users', label: 'Users & Staff', icon: UserCog },
-]
+const NAV_ITEMS = [
+  { href: '/dashboard',       label: 'Dashboard',       icon: LayoutDashboard, adminOnly: false, moderator: true, viewer: false },
+  { href: '/calculator',      label: 'Umrah Calculator', icon: Calculator, adminOnly: false, moderator: true, viewer: true },
+  { href: '/bookings',        label: 'Bookings',         icon: BookOpen, adminOnly: false, moderator: true, viewer: false },
+  { href: '/invoices',        label: 'Invoices',         icon: FileText, adminOnly: false, moderator: true, viewer: false },
+  { href: '/custom-invoices', label: 'Custom Invoices',  icon: Receipt, adminOnly: false, moderator: true, viewer: false },
+  { href: '/hotel-voucher',   label: 'Hotel Voucher',    icon: BedDouble, adminOnly: false, moderator: true, viewer: false },
+  { href: '/accounts',        label: 'Accounts',         icon: Wallet, adminOnly: false, moderator: true, viewer: false },
+  { href: '/settings/visa',   label: 'Settings',         icon: Settings, adminOnly: true, moderator: false, viewer: false },
+  { href: '/users',           label: 'Users & Staff',    icon: UserCog, adminOnly: true, moderator: false, viewer: false },
+] as const
 
 interface SidebarProps {
   companyName: string
@@ -29,19 +30,27 @@ interface SidebarProps {
   onClose: () => void
   collapsed: boolean
   onToggleCollapse: () => void
+  permission: StaffPermission
 }
 
-export default function Sidebar({ companyName, open, onClose, collapsed, onToggleCollapse }: SidebarProps) {
+export default function Sidebar({ companyName, open, onClose, collapsed, onToggleCollapse, permission }: SidebarProps) {
   const pathname = usePathname()
+  const isAdmin = isAdminPermission(permission)
+  const isViewer = isViewerPermission(permission)
 
   const isActive = (href: string) => {
     if (href === '/settings/visa') return pathname.startsWith('/settings')
     return pathname === href
   }
 
+  const visibleItems = NAV_ITEMS.filter(item => {
+    if (isAdmin) return true
+    if (isViewer) return item.viewer
+    return item.moderator
+  })
+
   return (
     <>
-      {/* Mobile overlay */}
       {open && (
         <div
           className="fixed inset-0 bg-black/50 z-40 lg:hidden"
@@ -58,23 +67,21 @@ export default function Sidebar({ companyName, open, onClose, collapsed, onToggl
           collapsed ? 'w-[72px]' : 'w-[272px]'
         )}
       >
-        {/* Logo / Brand */}
         <div className={cn(
           'flex items-center border-b border-white/10 flex-shrink-0',
           collapsed ? 'flex-col gap-2 px-2 py-4' : 'gap-3 px-4 py-4'
         )}>
           <div className="w-16 h-16 rounded-xl bg-transparent flex items-center justify-center flex-shrink-0">
-            <img src="/logo.png" alt="Umrah Dashboard" className="w-full h-full object-contain" />
+            <img src="/logo.png" alt="Amere Taiba International" className="w-full h-full object-contain" />
           </div>
 
           {!collapsed && (
             <div className="min-w-0 flex-1">
-              <p className="text-sm font-bold truncate leading-tight">Umrah Dashboard</p>
-              <p className="text-[11px] text-white/50 leading-tight">Demo Account</p>
+              <p className="text-sm font-bold truncate leading-tight">Amere Taiba</p>
+              <p className="text-[11px] text-white/50 leading-tight">International</p>
             </div>
           )}
 
-          {/* Desktop collapse toggle */}
           <button
             onClick={onToggleCollapse}
             title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
@@ -90,7 +97,6 @@ export default function Sidebar({ companyName, open, onClose, collapsed, onToggl
             }
           </button>
 
-          {/* Mobile close button */}
           <button
             className="lg:hidden text-white/60 hover:text-white ml-auto"
             onClick={onClose}
@@ -99,12 +105,11 @@ export default function Sidebar({ companyName, open, onClose, collapsed, onToggl
           </button>
         </div>
 
-        {/* Nav */}
         <nav className={cn(
-          'flex-1 overflow-y-auto py-3 space-y-0.5',
+          'flex-1 overflow-y-auto py-3 space-y-0.5 sidebar-scroll',
           collapsed ? 'px-1.5' : 'px-3'
         )}>
-          {navItems.map(({ href, label, icon: Icon }) => (
+          {visibleItems.map(({ href, label, icon: Icon }) => (
             <Link
               key={href}
               href={href}
@@ -126,7 +131,6 @@ export default function Sidebar({ companyName, open, onClose, collapsed, onToggl
           ))}
         </nav>
 
-        {/* Logout */}
         <div className={cn('py-3 border-t border-white/10', collapsed ? 'px-1.5' : 'px-3')}>
           <form action={logout}>
             <button

@@ -37,7 +37,7 @@ export default function AddPaymentForm({ bookings }: Props) {
 
     startTransition(async () => {
       const result = await addPayment(formData)
-      if (result.error) {
+      if ('error' in result && result.error) {
         toast.error(result.error)
       } else {
         toast.success('Payment recorded!')

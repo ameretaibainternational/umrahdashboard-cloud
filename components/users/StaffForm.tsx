@@ -3,7 +3,7 @@
 import { useState, useTransition } from 'react'
 import { toast } from 'sonner'
 import { createStaffUser, updateStaffUser, deleteStaffUser } from '@/app/actions/users'
-import type { StaffUser, StaffRole, StaffPermission } from '@/lib/types'
+import type { StaffUser, StaffRole, StaffActivityStats } from '@/lib/types'
 import { formatDate } from '@/lib/formatters'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -13,16 +13,18 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Badge } from '@/components/ui/badge'
-import { Pencil, Trash2, Plus, Loader2, UserCog } from 'lucide-react'
+import { Pencil, Trash2, Plus, Loader2, UserCog, BarChart3 } from 'lucide-react'
 
-const ROLES: StaffRole[] = ['Admin', 'Booking Staff', 'Accounts Staff', 'Visa Staff', 'Viewer']
-const PERMISSIONS: StaffPermission[] = ['Full Access', 'Bookings + Customers', 'Accounts Only', 'Visa Only', 'View Only']
+const ROLES: StaffRole[] = ['Admin', 'Moderator', 'Viewer']
 
-interface Props { staff: StaffUser[] }
+interface Props {
+  staff: StaffUser[]
+  activityStats: StaffActivityStats[]
+}
 
 type EditState = Partial<StaffUser & { email: string; password: string }> | null
 
-export default function StaffForm({ staff }: Props) {
+export default function StaffForm({ staff, activityStats }: Props) {
   const [editing, setEditing] = useState<EditState>(null)
   const [deleteId, setDeleteId] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
@@ -54,13 +56,53 @@ export default function StaffForm({ staff }: Props) {
 
   return (
     <>
+      {activityStats.length > 0 && (
+        <Card className="shadow-sm border-0 mb-4">
+          <CardHeader className="pb-3">
+            <div className="flex items-center gap-2">
+              <BarChart3 className="w-4 h-4 text-muted-foreground" />
+              <CardTitle className="text-base">Staff Activity</CardTitle>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Records created by each staff member. Moderators only see their own data; admins see everything.
+            </p>
+          </CardHeader>
+          <CardContent className="p-0">
+            <Table>
+              <TableHeader>
+                <TableRow className="bg-muted/40">
+                  <TableHead className="text-xs">Staff Member</TableHead>
+                  <TableHead className="text-xs text-right">Bookings</TableHead>
+                  <TableHead className="text-xs text-right">Custom Invoices</TableHead>
+                  <TableHead className="text-xs text-right">Hotel Vouchers</TableHead>
+                  <TableHead className="text-xs text-right">Payments</TableHead>
+                  <TableHead className="text-xs text-right">Expenses</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {activityStats.map(row => (
+                  <TableRow key={row.staff_id}>
+                    <TableCell className="text-sm font-medium">{row.staff_name}</TableCell>
+                    <TableCell className="text-sm text-right tabular-nums">{row.bookings}</TableCell>
+                    <TableCell className="text-sm text-right tabular-nums">{row.custom_invoices}</TableCell>
+                    <TableCell className="text-sm text-right tabular-nums">{row.hotel_vouchers}</TableCell>
+                    <TableCell className="text-sm text-right tabular-nums">{row.payments}</TableCell>
+                    <TableCell className="text-sm text-right tabular-nums">{row.expenses}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      )}
+
       <Card className="shadow-sm border-0">
         <CardHeader className="pb-3 flex flex-row items-center justify-between">
           <div className="flex items-center gap-2">
             <UserCog className="w-4 h-4 text-muted-foreground" />
             <CardTitle className="text-base">Users & Staff</CardTitle>
           </div>
-          <Button size="sm" onClick={() => setEditing({})} className="bg-navy hover:bg-navy-2 text-white gap-1.5">
+          <Button size="sm" onClick={() => setEditing({ role: 'Moderator' })} className="bg-navy hover:bg-navy-2 text-white gap-1.5">
             <Plus className="w-3.5 h-3.5" /> Add Staff
           </Button>
         </CardHeader>
@@ -71,7 +113,6 @@ export default function StaffForm({ staff }: Props) {
                 <TableHead className="text-xs">Name</TableHead>
                 <TableHead className="text-xs">Username</TableHead>
                 <TableHead className="text-xs">Role</TableHead>
-                <TableHead className="text-xs">Permission</TableHead>
                 <TableHead className="text-xs">Status</TableHead>
                 <TableHead className="text-xs">Created</TableHead>
                 <TableHead className="w-16" />
@@ -80,7 +121,7 @@ export default function StaffForm({ staff }: Props) {
             <TableBody>
               {staff.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center text-muted-foreground py-10 text-sm">
+                  <TableCell colSpan={6} className="text-center text-muted-foreground py-10 text-sm">
                     No staff users yet.
                   </TableCell>
                 </TableRow>
@@ -91,7 +132,6 @@ export default function StaffForm({ staff }: Props) {
                   <TableCell>
                     <Badge variant="outline" className="text-[10px] border-navy/20 text-navy">{s.role}</Badge>
                   </TableCell>
-                  <TableCell className="text-xs text-muted-foreground">{s.permission}</TableCell>
                   <TableCell>
                     <Badge
                       variant="outline"
@@ -121,7 +161,6 @@ export default function StaffForm({ staff }: Props) {
         </CardContent>
       </Card>
 
-      {/* Add/Edit Dialog */}
       <Dialog open={!!editing} onOpenChange={open => !open && setEditing(null)}>
         <DialogContent className="max-w-md">
           <DialogHeader>
@@ -167,25 +206,26 @@ export default function StaffForm({ staff }: Props) {
               </div>
             )}
 
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label className="text-xs">Role</Label>
-                <Select name="role" defaultValue={editing?.role ?? 'Viewer'}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {ROLES.map(r => <SelectItem key={r} value={r}>{r}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs">Permission</Label>
-                <Select name="permission" defaultValue={editing?.permission ?? 'View Only'}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {PERMISSIONS.map(p => <SelectItem key={p} value={p}>{p}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Role</Label>
+              <Select name="role" defaultValue={editing?.role ?? 'Moderator'}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {ROLES.map(r => (
+                    <SelectItem key={r} value={r}>
+                      {r === 'Admin'
+                        ? 'Admin — full access'
+                        : r === 'Moderator'
+                          ? 'Moderator — own records only'
+                          : 'Viewer — package calculator only'}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-[10px] text-muted-foreground">
+                Moderators can use calculator, bookings, invoices, custom invoices, hotel vouchers, and accounts.
+                Viewers can only use the Umrah package calculator. Neither can change rates or settings.
+              </p>
             </div>
 
             <div className="space-y-1.5">
@@ -210,7 +250,6 @@ export default function StaffForm({ staff }: Props) {
         </DialogContent>
       </Dialog>
 
-      {/* Delete Confirm */}
       <Dialog open={!!deleteId} onOpenChange={open => !open && setDeleteId(null)}>
         <DialogContent>
           <DialogHeader><DialogTitle>Delete Staff User</DialogTitle></DialogHeader>

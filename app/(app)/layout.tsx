@@ -1,9 +1,11 @@
 import { redirect } from 'next/navigation'
 import { cookies } from 'next/headers'
 import { isDemoMode } from '@/lib/is-demo'
-import { getCompany } from '@/lib/db'
+import { getCompany, getCurrentStaff, getStorageUsage } from '@/lib/db'
 import { createClient } from '@/lib/supabase/server'
 import AppShell from '@/components/layout/AppShell'
+import { normalizePermission } from '@/lib/permissions'
+import type { StaffPermission } from '@/lib/types'
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   if (isDemoMode()) {
@@ -16,10 +18,21 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     if (!user) redirect('/login')
   }
 
-  const company = await getCompany()
+  const [company, staff, storageUsage] = await Promise.all([
+    getCompany(),
+    getCurrentStaff(),
+    getStorageUsage(),
+  ])
+  if (!staff) redirect('/login')
+  const permission: StaffPermission = normalizePermission(staff.permission)
 
   return (
-    <AppShell companyName={company.name} isDemo={isDemoMode()}>
+    <AppShell
+      companyName={company.name}
+      isDemo={isDemoMode()}
+      permission={permission}
+      storageTotalBytes={storageUsage.total_bytes}
+    >
       {children}
     </AppShell>
   )

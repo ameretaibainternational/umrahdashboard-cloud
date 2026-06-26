@@ -1,14 +1,16 @@
-import { getAirlines, getHotels, getVisa, getCurrency, getTransportRates, getCompany } from '@/lib/db'
+import { getAirlines, getHotels, getVisa, getCurrency, getTransportRates, getCompany, getCurrentStaff } from '@/lib/db'
+import { isViewerPermission } from '@/lib/permissions'
 import CalculatorForm from '@/components/calculator/CalculatorForm'
 
 export default async function CalculatorPage() {
-  const [airlines, hotels, visa, currency, transportRates, company] = await Promise.all([
+  const [airlines, hotels, visa, currency, transportRates, company, staff] = await Promise.all([
     getAirlines(),
     getHotels(),
     getVisa(),
     getCurrency(),
     getTransportRates(),
     getCompany(),
+    getCurrentStaff(),
   ])
 
   const makkahHotels = hotels.filter(h => h.city === 'Makkah')
@@ -23,6 +25,7 @@ export default async function CalculatorPage() {
       currency={currency}
       transportRates={transportRates}
       company={company}
+      canSaveBooking={!staff || !isViewerPermission(staff.permission)}
     />
   )
 }

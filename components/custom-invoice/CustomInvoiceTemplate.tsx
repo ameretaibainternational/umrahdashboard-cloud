@@ -1,5 +1,18 @@
 import { forwardRef } from 'react'
 import type { CustomInvoice, CustomInvoiceLineItem } from '@/lib/types'
+import {
+  type InvoiceBranding,
+  resolveLogoRect,
+  SIGNATURE_IMAGE_H,
+  SIGNATURE_IMAGE_W,
+  SIGNATURE_IMAGE_X,
+  SIGNATURE_IMAGE_Y,
+  SIGNATURE_NAME_FONT_SIZE,
+  SIGNATURE_NAME_X,
+  SIGNATURE_NAME_Y,
+  scaleFontSize,
+  scaleRect,
+} from '@/lib/custom-invoice-branding-layout'
 
 // ─── Canvas constants ─────────────────────────────────────────────────────────
 const W = 595.5
@@ -9,15 +22,13 @@ const ROW_H = 41.4
 const ROWS_P1 = 5   // page 1 (has full header, so less vertical room)
 const ROWS_PC = 9   // continuation pages (compact header, more room)
 
-// Page 1 row start positions
-const P1_ROW_NO_Y0  = 335.5
-const P1_ROW_DAT_Y0 = 339.7
+// Page 1 row start positions — single Y for all columns (split Y values misalign in html2canvas PDF)
+const P1_ROW_Y0 = 337.6
 
 // Continuation page row start positions — large top padding keeps rows lower on the page
-const C_HDR_Y      = 160
-const C_HR_Y       = 188
-const C_ROW_NO_Y0  = 201
-const C_ROW_DAT_Y0 = 205.2
+const C_HDR_Y   = 160
+const C_HR_Y    = 188
+const C_ROW_Y0  = 203.1
 
 function fmtDate(iso: string) {
   const d = new Date(iso + 'T00:00:00')
@@ -35,11 +46,14 @@ function fmtNum(n: number, unit?: string) {
 // ─── Absolutely-positioned text node ─────────────────────────────────────────
 function T({
   x, y, right: r, bold, size = 12, color = '#fefefe', children, nowrap, maxW, href,
+  invoiceRow, invoiceHdr,
 }: {
   x?: number; y: number; right?: number
   bold?: boolean; size?: number; color?: string
   children: React.ReactNode; nowrap?: boolean; maxW?: number
   href?: string
+  invoiceRow?: boolean
+  invoiceHdr?: boolean
 }) {
   const style: React.CSSProperties = {
     position: 'absolute',
@@ -48,12 +62,18 @@ function T({
     fontWeight: bold ? 700 : 400,
     fontSize: `${size}px`,
     color,
-    lineHeight: `${size * 1.2}px`,
+    lineHeight: invoiceRow || invoiceHdr ? `${size}px` : `${size * 1.2}px`,
     whiteSpace: nowrap ? 'nowrap' : undefined,
     maxWidth: maxW ? `${maxW}px` : undefined,
+    ...(invoiceRow || invoiceHdr ? { fontFamily: 'Arial, Helvetica, sans-serif', margin: 0, padding: 0 } : {}),
   }
-  if (href) return <a href={href} style={{ ...style, textDecoration: 'none' }}>{children}</a>
-  return <div style={style}>{children}</div>
+  const dataProps = invoiceRow
+    ? { 'data-invoice-row-text': '1' as const }
+    : invoiceHdr
+      ? { 'data-invoice-hdr-text': '1' as const }
+      : {}
+  if (href) return <a href={href} style={{ ...style, textDecoration: 'none' }} {...dataProps}>{children}</a>
+  return <div style={style} {...dataProps}>{children}</div>
 }
 
 // ─── Horizontal rule ─────────────────────────────────────────────────────────
@@ -86,15 +106,22 @@ const PAGE_BG: React.CSSProperties = {
 } as React.CSSProperties
 
 // ─── Shared table header row ──────────────────────────────────────────────────
-function TableHeader({ hasPaxPrice, hdrY, hrY }: { hasPaxPrice: boolean; hdrY: number; hrY: number }) {
+function TableHeader({
+  unitPriceLabel, qtyLabel, hdrY, hrY,
+}: {
+  unitPriceLabel: string | null  // null = column hidden
+  qtyLabel: string               // 'Total Pax' | 'Total Nights' | 'Total Pax'
+  hdrY: number
+  hrY: number
+}) {
   return (
     <>
-      <T x={35.9}  y={hdrY} bold>No</T>
-      <T x={76.5}  y={hdrY} bold>Service</T>
-      {hasPaxPrice && <T x={215.7} y={hdrY} bold>1 Pax Price</T>}
-      <T x={318.6} y={hdrY} bold>Total Pax</T>
-      <T x={439.7} y={hdrY} bold>Total</T>
-      <T x={493.3} y={hdrY} bold>Recieved</T>
+      <T x={35.9}  y={hdrY} bold invoiceHdr>No</T>
+      <T x={76.5}  y={hdrY} bold invoiceHdr>Service</T>
+      {unitPriceLabel && <T x={215.7} y={hdrY} bold invoiceHdr>{unitPriceLabel}</T>}
+      <T x={318.6} y={hdrY} bold invoiceHdr>{qtyLabel}</T>
+      <T x={439.7} y={hdrY} bold invoiceHdr>Total</T>
+      <T x={493.3} y={hdrY} bold invoiceHdr>Recieved</T>
       <HR x1={26} x2={547} y={hrY} />
     </>
   )
@@ -102,35 +129,37 @@ function TableHeader({ hasPaxPrice, hdrY, hrY }: { hasPaxPrice: boolean; hdrY: n
 
 // ─── Table rows ───────────────────────────────────────────────────────────────
 function TableRows({
-  items, rowOffset, hasPaxPrice, rowNoY0, rowDatY0,
+  items, rowOffset, unitPriceLabel, rowY0,
 }: {
   items: CustomInvoiceLineItem[]
   rowOffset: number
-  hasPaxPrice: boolean
-  rowNoY0: number
-  rowDatY0: number
+  unitPriceLabel: string | null
+  rowY0: number
 }) {
   return (
     <>
       {items.map((item, i) => {
-        const yNo   = rowNoY0  + i * ROW_H
-        const yData = rowDatY0 + i * ROW_H
+        const y = rowY0 + i * ROW_H
+        // Show pax_price OR night_price in the unit-price column (only one is ever set per row)
+        const unitVal = item.pax_price != null
+          ? fmtNum(item.pax_price, item.pax_price_unit || undefined)
+          : item.night_price != null
+            ? fmtNum(item.night_price, item.night_price_unit || undefined)
+            : null
         return (
           <div key={i}>
-            <T x={30.6} y={yNo}>{rowOffset + i + 1}</T>
-            <T x={69.7} y={yNo} maxW={140}>
-              <span style={{ lineHeight: '15px', display: 'block' }}>{item.service}</span>
+            <T x={30.6} y={y} invoiceRow>{rowOffset + i + 1}</T>
+            <T x={69.7} y={y} maxW={140} invoiceRow>
+              <span style={{ lineHeight: '12px', display: 'block' }}>{item.service}</span>
             </T>
-            {hasPaxPrice && item.pax_price != null && (
-              <T x={214.5} y={yData} nowrap>
-                {fmtNum(item.pax_price, item.pax_price_unit || undefined)}
-              </T>
+            {unitPriceLabel && unitVal && (
+              <T x={214.5} y={y} nowrap invoiceRow>{unitVal}</T>
             )}
-            <T x={324.6} y={yData}>{item.total_pax}</T>
-            <T right={479.6} y={yData} nowrap>
+            <T x={324.6} y={y} invoiceRow>{item.total_pax}</T>
+            <T right={479.6} y={y} nowrap invoiceRow>
               {fmtNum(item.total, item.total_unit || undefined)}
             </T>
-            <T right={557.0} y={yData} nowrap>{fmtNum(item.received)}</T>
+            <T right={557.0} y={y} nowrap invoiceRow>{fmtNum(item.received)}</T>
           </div>
         )
       })}
@@ -173,15 +202,104 @@ function TermsSection({ invoice, invoiceCurrency }: { invoice: CustomInvoice; in
   )
 }
 
+function BrandingLogo({ branding }: { branding: InvoiceBranding }) {
+  if (!branding.logoUrl) return null
+  const { x, y, w, h } = resolveLogoRect(branding)
+  const rect = scaleRect(x, y, w, h)
+  return (
+    <img
+      src={branding.logoUrl}
+      alt=""
+      data-invoice-branding-logo="1"
+      style={{
+        position: 'absolute',
+        left: `${rect.left}px`,
+        top: `${rect.top}px`,
+        width: `${rect.width}px`,
+        height: `${rect.height}px`,
+        objectFit: 'contain',
+        objectPosition: 'left top',
+        pointerEvents: 'none',
+        zIndex: 2,
+      }}
+    />
+  )
+}
+
+function BrandingSignature({ branding }: { branding: InvoiceBranding }) {
+  const signatureRect = scaleRect(
+    SIGNATURE_IMAGE_X,
+    SIGNATURE_IMAGE_Y,
+    SIGNATURE_IMAGE_W,
+    SIGNATURE_IMAGE_H,
+  )
+  const nameLeft = scaleRect(SIGNATURE_NAME_X, SIGNATURE_NAME_Y, 0, 0).left
+  const nameTop = scaleRect(SIGNATURE_NAME_X, SIGNATURE_NAME_Y, 0, 0).top
+  const nameSize = scaleFontSize(SIGNATURE_NAME_FONT_SIZE)
+
+  return (
+    <>
+      {branding.signatureUrl && (
+        <img
+          src={branding.signatureUrl}
+          alt=""
+          crossOrigin="anonymous"
+          style={{
+            position: 'absolute',
+            left: `${signatureRect.left}px`,
+            top: `${signatureRect.top}px`,
+            width: `${signatureRect.width}px`,
+            height: `${signatureRect.height}px`,
+            objectFit: 'contain',
+            pointerEvents: 'none',
+          }}
+        />
+      )}
+      {branding.signaturePersonName && (
+        <div
+          style={{
+            position: 'absolute',
+            left: `${nameLeft}px`,
+            top: `${nameTop}px`,
+            fontWeight: 700,
+            fontSize: `${nameSize}px`,
+            color: '#ffffff',
+            lineHeight: 1.2,
+            fontFamily: "'Poppins', 'Segoe UI', sans-serif",
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {branding.signaturePersonName}
+        </div>
+      )}
+    </>
+  )
+}
+
 // ─── Main component ───────────────────────────────────────────────────────────
-interface Props { invoice: CustomInvoice }
+interface Props {
+  invoice: CustomInvoice
+  branding?: InvoiceBranding
+}
 
 const CustomInvoiceTemplate = forwardRef<HTMLDivElement, Props>(
-  function CustomInvoiceTemplate({ invoice }, ref) {
+  function CustomInvoiceTemplate({ invoice, branding }, ref) {
     const items = invoice.line_items
-    const hasPaxPrice = items.some(i => i.pax_price != null && i.pax_price > 0)
+    const hasPaxPrice   = items.some(i => i.pax_price   != null && i.pax_price   > 0)
+    const hasNightPrice = items.some(i => i.night_price != null && i.night_price > 0)
+    // Column header for the unit-price column
+    const unitPriceLabel: string | null = hasPaxPrice && hasNightPrice
+      ? 'Unit Price'
+      : hasPaxPrice
+        ? '1 Pax Price'
+        : hasNightPrice
+          ? 'Per Night'
+          : null
+    // Qty column label — "Total Nights" only when ALL rows use night price
+    const qtyLabel = !hasPaxPrice && hasNightPrice ? 'Total Nights' : 'Total Pax'
     const invoiceCurrency =
-      items.find(i => i.pax_price != null && i.pax_price_unit)?.pax_price_unit ||
+      items.find(i => i.pax_price   != null && i.pax_price_unit)?.pax_price_unit ||
+      items.find(i => i.night_price != null && i.night_price_unit)?.night_price_unit ||
       items.find(i => i.total_unit)?.total_unit || ''
 
     // ── Split items across pages ──────────────────────────────────────────────
@@ -203,6 +321,8 @@ const CustomInvoiceTemplate = forwardRef<HTMLDivElement, Props>(
 
         {/* ── PAGE 1 ─────────────────────────────────────────────────── */}
         <div data-invoice-root style={PAGE_BG}>
+
+          {branding?.logoUrl && <BrandingLogo branding={branding} />}
 
           {/* INVOICE title */}
           <div style={{
@@ -234,13 +354,12 @@ const CustomInvoiceTemplate = forwardRef<HTMLDivElement, Props>(
           <T right={547} y={220.1} nowrap>{invoice.payment_account_number}</T>
 
           {/* Table */}
-          <TableHeader hasPaxPrice={hasPaxPrice} hdrY={294.1} hrY={322.8} />
+          <TableHeader unitPriceLabel={unitPriceLabel} qtyLabel={qtyLabel} hdrY={294.1} hrY={322.8} />
           <TableRows
             items={page1Items}
             rowOffset={0}
-            hasPaxPrice={hasPaxPrice}
-            rowNoY0={P1_ROW_NO_Y0}
-            rowDatY0={P1_ROW_DAT_Y0}
+            unitPriceLabel={unitPriceLabel}
+            rowY0={P1_ROW_Y0}
           />
 
           {/* "Continued" note on page 1 when there are more pages */}
@@ -253,7 +372,12 @@ const CustomInvoiceTemplate = forwardRef<HTMLDivElement, Props>(
 
           {/* Terms section only on page 1 if this IS the last page */}
           {page1IsLast && (
-            <TermsSection invoice={invoice} invoiceCurrency={invoiceCurrency} />
+            <>
+              <TermsSection invoice={invoice} invoiceCurrency={invoiceCurrency} />
+              {branding && (branding.signatureUrl || branding.signaturePersonName) && (
+                <BrandingSignature branding={branding} />
+              )}
+            </>
           )}
         </div>
 
@@ -273,20 +397,24 @@ const CustomInvoiceTemplate = forwardRef<HTMLDivElement, Props>(
               </T>
 
               {/* Table header repeated for context */}
-              <TableHeader hasPaxPrice={hasPaxPrice} hdrY={C_HDR_Y} hrY={C_HR_Y} />
+              <TableHeader unitPriceLabel={unitPriceLabel} qtyLabel={qtyLabel} hdrY={C_HDR_Y} hrY={C_HR_Y} />
 
               {/* Rows for this page */}
               <TableRows
                 items={pageItems}
                 rowOffset={rowOffset}
-                hasPaxPrice={hasPaxPrice}
-                rowNoY0={C_ROW_NO_Y0}
-                rowDatY0={C_ROW_DAT_Y0}
+                unitPriceLabel={unitPriceLabel}
+                rowY0={C_ROW_Y0}
               />
 
               {/* Terms + totals + footer only on the last page */}
               {isLast && (
-                <TermsSection invoice={invoice} invoiceCurrency={invoiceCurrency} />
+                <>
+                  <TermsSection invoice={invoice} invoiceCurrency={invoiceCurrency} />
+                  {branding && (branding.signatureUrl || branding.signaturePersonName) && (
+                    <BrandingSignature branding={branding} />
+                  )}
+                </>
               )}
             </div>
           )

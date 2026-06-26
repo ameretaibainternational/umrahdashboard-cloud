@@ -66,7 +66,7 @@ const InvoicePrint = forwardRef<HTMLDivElement, Props>(function InvoicePrint(
   )
 
   return (
-    <div ref={ref} className="print-area" style={{ fontFamily: 'Inter, sans-serif', color: '#1a1a1a', background: 'white' }}>
+    <div ref={ref} style={{ fontFamily: 'Inter, sans-serif', color: '#1a1a1a', background: 'white' }}>
       <div style={{ width: '194mm', margin: '0 auto', padding: '8mm' }}>
         {/* Header */}
         <div style={{ background: '#071426', color: 'white', borderRadius: '8px', padding: '16px 20px', marginBottom: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>

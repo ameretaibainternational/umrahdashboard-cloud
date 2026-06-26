@@ -6,11 +6,26 @@
 
 import { isDemoMode } from './is-demo'
 import { demoStore } from './demo-store'
-import type { Airline, Hotel, Booking, Payment, Expense, StaffUser, VisaSettings, CurrencySettings, TransportRate, Company, InvoiceSettings, CustomInvoice } from './types'
+import { isAdminPermission } from './permissions'
+import { hasDirectDb, isPostgresAuthError, markDirectDbAuthFailed } from './sql'
+import type { Airline, Hotel, Booking, Payment, Expense, StaffUser, VisaSettings, CurrencySettings, TransportRate, Company, InvoiceSettings, CustomInvoice, HotelVoucherSettings, HotelVoucherRecord, StorageUsage, StoredFileRow, StaffActivityStats } from './types'
+import { DEFAULT_URDU_FOOTER, DEFAULT_URDU_GUIDELINES } from './hotel-voucher-defaults'
+import { resolveInvoiceSettings } from './invoice-defaults'
 
 async function getSupabase() {
   const { createClient } = await import('./supabase/server')
   return createClient()
+}
+
+async function getOwnerFilter(): Promise<string | null> {
+  const staff = await getCurrentStaff()
+  if (!staff || isAdminPermission(staff.permission)) return null
+  return staff.id
+}
+
+function filterByOwner<T extends { created_by?: string | null }>(rows: T[], ownerId: string | null): T[] {
+  if (!ownerId) return rows
+  return rows.filter(row => row.created_by === ownerId)
 }
 
 // ── Airlines ────────────────────────────────────────────────────────────────
@@ -93,49 +108,151 @@ export async function getCompany(): Promise<Company> {
 // ── Bookings ──────────────────────────────────────────────────────────────────
 
 export async function getBookings(): Promise<Booking[]> {
-  if (isDemoMode()) return [...demoStore.bookings]
+  const ownerId = await getOwnerFilter()
+  if (isDemoMode()) return filterByOwner([...demoStore.bookings], ownerId)
+  if (hasDirectDb()) {
+    const { fetchBookings } = await import('@/lib/crm-db')
+    return fetchBookings(ownerId)
+  }
   const sb = await getSupabase()
   const { data } = await sb.from('bookings').select('*').order('created_at', { ascending: false })
-  return data ?? []
+  return filterByOwner(data ?? [], ownerId)
 }
 
 // ── Payments ──────────────────────────────────────────────────────────────────
 
 export async function getPayments(): Promise<Payment[]> {
-  if (isDemoMode()) return [...demoStore.payments]
+  const ownerId = await getOwnerFilter()
+  if (isDemoMode()) return filterByOwner([...demoStore.payments], ownerId)
+  if (hasDirectDb()) {
+    const { fetchPayments } = await import('@/lib/crm-db')
+    return fetchPayments(ownerId)
+  }
   const sb = await getSupabase()
   const { data } = await sb.from('payments').select('*').order('created_at', { ascending: false })
-  return data ?? []
+  return filterByOwner(data ?? [], ownerId)
 }
 
 // ── Expenses ──────────────────────────────────────────────────────────────────
 
 export async function getExpenses(): Promise<Expense[]> {
-  if (isDemoMode()) return [...(demoStore.expenses ?? [])]
+  const ownerId = await getOwnerFilter()
+  if (isDemoMode()) return filterByOwner([...(demoStore.expenses ?? [])], ownerId)
+  if (hasDirectDb()) {
+    const { fetchExpenses } = await import('@/lib/crm-db')
+    return fetchExpenses(ownerId)
+  }
   const sb = await getSupabase()
   const { data } = await sb.from('expenses').select('*').order('created_at', { ascending: false })
-  return data ?? []
+  return filterByOwner(data ?? [], ownerId)
 }
 
 // ── Invoice Settings ─────────────────────────────────────────────────────────
 
-export async function getInvoiceSettings(): Promise<InvoiceSettings | null> {
-  if (isDemoMode()) return demoStore.invoiceSettings ? { ...demoStore.invoiceSettings } : null
+export async function getInvoiceSettings(): Promise<InvoiceSettings> {
+  if (isDemoMode()) return resolveInvoiceSettings(demoStore.invoiceSettings)
   const sb = await getSupabase()
   const { data } = await sb.from('invoice_settings').select('*').maybeSingle()
-  return data ?? null
+  return resolveInvoiceSettings(data)
+}
+
+// ── Hotel Voucher Settings ─────────────────────────────────────────────────────
+
+function defaultHotelVoucherSettings(): HotelVoucherSettings {
+  return {
+    id: '',
+    urdu_guidelines: [...DEFAULT_URDU_GUIDELINES],
+    urdu_footer: DEFAULT_URDU_FOOTER,
+  }
+}
+
+export async function getHotelVoucherSettings(): Promise<HotelVoucherSettings> {
+  if (isDemoMode()) {
+    return {
+      ...demoStore.hotelVoucherSettings,
+      urdu_guidelines: [...demoStore.hotelVoucherSettings.urdu_guidelines],
+    }
+  }
+  const sb = await getSupabase()
+  const { data } = await sb.from('hotel_voucher_settings').select('*').maybeSingle()
+  if (!data) return defaultHotelVoucherSettings()
+  const guidelines = Array.isArray(data.urdu_guidelines) ? data.urdu_guidelines as string[] : [...DEFAULT_URDU_GUIDELINES]
+  return {
+    id: data.id,
+    urdu_guidelines: guidelines.length > 0 ? guidelines : [...DEFAULT_URDU_GUIDELINES],
+    urdu_footer: data.urdu_footer || DEFAULT_URDU_FOOTER,
+    updated_at: data.updated_at,
+  }
 }
 
 // ── Custom Invoices ──────────────────────────────────────────────────────────
 
 export async function getCustomInvoices(): Promise<CustomInvoice[]> {
-  if (isDemoMode()) return [...demoStore.customInvoices]
-  const sb = await getSupabase()
-  const { data } = await sb.from('custom_invoices').select('*').order('created_at', { ascending: false })
-  return (data ?? []).map(row => ({
-    ...row,
-    line_items: typeof row.line_items === 'string' ? JSON.parse(row.line_items) : row.line_items,
-  })) as CustomInvoice[]
+  const ownerId = await getOwnerFilter()
+  if (isDemoMode()) return filterByOwner([...demoStore.customInvoices], ownerId)
+  const { fetchCustomInvoices } = await import('@/lib/document-db')
+  return fetchCustomInvoices(ownerId)
+}
+
+export async function getHotelVouchers(): Promise<HotelVoucherRecord[]> {
+  const ownerId = await getOwnerFilter()
+  if (isDemoMode()) return filterByOwner([...demoStore.hotelVouchers], ownerId)
+  const { fetchHotelVouchers } = await import('@/lib/document-db')
+  return fetchHotelVouchers(ownerId)
+}
+
+export async function getStorageUsage(): Promise<StorageUsage> {
+  if (isDemoMode()) return { ...demoStore.storageUsage }
+  if (!hasDirectDb()) {
+    return { id: '', total_bytes: 0, updated_at: new Date().toISOString() }
+  }
+  try {
+    const { fetchStorageUsage } = await import('@/lib/document-db')
+    return await fetchStorageUsage()
+  } catch (error) {
+    if (isPostgresAuthError(error)) markDirectDbAuthFailed()
+    return { id: '', total_bytes: 0, updated_at: new Date().toISOString() }
+  }
+}
+
+/** All invoice + voucher rows that still have a stored PDF file. */
+export async function getStoredFiles(): Promise<StoredFileRow[]> {
+  const ownerId = await getOwnerFilter()
+  if (isDemoMode()) {
+    const rows: StoredFileRow[] = []
+    for (const inv of demoStore.customInvoices) {
+      if (ownerId && inv.created_by !== ownerId) continue
+      if (!inv.file_deleted_at && inv.storage_key && inv.file_size_bytes) {
+        rows.push({
+          id: inv.id,
+          type: 'invoice',
+          number: inv.invoice_number,
+          label: inv.billed_to_name,
+          date: inv.invoice_date,
+          file_size_bytes: inv.file_size_bytes,
+          created_at: inv.created_at,
+        })
+      }
+    }
+    for (const v of demoStore.hotelVouchers) {
+      if (ownerId && v.created_by !== ownerId) continue
+      if (!v.file_deleted_at && v.storage_key && v.file_size_bytes) {
+        rows.push({
+          id: v.id,
+          type: 'voucher',
+          number: v.voucher_number,
+          label: v.family_head,
+          date: v.voucher_date,
+          file_size_bytes: v.file_size_bytes,
+          created_at: v.created_at,
+        })
+      }
+    }
+    return rows.sort((a, b) => a.created_at.localeCompare(b.created_at))
+  }
+
+  const { fetchStoredFiles } = await import('@/lib/document-db')
+  return fetchStoredFiles(ownerId)
 }
 
 // ── Staff users ───────────────────────────────────────────────────────────────
@@ -145,4 +262,39 @@ export async function getStaff(): Promise<StaffUser[]> {
   const sb = await getSupabase()
   const { data } = await sb.from('staff_users').select('*').order('created_at', { ascending: false })
   return data ?? []
+}
+
+/**
+ * Returns the currently logged-in user's staff record.
+ * In demo mode always returns a Full Access admin so the demo behaves the same.
+ */
+export async function getCurrentStaff(): Promise<StaffUser | null> {
+  if (isDemoMode()) {
+    return { id: 'demo', name: 'Demo Admin', username: 'admin', role: 'Admin', permission: 'Full Access', status: 'Active', created_at: new Date().toISOString() }
+  }
+  const sb = await getSupabase()
+  const { data: { user } } = await sb.auth.getUser()
+  if (!user) return null
+  const { data } = await sb.from('staff_users').select('*').eq('id', user.id).single()
+  return data ?? null
+}
+
+export async function getStaffActivityStats(): Promise<StaffActivityStats[]> {
+  const staff = await getCurrentStaff()
+  if (!staff || !isAdminPermission(staff.permission)) return []
+
+  if (isDemoMode()) {
+    return demoStore.staff.map(s => ({
+      staff_id: s.id,
+      staff_name: s.name,
+      bookings: demoStore.bookings.filter(b => b.created_by === s.id).length,
+      custom_invoices: demoStore.customInvoices.filter(i => i.created_by === s.id).length,
+      hotel_vouchers: demoStore.hotelVouchers.filter(v => v.created_by === s.id).length,
+      payments: demoStore.payments.filter(p => p.created_by === s.id).length,
+      expenses: (demoStore.expenses ?? []).filter(e => e.created_by === s.id).length,
+    }))
+  }
+
+  const { fetchStaffActivityStats } = await import('@/lib/document-db')
+  return fetchStaffActivityStats()
 }

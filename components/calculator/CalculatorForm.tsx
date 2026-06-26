@@ -2,7 +2,6 @@
 
 import { useState, useMemo, useRef, useTransition } from 'react'
 import { toast } from 'sonner'
-import { useReactToPrint } from 'react-to-print'
 import { getCalc, generateInvoiceNumber } from '@/lib/calculations'
 import { pkr as fmtPkr } from '@/lib/formatters'
 import { createBooking } from '@/app/actions/bookings'
@@ -13,7 +12,7 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Separator } from '@/components/ui/separator'
-import { BookmarkPlus, Copy, Printer, Loader2, CheckCircle } from 'lucide-react'
+import { BookmarkPlus, Copy, Download, Loader2, CheckCircle } from 'lucide-react'
 import { Checkbox } from '@/components/ui/checkbox'
 import InvoicePrint from './InvoicePrint'
 import type { Company } from '@/lib/types'
@@ -26,16 +25,19 @@ interface Props {
   currency: CurrencySettings
   transportRates: TransportRate[]
   company: Company
+  canSaveBooking?: boolean
 }
 
 export default function CalculatorForm({
-  airlines, makkahHotels, madinahHotels, visa, currency, transportRates, company
+  airlines, makkahHotels, madinahHotels, visa, currency, transportRates, company,
+  canSaveBooking = true,
 }: Props) {
   const printRef = useRef<HTMLDivElement>(null)
   // Stable invoice number — generated once per calculator session
   const invoiceNo = useRef(generateInvoiceNumber()).current
   const [isPending, startTransition] = useTransition()
   const [saved, setSaved] = useState(false)
+  const [isDownloading, setIsDownloading] = useState(false)
 
   const [adult, setAdult] = useState(1)
   const [child, setChild] = useState(0)
@@ -102,12 +104,43 @@ export default function CalculatorForm({
      transportRates]
   )
 
-  const handlePrint = useReactToPrint({
-    contentRef: printRef,
-    documentTitle: customerName
-      ? `${invoiceNo}_${customerName.trim().replace(/\s+/g, '_')}`
-      : invoiceNo,
-  })
+  async function handleDownload() {
+    const el = printRef.current
+    if (!el) return
+    setIsDownloading(true)
+    try {
+      const [{ default: html2canvas }, { jsPDF }] = await Promise.all([
+        import('html2canvas'),
+        import('jspdf'),
+      ])
+      const canvas = await html2canvas(el, {
+        scale: 2,
+        useCORS: true,
+        allowTaint: true,
+        backgroundColor: '#ffffff',
+        logging: false,
+        imageTimeout: 15000,
+        scrollX: 0,
+        scrollY: 0,
+        onclone: (clonedDoc: Document) => {
+          // Remove Tailwind stylesheets so html2canvas never hits lab()/oklch() color functions
+          clonedDoc.querySelectorAll('style, link[rel="stylesheet"]').forEach(e => e.remove())
+        },
+      })
+      const imgData = canvas.toDataURL('image/jpeg', 0.95)
+      const pdf = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' })
+      pdf.addImage(imgData, 'JPEG', 0, 0, 210, 297)
+      const filename = customerName
+        ? `${invoiceNo}_${customerName.trim().replace(/\s+/g, '_')}`
+        : invoiceNo
+      pdf.save(`${filename}.pdf`)
+    } catch (err) {
+      console.error('[PDF] calculator invoice failed:', err)
+      alert(`Could not generate PDF: ${err instanceof Error ? err.message : String(err)}`)
+    } finally {
+      setIsDownloading(false)
+    }
+  }
 
   async function handleSave() {
     startTransition(async () => {
@@ -135,7 +168,7 @@ export default function CalculatorForm({
         madinah_nights: madinahNights,
       })
 
-      if (result.error) {
+      if ('error' in result && result.error) {
         toast.error(result.error)
       } else {
         toast.success('Booking saved successfully!')
@@ -568,14 +601,16 @@ export default function CalculatorForm({
               </div>
 
               <div className="space-y-4 pt-1">
-                <Button
-                  onClick={handleSave}
-                  disabled={isPending || saved}
-                  className="w-full bg-gold-gradient hover:brightness-110 text-navy font-semibold h-10"
-                >
-                  {isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : saved ? <CheckCircle className="w-4 h-4 mr-2" /> : <BookmarkPlus className="w-4 h-4 mr-2" />}
-                  {saved ? 'Saved!' : 'Save Booking'}
-                </Button>
+                {canSaveBooking && (
+                  <Button
+                    onClick={handleSave}
+                    disabled={isPending || saved}
+                    className="w-full bg-gold-gradient hover:brightness-110 text-navy font-semibold h-10"
+                  >
+                    {isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : saved ? <CheckCircle className="w-4 h-4 mr-2" /> : <BookmarkPlus className="w-4 h-4 mr-2" />}
+                    {saved ? 'Saved!' : 'Save Booking'}
+                  </Button>
+                )}
                 <div className="grid grid-cols-2 gap-2">
                   <Button
                     variant="outline"
@@ -587,11 +622,12 @@ export default function CalculatorForm({
                   </Button>
                   <Button
                     variant="outline"
-                    onClick={() => handlePrint()}
+                    onClick={handleDownload}
+                    disabled={isDownloading}
                     className="bg-white/10 border-white/20 text-white hover:bg-white/20 hover:text-white text-xs"
                   >
-                    <Printer className="w-3.5 h-3.5 mr-1.5" />
-                    Print
+                    <Download className="w-3.5 h-3.5 mr-1.5" />
+                    {isDownloading ? 'Generating…' : 'Download'}
                   </Button>
                 </div>
               </div>
@@ -600,29 +636,32 @@ export default function CalculatorForm({
         </div>
       </div>
 
-      {/* Print area */}
-      <InvoicePrint
-        ref={printRef}
-        invoiceNo={invoiceNo}
-        customerName={customerName || 'Walk-in Customer'}
-        adult={adult} child={child} infant={infant}
-        airline={airline}
-        makkahHotel={makkahHotel} makkahRoom={makkahRoom} makkahNights={makkahNights}
-        madinahHotel={madinahHotel} madinahRoom={madinahRoom} madinahNights={madinahNights}
-        calc={calc}
-        advance={advance}
-        transportMode={visa.transport_mode}
-        company={company}
-        customTicket={customTicket}
-        customTicketLabel={customTicketLabel}
-        customTicketPkr={customTicketPkr}
-        makkahZiarat={makkahZiarat}
-        madinahZiarat={madinahZiarat}
-        travelDate={travelDate}
-        departureCity={departureCity}
-        arrivalCity={arrivalCity}
-        returnCity={returnCity}
-      />
+      {/* Hidden capture target — always in DOM, positioned behind everything.
+          No opacity/visibility tricks: html2canvas respects those and produces a blank canvas. */}
+      <div style={{ position: 'fixed', top: 0, left: 0, zIndex: -9999, pointerEvents: 'none' }}>
+        <InvoicePrint
+          ref={printRef}
+          invoiceNo={invoiceNo}
+          customerName={customerName || 'Walk-in Customer'}
+          adult={adult} child={child} infant={infant}
+          airline={airline}
+          makkahHotel={makkahHotel} makkahRoom={makkahRoom} makkahNights={makkahNights}
+          madinahHotel={madinahHotel} madinahRoom={madinahRoom} madinahNights={madinahNights}
+          calc={calc}
+          advance={advance}
+          transportMode={visa.transport_mode}
+          company={company}
+          customTicket={customTicket}
+          customTicketLabel={customTicketLabel}
+          customTicketPkr={customTicketPkr}
+          makkahZiarat={makkahZiarat}
+          madinahZiarat={madinahZiarat}
+          travelDate={travelDate}
+          departureCity={departureCity}
+          arrivalCity={arrivalCity}
+          returnCity={returnCity}
+        />
+      </div>
     </>
   )
 }

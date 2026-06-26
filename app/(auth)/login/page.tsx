@@ -78,9 +78,9 @@ export default function LoginPage() {
 
         <div className="relative z-10 text-center">
           <div className="w-20 h-20 rounded-full bg-transparent flex items-center justify-center mx-auto mb-6 shadow-xl">
-          <img src="/logo.png" alt="Umrah Dashboard" className="w-20 h-20 object-contain" /> 
+          <img src="/logo.png" alt="Amere Taiba International" className="w-20 h-20 object-contain" /> 
           </div>
-          <h1 className="text-3xl font-bold text-white mb-2">Umrah Dashboard</h1>
+          <h1 className="text-3xl font-bold text-white mb-2">Amere Taiba International</h1>
           <p className="text-gold text-lg font-medium mb-1">Demo</p>
           <p className="text-white/40 text-sm max-w-xs">
             Complete package management for Umrah operators
@@ -107,10 +107,10 @@ export default function LoginPage() {
           {/* Mobile logo */}
           <div className="flex items-center gap-3 mb-8 lg:hidden">
             <div className="w-10 h-10 rounded-xl bg-navy flex items-center justify-center">
-              <img src="/logo.png" alt="Umrah Dashboard" className="w-10 h-10 object-contain" />
+              <img src="/logo.png" alt="Amere Taiba International" className="w-10 h-10 object-contain" />
             </div>
             <div>
-              <p className="font-bold text-navy text-sm">Umrah Dashboard</p>
+              <p className="font-bold text-navy text-sm">Amere Taiba International</p>
               <p className="text-xs text-muted-foreground">Demo</p>
             </div>
           </div>
@@ -259,7 +259,7 @@ export default function LoginPage() {
           </form>
 
           <p className="text-xs text-muted-foreground text-center mt-6">
-           Umrah Dashboard - a complete package management system for Umrah operators
+           Amere Taiba International - a complete package management system for Umrah operators
 
            <br />
            A product by <a href="https://axiusdigital.com" target="_blank" className="text-blue-500">Axius Digital</a>

@@ -3,13 +3,17 @@
 import { revalidatePath } from 'next/cache'
 import { isDemoMode } from '@/lib/is-demo'
 import { demoStore } from '@/lib/demo-store'
-import type { StaffRole, StaffPermission } from '@/lib/types'
+import { permissionFromRole } from '@/lib/permissions'
+import { requireAdmin } from '@/lib/permissions-server'
+import type { StaffRole } from '@/lib/types'
 
 export async function createStaffUser(formData: FormData) {
+  const guard = await requireAdmin()
+  if ('error' in guard) return guard
   const name = (formData.get('name') as string).trim()
   const username = (formData.get('username') as string).trim()
   const role = formData.get('role') as StaffRole
-  const permission = formData.get('permission') as StaffPermission
+  const permission = permissionFromRole(role)
   const status = (formData.get('status') as string) || 'Active'
 
   if (isDemoMode()) {
@@ -42,12 +46,15 @@ export async function createStaffUser(formData: FormData) {
 }
 
 export async function updateStaffUser(formData: FormData) {
+  const guard = await requireAdmin()
+  if ('error' in guard) return guard
   const id = formData.get('id') as string
+  const role = formData.get('role') as StaffRole
   const payload = {
     name: (formData.get('name') as string).trim(),
     username: (formData.get('username') as string).trim(),
-    role: formData.get('role') as StaffRole,
-    permission: formData.get('permission') as StaffPermission,
+    role,
+    permission: permissionFromRole(role),
     status: formData.get('status') as 'Active' | 'Inactive',
   }
 
@@ -74,6 +81,8 @@ export async function updateStaffUser(formData: FormData) {
 }
 
 export async function deleteStaffUser(id: string) {
+  const guard = await requireAdmin()
+  if ('error' in guard) return guard
   if (isDemoMode()) {
     demoStore.deleteStaff(id)
   } else {

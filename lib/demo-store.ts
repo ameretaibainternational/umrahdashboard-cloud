@@ -1,4 +1,7 @@
-import type { Airline, Hotel, Booking, Payment, Expense, StaffUser, VisaSettings, CurrencySettings, TransportRate, Company, InvoiceSettings, CustomInvoice } from './types'
+import type { Airline, Hotel, Booking, Payment, Expense, StaffUser, VisaSettings, CurrencySettings, TransportRate, Company, InvoiceSettings, CustomInvoice, HotelVoucherSettings, HotelVoucherRecord, StorageUsage } from './types'
+import { DEFAULT_URDU_FOOTER, DEFAULT_URDU_GUIDELINES } from './hotel-voucher-defaults'
+import { DEFAULT_INVOICE_SETTINGS } from './invoice-defaults'
+import { demoFileStore } from './demo-file-store'
 
 // ---------------------------------------------------------------------------
 // Singleton in-memory store — survives multiple requests in dev server
@@ -79,6 +82,7 @@ const DEFAULT_BOOKINGS: Booking[] = [
     adult_count: 2, child_count: 0, infant_count: 0,
     makkah_hotel_name: 'Hilton Suites Makkah', makkah_hotel_location: 'Abraj Al-Bait', makkah_hotel_distance: '50-100 MTR', makkah_room_type: 'sharing', makkah_nights: 10,
     madinah_hotel_name: 'Anwar Al Madinah Mövenpick', madinah_hotel_location: 'Al Haram', madinah_hotel_distance: '50-100 MTR', madinah_room_type: 'sharing', madinah_nights: 7,
+    created_by: 'su1',
   },
   {
     id: 'b2', created_at: new Date().toISOString(), booking_date: today,
@@ -88,6 +92,7 @@ const DEFAULT_BOOKINGS: Booking[] = [
     adult_count: 1, child_count: 0, infant_count: 0,
     makkah_hotel_name: 'Anjum Hotel Makkah', makkah_hotel_location: 'Al Haram', makkah_hotel_distance: '200-300 MTR', makkah_room_type: 'quad', makkah_nights: 8,
     madinah_hotel_name: 'Madinah Hilton Hotel', madinah_hotel_location: 'Al Haram', madinah_hotel_distance: '100-200 MTR', madinah_room_type: 'quad', madinah_nights: 5,
+    created_by: 'su1',
   },
 ]
 
@@ -95,14 +100,10 @@ const DEFAULT_BOOKINGS: Booking[] = [
 // Singleton store
 // ---------------------------------------------------------------------------
 
-const DEFAULT_INVOICE_SETTINGS: InvoiceSettings = {
-  id: 'is1',
-  payment_bank_name: 'Meezan Bank',
-  payment_account_number: '01234567890123',
-  terms_text: 'All payments are due upon receipt. Late payments may incur additional charges. Services rendered are non-refundable once confirmed. Visa approval is subject to Saudi embassy decision and is not guaranteed.',
-  contact_phone: '+92 300 0000000',
-  contact_email: 'info@fasttravels.pk',
-  contact_location: 'Lahore, Pakistan',
+const DEFAULT_HOTEL_VOUCHER_SETTINGS: HotelVoucherSettings = {
+  id: 'hvs1',
+  urdu_guidelines: [...DEFAULT_URDU_GUIDELINES],
+  urdu_footer: DEFAULT_URDU_FOOTER,
 }
 
 class DemoStore {
@@ -116,9 +117,31 @@ class DemoStore {
   payments: Payment[] = []
   expenses: Expense[] = []
   staff: StaffUser[] = [...DEFAULT_STAFF]
-  invoiceSettings: InvoiceSettings = { ...DEFAULT_INVOICE_SETTINGS }
+  invoiceSettings: InvoiceSettings = { ...DEFAULT_INVOICE_SETTINGS, id: 'is1' }
+  hotelVoucherSettings: HotelVoucherSettings = { ...DEFAULT_HOTEL_VOUCHER_SETTINGS, urdu_guidelines: [...DEFAULT_URDU_GUIDELINES] }
   customInvoices: CustomInvoice[] = []
+  hotelVouchers: HotelVoucherRecord[] = []
   invoiceCounter: number = 0
+  voucherCounter: number = 0
+  storageUsage: StorageUsage = { id: 'su1', total_bytes: 0, updated_at: new Date().toISOString() }
+
+  private bumpStorage(bytes: number) {
+    if (bytes <= 0) return
+    this.storageUsage = {
+      ...this.storageUsage,
+      total_bytes: this.storageUsage.total_bytes + bytes,
+      updated_at: new Date().toISOString(),
+    }
+  }
+
+  private reduceStorage(bytes: number) {
+    if (bytes <= 0) return
+    this.storageUsage = {
+      ...this.storageUsage,
+      total_bytes: Math.max(0, this.storageUsage.total_bytes - bytes),
+      updated_at: new Date().toISOString(),
+    }
+  }
 
   // Airlines
   upsertAirline(data: Omit<Airline, 'id'> & { id?: string }) {
@@ -177,16 +200,63 @@ class DemoStore {
   deleteExpense(id: string) { this.expenses = this.expenses.filter(e => e.id !== id) }
 
   // Custom Invoices
-  addCustomInvoice(data: Omit<CustomInvoice, 'id' | 'created_at' | 'invoice_number'>): CustomInvoice {
+  addCustomInvoice(
+    data: Omit<CustomInvoice, 'created_at' | 'invoice_number'> & { invoice_number?: string },
+  ): CustomInvoice {
     this.invoiceCounter++
-    const invoice_number = `ATI-${String(this.invoiceCounter).padStart(3, '0')}`
-    const invoice: CustomInvoice = { ...data, id: uid(), invoice_number, created_at: new Date().toISOString() }
+    const invoice: CustomInvoice = {
+      ...data,
+      invoice_number: data.invoice_number ?? `ATI-${String(this.invoiceCounter).padStart(3, '0')}`,
+      file_deleted_at: data.file_deleted_at ?? null,
+      created_at: new Date().toISOString(),
+    }
+    if (invoice.file_size_bytes) this.bumpStorage(invoice.file_size_bytes)
     this.customInvoices = [invoice, ...this.customInvoices]
     return invoice
   }
+  softDeleteInvoiceFile(id: string) {
+    const inv = this.customInvoices.find(i => i.id === id)
+    if (!inv || inv.file_deleted_at || !inv.storage_key) return
+    demoFileStore.delete(inv.storage_key)
+    this.reduceStorage(inv.file_size_bytes ?? 0)
+    inv.file_deleted_at = new Date().toISOString()
+  }
   deleteCustomInvoice(id: string) { this.customInvoices = this.customInvoices.filter(i => i.id !== id) }
+
+  // Hotel Vouchers
+  addHotelVoucher(
+    data: Omit<HotelVoucherRecord, 'created_at' | 'voucher_number'> & { voucher_number?: string },
+  ): HotelVoucherRecord {
+    this.voucherCounter++
+    const voucher: HotelVoucherRecord = {
+      ...data,
+      voucher_number: data.voucher_number ?? `HV-${String(this.voucherCounter).padStart(3, '0')}`,
+      file_deleted_at: data.file_deleted_at ?? null,
+      created_at: new Date().toISOString(),
+    }
+    if (voucher.file_size_bytes) this.bumpStorage(voucher.file_size_bytes)
+    this.hotelVouchers = [voucher, ...this.hotelVouchers]
+    return voucher
+  }
+  softDeleteVoucherFile(id: string) {
+    const v = this.hotelVouchers.find(x => x.id === id)
+    if (!v || v.file_deleted_at || !v.storage_key) return
+    demoFileStore.delete(v.storage_key)
+    this.reduceStorage(v.file_size_bytes ?? 0)
+    v.file_deleted_at = new Date().toISOString()
+  }
   updateInvoiceSettings(data: Partial<Omit<InvoiceSettings, 'id'>>) {
     this.invoiceSettings = { ...this.invoiceSettings, ...data, updated_at: new Date().toISOString() }
+  }
+  updateHotelVoucherSettings(data: Partial<Omit<HotelVoucherSettings, 'id'>>) {
+    this.hotelVoucherSettings = {
+      ...this.hotelVoucherSettings,
+      ...data,
+      urdu_guidelines: data.urdu_guidelines
+        ? [...data.urdu_guidelines]
+        : this.hotelVoucherSettings.urdu_guidelines,
+      updated_at: new Date().toISOString(),
+    }
   }
 
   // Staff
@@ -210,13 +280,18 @@ class DemoStore {
     this.expenses = []
     this.staff = [...DEFAULT_STAFF]
     this.invoiceSettings = { ...DEFAULT_INVOICE_SETTINGS }
+    this.hotelVoucherSettings = { ...DEFAULT_HOTEL_VOUCHER_SETTINGS, urdu_guidelines: [...DEFAULT_URDU_GUIDELINES] }
     this.customInvoices = []
+    this.hotelVouchers = []
     this.invoiceCounter = 0
+    this.voucherCounter = 0
+    this.storageUsage = { id: 'su1', total_bytes: 0, updated_at: new Date().toISOString() }
+    demoFileStore.clear()
   }
 }
 
 // Bump this whenever DemoStore gains new fields, to force recreation in dev hot-reloads
-const STORE_VERSION = 4
+const STORE_VERSION = 7
 
 const globalStore = globalThis as typeof globalThis & {
   __demoStore?: DemoStore
