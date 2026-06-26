@@ -13,7 +13,7 @@ export function friendlyDbError(message: string): string {
   }
 
   if (message.includes('schema cache') && message.includes('created_by')) {
-    return 'Database update required: run supabase/run-once-staff-roles.sql in the Supabase SQL Editor, then try again.'
+    return 'Booking could not be saved. If this persists, run supabase/run-once-staff-roles.sql in Supabase SQL Editor, or fix DATABASE_URL in your environment variables.'
   }
 
   if (message.includes('violates foreign key constraint') && message.includes('created_by')) {

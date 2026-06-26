@@ -1,4 +1,4 @@
-import { requireSql } from '@/lib/sql'
+import { requireSql, requireWriteSql } from '@/lib/sql'
 import type { Booking, Expense, Payment } from '@/lib/types'
 
 let ownershipColumnsEnsured = false
@@ -6,17 +6,18 @@ let ownershipColumnsEnsured = false
 /** Adds created_by columns if missing — safe to run repeatedly. */
 export async function ensureOwnershipColumns(): Promise<void> {
   if (ownershipColumnsEnsured) return
-  const sql = requireSql()
-  await sql`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS created_by UUID REFERENCES staff_users(id)`
-  await sql`ALTER TABLE payments ADD COLUMN IF NOT EXISTS created_by UUID REFERENCES staff_users(id)`
-  await sql`ALTER TABLE expenses ADD COLUMN IF NOT EXISTS created_by UUID REFERENCES staff_users(id)`
-  await sql`ALTER TABLE custom_invoices ADD COLUMN IF NOT EXISTS created_by UUID REFERENCES staff_users(id)`
-  await sql`ALTER TABLE hotel_vouchers ADD COLUMN IF NOT EXISTS created_by UUID REFERENCES staff_users(id)`
+  const sql = requireWriteSql()
+  await sql`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS created_by UUID`
+  await sql`ALTER TABLE payments ADD COLUMN IF NOT EXISTS created_by UUID`
+  await sql`ALTER TABLE expenses ADD COLUMN IF NOT EXISTS created_by UUID`
+  await sql`ALTER TABLE custom_invoices ADD COLUMN IF NOT EXISTS created_by UUID`
+  await sql`ALTER TABLE hotel_vouchers ADD COLUMN IF NOT EXISTS created_by UUID`
   await sql`CREATE INDEX IF NOT EXISTS idx_bookings_created_by ON bookings(created_by)`
   await sql`CREATE INDEX IF NOT EXISTS idx_payments_created_by ON payments(created_by)`
   await sql`CREATE INDEX IF NOT EXISTS idx_expenses_created_by ON expenses(created_by)`
   await sql`CREATE INDEX IF NOT EXISTS idx_custom_invoices_created_by ON custom_invoices(created_by)`
   await sql`CREATE INDEX IF NOT EXISTS idx_hotel_vouchers_created_by ON hotel_vouchers(created_by)`
+  await sql.unsafe(`NOTIFY pgrst, 'reload schema'`)
   ownershipColumnsEnsured = true
 }
 
@@ -54,7 +55,7 @@ export async function insertBooking(
   payload: Omit<Booking, 'id' | 'created_at'> & { booking_date?: string },
 ): Promise<void> {
   await ensureOwnershipColumns()
-  const sql = requireSql()
+  const sql = requireWriteSql()
   await sql`
     INSERT INTO bookings (
       booking_date, customer_name, airline_name,
@@ -85,7 +86,7 @@ export async function getBookingForPayment(bookingId: string): Promise<{
   created_by: string | null
 } | null> {
   await ensureOwnershipColumns()
-  const sql = requireSql()
+  const sql = requireWriteSql()
   const [row] = await sql<{
     customer_name: string
     total_pkr: number
@@ -103,13 +104,13 @@ export async function getBookingForPayment(bookingId: string): Promise<{
 }
 
 export async function deleteBookingById(id: string): Promise<void> {
-  const sql = requireSql()
+  const sql = requireWriteSql()
   await sql`DELETE FROM bookings WHERE id = ${id}`
 }
 
 export async function getBookingOwner(id: string): Promise<string | null | undefined> {
   await ensureOwnershipColumns()
-  const sql = requireSql()
+  const sql = requireWriteSql()
   const [row] = await sql<{ created_by: string | null }[]>`
     SELECT created_by FROM bookings WHERE id = ${id}
   `
@@ -127,7 +128,7 @@ export async function insertPayment(row: {
   created_by: string
 }): Promise<void> {
   await ensureOwnershipColumns()
-  const sql = requireSql()
+  const sql = requireWriteSql()
   await sql`
     INSERT INTO payments (booking_id, customer_name, amount_pkr, method, note, payment_date, created_by)
     VALUES (
@@ -142,7 +143,7 @@ export async function updateBookingPaidTotals(
   paidPkr: number,
   remainingPkr: number,
 ): Promise<void> {
-  const sql = requireSql()
+  const sql = requireWriteSql()
   await sql`
     UPDATE bookings SET paid_pkr = ${paidPkr}, remaining_pkr = ${remainingPkr} WHERE id = ${bookingId}
   `
@@ -171,7 +172,7 @@ export async function insertExpense(row: {
   created_by: string
 }): Promise<void> {
   await ensureOwnershipColumns()
-  const sql = requireSql()
+  const sql = requireWriteSql()
   await sql`
     INSERT INTO expenses (expense_type, supplier, amount_pkr, method, note, expense_date, created_by)
     VALUES (
