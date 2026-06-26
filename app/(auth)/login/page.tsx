@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useTransition, useRef } from 'react'
+import { useState, useTransition, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { login } from '@/app/actions/auth'
 import { Plane, Eye, EyeOff, Loader2, Zap, Copy, Check, KeyRound } from 'lucide-react'
@@ -28,6 +28,12 @@ export default function LoginPage() {
   const [copiedPassword, setCopiedPassword] = useState(false)
   const turnstileRef = useRef<TurnstileInstance>(null)
   const router = useRouter()
+
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get('error') === 'staff') {
+      setError('Your account is signed in but has no staff profile. Contact an admin to add you in Users & Staff.')
+    }
+  }, [])
 
   function handleDemoLogin() {
     document.cookie = 'demo_session=1; path=/; max-age=86400'

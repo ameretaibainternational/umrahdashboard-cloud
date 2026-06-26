@@ -14,8 +14,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     if (!demoSession) redirect('/login')
   } else {
     const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) redirect('/login')
+    const { data: { session } } = await supabase.auth.getSession()
+    if (!session?.user) redirect('/login')
   }
 
   const [company, staff, storageUsage] = await Promise.all([
@@ -23,7 +23,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     getCurrentStaff(),
     getStorageUsage(),
   ])
-  if (!staff) redirect('/login')
+  if (!staff) redirect('/login?error=staff')
   const permission: StaffPermission = normalizePermission(staff.permission)
 
   return (

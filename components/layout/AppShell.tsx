@@ -53,7 +53,8 @@ export default function AppShell({ children, companyName, isDemo, permission, st
 
   useEffect(() => {
     if (!canAccessRoute(permission, pathname)) {
-      router.replace(getDefaultRoute(permission))
+      const fallback = getDefaultRoute(permission)
+      if (fallback !== pathname) router.replace(fallback)
     }
   }, [permission, pathname, router])
 

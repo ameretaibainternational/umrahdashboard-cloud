@@ -321,7 +321,8 @@ export async function getCurrentStaff(): Promise<StaffUser | null> {
     return { id: 'demo', name: 'Demo Admin', username: 'admin', role: 'Admin', permission: 'Full Access', status: 'Active', created_at: new Date().toISOString() }
   }
   const sb = await getSupabase()
-  const { data: { user } } = await sb.auth.getUser()
+  const { data: { session } } = await sb.auth.getSession()
+  const user = session?.user
   if (!user) return null
   const { data } = await sb.from('staff_users').select('*').eq('id', user.id).single()
   return data ?? null

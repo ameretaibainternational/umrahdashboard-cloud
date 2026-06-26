@@ -66,7 +66,12 @@ export default async function proxy(request: NextRequest) {
   if (!user && pathname !== '/login') {
     return NextResponse.redirect(new URL('/login', request.url))
   }
-  if (user && pathname === '/login') {
+  // Avoid /login ↔ /dashboard loops when the app layout cannot load staff_users.
+  if (
+    user &&
+    pathname === '/login' &&
+    !request.nextUrl.searchParams.get('error')
+  ) {
     return NextResponse.redirect(new URL('/dashboard', request.url))
   }
   if (pathname === '/') {
