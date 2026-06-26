@@ -5,7 +5,7 @@ import { isDemoMode } from '@/lib/is-demo'
 import { demoStore } from '@/lib/demo-store'
 import { friendlyDbError } from '@/lib/friendly-db-error'
 import { requireModeratorFeature } from '@/lib/permissions-server'
-import { hasDirectDb, isPostgresAuthError, markDirectDbAuthFailed } from '@/lib/sql'
+import { hasDirectDb, isDirectDbConnectionError, markDirectDbAuthFailed } from '@/lib/sql'
 
 type BookingPayload = {
   customer_name: string; airline_name: string
@@ -47,7 +47,7 @@ export async function createBooking(payload: BookingPayload) {
         REVALIDATE_PATHS.forEach(p => revalidatePath(p))
         return { success: true }
       } catch (error) {
-        if (!isPostgresAuthError(error)) throw error
+        if (!isDirectDbConnectionError(error)) throw error
         markDirectDbAuthFailed()
       }
     }

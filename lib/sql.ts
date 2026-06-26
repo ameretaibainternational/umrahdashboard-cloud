@@ -9,6 +9,20 @@ export function isPostgresAuthError(error: unknown): boolean {
   return message.includes('password authentication failed')
 }
 
+/** True when direct Postgres should not be used for this request. */
+export function isDirectDbConnectionError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error)
+  return (
+    isPostgresAuthError(error) ||
+    message.includes('DATABASE_URL is missing') ||
+    message.includes('DATABASE_URL is for Supabase project') ||
+    message.includes('ECONNREFUSED') ||
+    message.includes('ENOTFOUND') ||
+    message.includes('ETIMEDOUT') ||
+    message.includes('Connection terminated')
+  )
+}
+
 /** Call after a failed Postgres login so the app falls back to the Supabase API. */
 export function markDirectDbAuthFailed(): void {
   directDbDisabled = true

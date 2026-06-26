@@ -7,7 +7,7 @@
 import { isDemoMode } from './is-demo'
 import { demoStore } from './demo-store'
 import { isAdminPermission } from './permissions'
-import { hasDirectDb, isPostgresAuthError, markDirectDbAuthFailed } from './sql'
+import { hasDirectDb, isDirectDbConnectionError, markDirectDbAuthFailed } from './sql'
 import type { Airline, Hotel, Booking, Payment, Expense, StaffUser, VisaSettings, CurrencySettings, TransportRate, Company, InvoiceSettings, CustomInvoice, HotelVoucherSettings, HotelVoucherRecord, StorageUsage, StoredFileRow, StaffActivityStats } from './types'
 import { DEFAULT_URDU_FOOTER, DEFAULT_URDU_GUIDELINES } from './hotel-voucher-defaults'
 import { resolveInvoiceSettings } from './invoice-defaults'
@@ -26,6 +26,20 @@ async function getOwnerFilter(): Promise<string | null> {
 function filterByOwner<T extends { created_by?: string | null }>(rows: T[], ownerId: string | null): T[] {
   if (!ownerId) return rows
   return rows.filter(row => row.created_by === ownerId)
+}
+
+async function withDirectDbFallback<T>(
+  direct: () => Promise<T>,
+  fallback: () => Promise<T>,
+): Promise<T> {
+  if (!hasDirectDb()) return fallback()
+  try {
+    return await direct()
+  } catch (error) {
+    if (isDirectDbConnectionError(error)) markDirectDbAuthFailed()
+    else throw error
+    return fallback()
+  }
 }
 
 // ── Airlines ────────────────────────────────────────────────────────────────
@@ -110,13 +124,17 @@ export async function getCompany(): Promise<Company> {
 export async function getBookings(): Promise<Booking[]> {
   const ownerId = await getOwnerFilter()
   if (isDemoMode()) return filterByOwner([...demoStore.bookings], ownerId)
-  if (hasDirectDb()) {
-    const { fetchBookings } = await import('@/lib/crm-db')
-    return fetchBookings(ownerId)
-  }
-  const sb = await getSupabase()
-  const { data } = await sb.from('bookings').select('*').order('created_at', { ascending: false })
-  return filterByOwner(data ?? [], ownerId)
+  return withDirectDbFallback(
+    async () => {
+      const { fetchBookings } = await import('@/lib/crm-db')
+      return fetchBookings(ownerId)
+    },
+    async () => {
+      const sb = await getSupabase()
+      const { data } = await sb.from('bookings').select('*').order('created_at', { ascending: false })
+      return filterByOwner(data ?? [], ownerId)
+    },
+  )
 }
 
 // ── Payments ──────────────────────────────────────────────────────────────────
@@ -124,13 +142,17 @@ export async function getBookings(): Promise<Booking[]> {
 export async function getPayments(): Promise<Payment[]> {
   const ownerId = await getOwnerFilter()
   if (isDemoMode()) return filterByOwner([...demoStore.payments], ownerId)
-  if (hasDirectDb()) {
-    const { fetchPayments } = await import('@/lib/crm-db')
-    return fetchPayments(ownerId)
-  }
-  const sb = await getSupabase()
-  const { data } = await sb.from('payments').select('*').order('created_at', { ascending: false })
-  return filterByOwner(data ?? [], ownerId)
+  return withDirectDbFallback(
+    async () => {
+      const { fetchPayments } = await import('@/lib/crm-db')
+      return fetchPayments(ownerId)
+    },
+    async () => {
+      const sb = await getSupabase()
+      const { data } = await sb.from('payments').select('*').order('created_at', { ascending: false })
+      return filterByOwner(data ?? [], ownerId)
+    },
+  )
 }
 
 // ── Expenses ──────────────────────────────────────────────────────────────────
@@ -138,13 +160,17 @@ export async function getPayments(): Promise<Payment[]> {
 export async function getExpenses(): Promise<Expense[]> {
   const ownerId = await getOwnerFilter()
   if (isDemoMode()) return filterByOwner([...(demoStore.expenses ?? [])], ownerId)
-  if (hasDirectDb()) {
-    const { fetchExpenses } = await import('@/lib/crm-db')
-    return fetchExpenses(ownerId)
-  }
-  const sb = await getSupabase()
-  const { data } = await sb.from('expenses').select('*').order('created_at', { ascending: false })
-  return filterByOwner(data ?? [], ownerId)
+  return withDirectDbFallback(
+    async () => {
+      const { fetchExpenses } = await import('@/lib/crm-db')
+      return fetchExpenses(ownerId)
+    },
+    async () => {
+      const sb = await getSupabase()
+      const { data } = await sb.from('expenses').select('*').order('created_at', { ascending: false })
+      return filterByOwner(data ?? [], ownerId)
+    },
+  )
 }
 
 // ── Invoice Settings ─────────────────────────────────────────────────────────
@@ -190,28 +216,45 @@ export async function getHotelVoucherSettings(): Promise<HotelVoucherSettings> {
 export async function getCustomInvoices(): Promise<CustomInvoice[]> {
   const ownerId = await getOwnerFilter()
   if (isDemoMode()) return filterByOwner([...demoStore.customInvoices], ownerId)
-  const { fetchCustomInvoices } = await import('@/lib/document-db')
-  return fetchCustomInvoices(ownerId)
+  return withDirectDbFallback(
+    async () => {
+      const { fetchCustomInvoices } = await import('@/lib/document-db')
+      return fetchCustomInvoices(ownerId)
+    },
+    async () => {
+      const sb = await getSupabase()
+      const { data } = await sb.from('custom_invoices').select('*').order('created_at', { ascending: false })
+      return filterByOwner(data ?? [], ownerId)
+    },
+  )
 }
 
 export async function getHotelVouchers(): Promise<HotelVoucherRecord[]> {
   const ownerId = await getOwnerFilter()
   if (isDemoMode()) return filterByOwner([...demoStore.hotelVouchers], ownerId)
-  const { fetchHotelVouchers } = await import('@/lib/document-db')
-  return fetchHotelVouchers(ownerId)
+  return withDirectDbFallback(
+    async () => {
+      const { fetchHotelVouchers } = await import('@/lib/document-db')
+      return fetchHotelVouchers(ownerId)
+    },
+    async () => {
+      const sb = await getSupabase()
+      const { data } = await sb.from('hotel_vouchers').select('*').order('created_at', { ascending: false })
+      return filterByOwner(data ?? [], ownerId)
+    },
+  )
 }
 
 export async function getStorageUsage(): Promise<StorageUsage> {
   if (isDemoMode()) return { ...demoStore.storageUsage }
-  if (!hasDirectDb()) {
-    return { id: '', total_bytes: 0, updated_at: new Date().toISOString() }
-  }
+  const empty = { id: '', total_bytes: 0, updated_at: new Date().toISOString() }
+  if (!hasDirectDb()) return empty
   try {
     const { fetchStorageUsage } = await import('@/lib/document-db')
     return await fetchStorageUsage()
   } catch (error) {
-    if (isPostgresAuthError(error)) markDirectDbAuthFailed()
-    return { id: '', total_bytes: 0, updated_at: new Date().toISOString() }
+    if (isDirectDbConnectionError(error)) markDirectDbAuthFailed()
+    return empty
   }
 }
 
@@ -251,8 +294,13 @@ export async function getStoredFiles(): Promise<StoredFileRow[]> {
     return rows.sort((a, b) => a.created_at.localeCompare(b.created_at))
   }
 
-  const { fetchStoredFiles } = await import('@/lib/document-db')
-  return fetchStoredFiles(ownerId)
+  return withDirectDbFallback(
+    async () => {
+      const { fetchStoredFiles } = await import('@/lib/document-db')
+      return fetchStoredFiles(ownerId)
+    },
+    async () => [],
+  )
 }
 
 // ── Staff users ───────────────────────────────────────────────────────────────
@@ -295,6 +343,11 @@ export async function getStaffActivityStats(): Promise<StaffActivityStats[]> {
     }))
   }
 
-  const { fetchStaffActivityStats } = await import('@/lib/document-db')
-  return fetchStaffActivityStats()
+  return withDirectDbFallback(
+    async () => {
+      const { fetchStaffActivityStats } = await import('@/lib/document-db')
+      return fetchStaffActivityStats()
+    },
+    async () => [],
+  )
 }
