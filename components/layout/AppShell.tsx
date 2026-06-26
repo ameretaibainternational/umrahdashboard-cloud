@@ -18,6 +18,7 @@ const pageTitles: Record<string, string> = {
   '/invoices': 'Invoices',
   '/custom-invoices': 'Custom Invoices',
   '/hotel-voucher': 'Hotel Voucher',
+  '/umrah-poster': 'Umrah Poster',
   '/accounts': 'Accounts',
   '/users': 'Users & Staff',
 }

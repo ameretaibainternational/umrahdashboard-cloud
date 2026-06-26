@@ -5,7 +5,7 @@ import { usePathname } from 'next/navigation'
 import {
   LayoutDashboard, Calculator, BookOpen, FileText,
   Wallet, Settings, UserCog, LogOut, X,
-  PanelLeftClose, PanelLeftOpen, Receipt, BedDouble,
+  PanelLeftClose, PanelLeftOpen, Receipt, BedDouble, ImageIcon,
 } from 'lucide-react'
 import { logout } from '@/app/actions/auth'
 import { cn } from '@/lib/utils'
@@ -19,6 +19,7 @@ const NAV_ITEMS = [
   { href: '/invoices',        label: 'Invoices',         icon: FileText, adminOnly: false, moderator: true, viewer: false },
   { href: '/custom-invoices', label: 'Custom Invoices',  icon: Receipt, adminOnly: false, moderator: true, viewer: false },
   { href: '/hotel-voucher',   label: 'Hotel Voucher',    icon: BedDouble, adminOnly: false, moderator: true, viewer: false },
+  { href: '/umrah-poster',    label: 'Umrah Poster',     icon: ImageIcon, adminOnly: false, moderator: true, viewer: false },
   { href: '/accounts',        label: 'Accounts',         icon: Wallet, adminOnly: false, moderator: true, viewer: false },
   { href: '/settings/visa',   label: 'Settings',         icon: Settings, adminOnly: true, moderator: false, viewer: false },
   { href: '/users',           label: 'Users & Staff',    icon: UserCog, adminOnly: true, moderator: false, viewer: false },

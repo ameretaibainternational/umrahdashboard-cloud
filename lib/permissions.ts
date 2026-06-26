@@ -7,6 +7,7 @@ export const MODERATOR_ROUTE_PREFIXES = [
   '/invoices',
   '/custom-invoices',
   '/hotel-voucher',
+  '/umrah-poster',
   '/accounts',
 ] as const
 
