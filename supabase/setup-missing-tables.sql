@@ -2,7 +2,7 @@
 -- IMPORTANT: Press Ctrl+A to select ALL lines, then click Run.
 -- "Success. No rows returned" alone does NOT mean every table was created.
 -- Scroll to the bottom — the final SELECT must show 4 table names.
--- Project must match .env.local: rvucrtiahhuadbezhnbs
+-- Project must match .env.local: iwzkwkekrswptyipidzc
 -- ============================================================
 
 -- BEFORE (expect 0 rows if tables are missing)
@@ -33,6 +33,22 @@ SELECT
   'All payments are due upon receipt. Late payments may incur additional charges. Services rendered are non-refundable once confirmed. Visa approval is subject to Saudi embassy decision and is not guaranteed.',
   '+92 300 0000000', 'info@fasttravels.pk', 'Lahore, Pakistan'
 WHERE NOT EXISTS (SELECT 1 FROM invoice_settings LIMIT 1);
+
+CREATE TABLE IF NOT EXISTS invoice_clients (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name TEXT NOT NULL,
+  address TEXT NOT NULL DEFAULT '',
+  client_number TEXT NOT NULL DEFAULT '',
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
+ALTER TABLE invoice_clients ENABLE ROW LEVEL SECURITY;
+
+DO $$ BEGIN
+  CREATE POLICY "auth_all" ON invoice_clients FOR ALL TO authenticated USING (true) WITH CHECK (true);
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+GRANT ALL ON TABLE public.invoice_clients TO anon, authenticated, service_role;
 
 CREATE SEQUENCE IF NOT EXISTS custom_invoice_seq START 1;
 
@@ -130,6 +146,8 @@ GRANT ALL ON TABLE public.storage_usage TO anon, authenticated, service_role;
 ALTER TABLE custom_invoices ADD COLUMN IF NOT EXISTS storage_key TEXT;
 ALTER TABLE custom_invoices ADD COLUMN IF NOT EXISTS file_size_bytes BIGINT;
 ALTER TABLE custom_invoices ADD COLUMN IF NOT EXISTS file_deleted_at TIMESTAMPTZ;
+ALTER TABLE custom_invoices ADD COLUMN IF NOT EXISTS invoice_kind TEXT NOT NULL DEFAULT 'custom';
+ALTER TABLE custom_invoices ADD COLUMN IF NOT EXISTS package_data JSONB;
 
 -- Storage triggers
 CREATE OR REPLACE FUNCTION bump_storage_usage() RETURNS trigger AS $$
@@ -137,7 +155,8 @@ BEGIN
   IF coalesce(NEW.file_size_bytes, 0) > 0 THEN
     UPDATE storage_usage
       SET total_bytes = total_bytes + NEW.file_size_bytes,
-          updated_at = now();
+          updated_at = now()
+    WHERE id = (SELECT id FROM storage_usage LIMIT 1);
   END IF;
   RETURN NEW;
 END;
@@ -148,7 +167,8 @@ BEGIN
   IF OLD.file_deleted_at IS NULL AND NEW.file_deleted_at IS NOT NULL THEN
     UPDATE storage_usage
       SET total_bytes = GREATEST(0, total_bytes - coalesce(OLD.file_size_bytes, 0)),
-          updated_at = now();
+          updated_at = now()
+    WHERE id = (SELECT id FROM storage_usage LIMIT 1);
   END IF;
   RETURN NEW;
 END;

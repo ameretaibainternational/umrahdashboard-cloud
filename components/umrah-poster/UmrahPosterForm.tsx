@@ -31,6 +31,7 @@ import {
   POSTER_LOGO_SIZE_MIN,
   type PosterBranding,
 } from '@/lib/umrah-poster-branding-layout'
+import { BrandingSlider, BrandingResetButton } from '@/components/branding/BrandingSlider'
 
 function readFileAsDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -89,37 +90,6 @@ function ScaledCanvasPreview({ canvasRef }: { canvasRef: React.RefObject<HTMLCan
   )
 }
 
-function BrandingSlider({
-  label,
-  value,
-  min,
-  max,
-  onChange,
-}: {
-  label: string
-  value: number
-  min: number
-  max: number
-  onChange: (value: number) => void
-}) {
-  return (
-    <div className="space-y-1.5">
-      <div className="flex items-center justify-between gap-2">
-        <Label className="text-xs">{label}</Label>
-        <span className="text-xs text-muted-foreground tabular-nums">{value}px</span>
-      </div>
-      <input
-        type="range"
-        min={min}
-        max={max}
-        value={value}
-        onChange={e => onChange(Number(e.target.value))}
-        className="w-full h-2 accent-navy cursor-pointer"
-      />
-    </div>
-  )
-}
-
 export default function UmrahPosterForm() {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [data, setData] = useState<UmrahPosterFormData>(DEFAULT_POSTER_DATA)
@@ -152,6 +122,17 @@ export default function UmrahPosterForm() {
   function updateLogoY(nextY: number) {
     setLogoY(clampLogoPosition(logoX, nextY, logoSize).y)
   }
+
+  function resetLogoDefaults() {
+    setLogoSize(DEFAULT_POSTER_LOGO_SIZE)
+    setLogoX(DEFAULT_POSTER_LOGO_X)
+    setLogoY(DEFAULT_POSTER_LOGO_Y)
+  }
+
+  const isDefaultLogo =
+    logoSize === DEFAULT_POSTER_LOGO_SIZE &&
+    logoX === DEFAULT_POSTER_LOGO_X &&
+    logoY === DEFAULT_POSTER_LOGO_Y
 
   const setField = <K extends keyof UmrahPosterFormData>(key: K, value: UmrahPosterFormData[K]) => {
     setData(prev => ({ ...prev, [key]: value }))
@@ -392,6 +373,10 @@ export default function UmrahPosterForm() {
                 min={0}
                 max={logoMaxY}
                 onChange={updateLogoY}
+              />
+              <BrandingResetButton
+                onReset={resetLogoDefaults}
+                disabled={isDefaultLogo}
               />
             </div>
           )}

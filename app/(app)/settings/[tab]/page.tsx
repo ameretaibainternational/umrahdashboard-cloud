@@ -1,5 +1,5 @@
 import { notFound, redirect } from 'next/navigation'
-import { getVisa, getCurrency, getTransportRates, getAirlines, getHotels, getCompany, getCurrentStaff, getStorageUsage, getStoredFiles, getInvoiceSettings } from '@/lib/db'
+import { getVisa, getCurrency, getTransportRates, getAirlines, getHotels, getCompany, getCurrentStaff, getStorageUsage, getStoredFiles, getInvoiceSettings, getInvoiceClients } from '@/lib/db'
 import { isAdminPermission } from '@/lib/permissions'
 import SettingsNav from '@/components/settings/SettingsNav'
 import VisaForm from '@/components/settings/VisaForm'
@@ -10,6 +10,7 @@ import ZiaratsForm from '@/components/settings/ZiaratsForm'
 import CurrencyForm from '@/components/settings/CurrencyForm'
 import CompanyForm from '@/components/settings/CompanyForm'
 import InvoiceSettingsForm from '@/components/settings/InvoiceSettingsForm'
+import InvoiceClientsForm from '@/components/settings/InvoiceClientsForm'
 import StorageManagement from '@/components/storage/StorageManagement'
 
 const VALID_TABS = ['visa', 'tickets', 'transport', 'hotels', 'ziarats', 'currency', 'company', 'invoices', 'storage']
@@ -21,7 +22,7 @@ export default async function SettingsPage({ params }: { params: Promise<{ tab: 
   const current = await getCurrentStaff()
   if (!current || !isAdminPermission(current.permission)) redirect('/dashboard')
 
-  const [visa, currency, transportRates, airlines, hotels, company, invoiceSettings, storageUsage, storedFiles] = await Promise.all([
+  const [visa, currency, transportRates, airlines, hotels, company, invoiceSettings, invoiceClients, storageUsage, storedFiles] = await Promise.all([
     getVisa(),
     getCurrency(),
     getTransportRates(),
@@ -29,6 +30,7 @@ export default async function SettingsPage({ params }: { params: Promise<{ tab: 
     getHotels(),
     getCompany(),
     tab === 'invoices' ? getInvoiceSettings() : Promise.resolve(null),
+    tab === 'invoices' ? getInvoiceClients() : Promise.resolve([]),
     tab === 'storage' ? getStorageUsage() : Promise.resolve({ id: '', total_bytes: 0 }),
     tab === 'storage' ? getStoredFiles() : Promise.resolve([]),
   ])
@@ -43,7 +45,12 @@ export default async function SettingsPage({ params }: { params: Promise<{ tab: 
       {tab === 'ziarats'   && <ZiaratsForm visa={visa} />}
       {tab === 'currency'  && <CurrencyForm currency={currency} />}
       {tab === 'company'   && <CompanyForm company={company} />}
-      {tab === 'invoices'  && invoiceSettings && <InvoiceSettingsForm settings={invoiceSettings} />}
+      {tab === 'invoices'  && invoiceSettings && (
+        <div className="space-y-6">
+          <InvoiceClientsForm clients={invoiceClients} />
+          <InvoiceSettingsForm settings={invoiceSettings} />
+        </div>
+      )}
       {tab === 'storage'   && <StorageManagement files={storedFiles} totalBytes={storageUsage.total_bytes} />}
     </div>
   )

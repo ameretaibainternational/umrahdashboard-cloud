@@ -1,11 +1,12 @@
-import { getInvoiceSettings, getCustomInvoices } from '@/lib/db'
+import { getInvoiceSettings, getCustomInvoices, getInvoiceClients } from '@/lib/db'
 import CustomInvoiceForm from '@/components/custom-invoice/CustomInvoiceForm'
 import { FileText } from 'lucide-react'
 
 export default async function CustomInvoicesPage() {
-  const [settings, invoices] = await Promise.all([
+  const [settings, invoices, savedClients] = await Promise.all([
     getInvoiceSettings(),
     getCustomInvoices(),
+    getInvoiceClients(),
   ])
 
   return (
@@ -20,7 +21,7 @@ export default async function CustomInvoicesPage() {
         </div>
       </div>
 
-      <CustomInvoiceForm settings={settings} existingInvoices={invoices} />
+      <CustomInvoiceForm settings={settings} existingInvoices={invoices} savedClients={savedClients} />
     </div>
   )
 }

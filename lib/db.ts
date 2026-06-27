@@ -8,7 +8,7 @@ import { isDemoMode } from './is-demo'
 import { demoStore } from './demo-store'
 import { isAdminPermission } from './permissions'
 import { hasDirectDb, isDirectDbConnectionError, markDirectDbAuthFailed } from './sql'
-import type { Airline, Hotel, Booking, Payment, Expense, StaffUser, VisaSettings, CurrencySettings, TransportRate, Company, InvoiceSettings, CustomInvoice, HotelVoucherSettings, HotelVoucherRecord, StorageUsage, StoredFileRow, StaffActivityStats } from './types'
+import type { Airline, Hotel, Booking, Payment, Expense, StaffUser, VisaSettings, CurrencySettings, TransportRate, Company, InvoiceSettings, InvoiceClient, CustomInvoice, HotelVoucherSettings, HotelVoucherRecord, StorageUsage, StoredFileRow, StaffActivityStats } from './types'
 import { DEFAULT_URDU_FOOTER, DEFAULT_URDU_GUIDELINES } from './hotel-voucher-defaults'
 import { resolveInvoiceSettings } from './invoice-defaults'
 
@@ -182,6 +182,15 @@ export async function getInvoiceSettings(): Promise<InvoiceSettings> {
   return resolveInvoiceSettings(data)
 }
 
+export async function getInvoiceClients(): Promise<InvoiceClient[]> {
+  if (isDemoMode()) {
+    return [...demoStore.invoiceClients].sort((a, b) => a.name.localeCompare(b.name))
+  }
+  const sb = await getSupabase()
+  const { data } = await sb.from('invoice_clients').select('*').order('name')
+  return data ?? []
+}
+
 // ── Hotel Voucher Settings ─────────────────────────────────────────────────────
 
 function defaultHotelVoucherSettings(): HotelVoucherSettings {
@@ -224,7 +233,41 @@ export async function getCustomInvoices(): Promise<CustomInvoice[]> {
     async () => {
       const sb = await getSupabase()
       const { data } = await sb.from('custom_invoices').select('*').order('created_at', { ascending: false })
-      return filterByOwner(data ?? [], ownerId)
+      const { mapCustomInvoiceRow } = await import('@/lib/document-db')
+      return filterByOwner((data ?? []).map(row => mapCustomInvoiceRow(row as Record<string, unknown>)), ownerId)
+    },
+  )
+}
+
+export async function getPackageInvoices(): Promise<CustomInvoice[]> {
+  const { isPackageInvoice } = await import('@/lib/package-invoice')
+  const invoices = await getCustomInvoices()
+  return invoices.filter(inv => isPackageInvoice(inv) && !inv.file_deleted_at)
+}
+
+export async function getPackageInvoiceById(id: string): Promise<CustomInvoice | null> {
+  const ownerId = await getOwnerFilter()
+  const { isPackageInvoice } = await import('@/lib/package-invoice')
+
+  if (isDemoMode()) {
+    const inv = demoStore.customInvoices.find(i => i.id === id && isPackageInvoice(i))
+    if (!inv) return null
+    if (ownerId && inv.created_by !== ownerId) return null
+    return inv
+  }
+
+  return withDirectDbFallback(
+    async () => {
+      const { fetchPackageInvoiceById } = await import('@/lib/document-db')
+      return fetchPackageInvoiceById(id, ownerId)
+    },
+    async () => {
+      const sb = await getSupabase()
+      const { data } = await sb.from('custom_invoices').select('*').eq('id', id).maybeSingle()
+      if (!data || !isPackageInvoice(data)) return null
+      if (ownerId && data.created_by !== ownerId) return null
+      const { mapCustomInvoiceRow } = await import('@/lib/document-db')
+      return mapCustomInvoiceRow(data as Record<string, unknown>)
     },
   )
 }

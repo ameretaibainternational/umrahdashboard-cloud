@@ -7,7 +7,7 @@ import { friendlyDbError } from '@/lib/friendly-db-error'
 import { requireModeratorFeature } from '@/lib/permissions-server'
 import { supabaseInsertRow } from '@/lib/supabase-fallback-insert'
 import {
-  isDatabaseUrlConfigured,
+  hasDirectDb,
   isDirectDbConnectionError,
   markDirectDbAuthFailed,
   markDirectDbAvailable,
@@ -45,7 +45,7 @@ export async function createBooking(payload: BookingPayload) {
   const row = { ...payload, booking_date: bookingDate }
 
   try {
-    if (isDatabaseUrlConfigured()) {
+    if (hasDirectDb()) {
       try {
         const { insertBooking } = await import('@/lib/crm-db')
         await insertBooking({ ...row, created_by: ctx.userId })
@@ -81,7 +81,7 @@ export async function deleteBooking(id: string) {
     demoStore.deleteBooking(id)
   } else {
     try {
-      if (isDatabaseUrlConfigured()) {
+      if (hasDirectDb()) {
         try {
           const { deleteBookingById, getBookingOwner } = await import('@/lib/crm-db')
           if (!ctx.isAdmin) {

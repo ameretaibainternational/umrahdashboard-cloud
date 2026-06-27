@@ -1,24 +1,35 @@
-import { requireSql, requireWriteSql } from '@/lib/sql'
+import {
+  hasDirectDb,
+  isDirectDbConnectionError,
+  markDirectDbAuthFailed,
+  requireSql,
+  requireWriteSql,
+} from '@/lib/sql'
 import type { Booking, Expense, Payment } from '@/lib/types'
 
 let ownershipColumnsEnsured = false
 
 /** Adds created_by columns if missing — safe to run repeatedly. */
 export async function ensureOwnershipColumns(): Promise<void> {
-  if (ownershipColumnsEnsured) return
-  const sql = requireWriteSql()
-  await sql`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS created_by UUID`
-  await sql`ALTER TABLE payments ADD COLUMN IF NOT EXISTS created_by UUID`
-  await sql`ALTER TABLE expenses ADD COLUMN IF NOT EXISTS created_by UUID`
-  await sql`ALTER TABLE custom_invoices ADD COLUMN IF NOT EXISTS created_by UUID`
-  await sql`ALTER TABLE hotel_vouchers ADD COLUMN IF NOT EXISTS created_by UUID`
-  await sql`CREATE INDEX IF NOT EXISTS idx_bookings_created_by ON bookings(created_by)`
-  await sql`CREATE INDEX IF NOT EXISTS idx_payments_created_by ON payments(created_by)`
-  await sql`CREATE INDEX IF NOT EXISTS idx_expenses_created_by ON expenses(created_by)`
-  await sql`CREATE INDEX IF NOT EXISTS idx_custom_invoices_created_by ON custom_invoices(created_by)`
-  await sql`CREATE INDEX IF NOT EXISTS idx_hotel_vouchers_created_by ON hotel_vouchers(created_by)`
-  await sql.unsafe(`NOTIFY pgrst, 'reload schema'`)
-  ownershipColumnsEnsured = true
+  if (ownershipColumnsEnsured || !hasDirectDb()) return
+  try {
+    const sql = requireWriteSql()
+    await sql`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS created_by UUID`
+    await sql`ALTER TABLE payments ADD COLUMN IF NOT EXISTS created_by UUID`
+    await sql`ALTER TABLE expenses ADD COLUMN IF NOT EXISTS created_by UUID`
+    await sql`ALTER TABLE custom_invoices ADD COLUMN IF NOT EXISTS created_by UUID`
+    await sql`ALTER TABLE hotel_vouchers ADD COLUMN IF NOT EXISTS created_by UUID`
+    await sql`CREATE INDEX IF NOT EXISTS idx_bookings_created_by ON bookings(created_by)`
+    await sql`CREATE INDEX IF NOT EXISTS idx_payments_created_by ON payments(created_by)`
+    await sql`CREATE INDEX IF NOT EXISTS idx_expenses_created_by ON expenses(created_by)`
+    await sql`CREATE INDEX IF NOT EXISTS idx_custom_invoices_created_by ON custom_invoices(created_by)`
+    await sql`CREATE INDEX IF NOT EXISTS idx_hotel_vouchers_created_by ON hotel_vouchers(created_by)`
+    await sql.unsafe(`NOTIFY pgrst, 'reload schema'`)
+    ownershipColumnsEnsured = true
+  } catch (error) {
+    if (isDirectDbConnectionError(error)) markDirectDbAuthFailed()
+    throw error
+  }
 }
 
 function mapBooking(row: Booking): Booking {

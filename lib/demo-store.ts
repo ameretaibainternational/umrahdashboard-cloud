@@ -1,4 +1,4 @@
-import type { Airline, Hotel, Booking, Payment, Expense, StaffUser, VisaSettings, CurrencySettings, TransportRate, Company, InvoiceSettings, CustomInvoice, HotelVoucherSettings, HotelVoucherRecord, StorageUsage } from './types'
+import type { Airline, Hotel, Booking, Payment, Expense, StaffUser, VisaSettings, CurrencySettings, TransportRate, Company, InvoiceSettings, InvoiceClient, CustomInvoice, HotelVoucherSettings, HotelVoucherRecord, StorageUsage } from './types'
 import { DEFAULT_URDU_FOOTER, DEFAULT_URDU_GUIDELINES } from './hotel-voucher-defaults'
 import { DEFAULT_INVOICE_SETTINGS } from './invoice-defaults'
 import { demoFileStore } from './demo-file-store'
@@ -38,6 +38,10 @@ const DEFAULT_HOTELS: Hotel[] = [
   { id: 'h16', city: 'Madinah', name: 'Al Eiman Royal Hotel', location: 'Al Haram', distance: '600-700 MTR', sharing_sar: 150, quad_sar: 250, triple_sar: 400, double_sar: 650 },
   { id: 'h17', city: 'Madinah', name: 'Dallah Taibah Hotel', location: 'Al Haram', distance: '1 KM', sharing_sar: 120, quad_sar: 220, triple_sar: 370, double_sar: 620 },
   { id: 'h18', city: 'Madinah', name: 'Saja Al Madinah Hotel', location: 'Al Haram', distance: 'Shuttle Service', sharing_sar: 100, quad_sar: 200, triple_sar: 350, double_sar: 600 },
+]
+
+const DEFAULT_INVOICE_CLIENTS: InvoiceClient[] = [
+  { id: 'ic1', name: 'ATIQ TRAVEL & TOURS', address: 'DUBAI', client_number: '+971 50 000 0000' },
 ]
 
 const DEFAULT_TRANSPORT_RATES: TransportRate[] = [
@@ -118,6 +122,7 @@ class DemoStore {
   expenses: Expense[] = []
   staff: StaffUser[] = [...DEFAULT_STAFF]
   invoiceSettings: InvoiceSettings = { ...DEFAULT_INVOICE_SETTINGS, id: 'is1' }
+  invoiceClients: InvoiceClient[] = [...DEFAULT_INVOICE_CLIENTS]
   hotelVoucherSettings: HotelVoucherSettings = { ...DEFAULT_HOTEL_VOUCHER_SETTINGS, urdu_guidelines: [...DEFAULT_URDU_GUIDELINES] }
   customInvoices: CustomInvoice[] = []
   hotelVouchers: HotelVoucherRecord[] = []
@@ -154,6 +159,26 @@ class DemoStore {
     }
   }
   deleteAirline(id: string) { this.airlines = this.airlines.filter(a => a.id !== id) }
+
+  // Invoice clients (Billed To)
+  upsertInvoiceClient(data: Omit<InvoiceClient, 'id' | 'created_at'> & { id?: string }) {
+    if (data.id) {
+      this.invoiceClients = this.invoiceClients.map(c =>
+        c.id === data.id ? { ...c, ...data } : c,
+      )
+    } else {
+      this.invoiceClients.push({
+        id: uid(),
+        name: data.name,
+        address: data.address,
+        client_number: data.client_number,
+        created_at: new Date().toISOString(),
+      })
+    }
+  }
+  deleteInvoiceClient(id: string) {
+    this.invoiceClients = this.invoiceClients.filter(c => c.id !== id)
+  }
 
   // Hotels
   upsertHotel(data: Omit<Hotel, 'id'> & { id?: string }) {
@@ -280,6 +305,7 @@ class DemoStore {
     this.expenses = []
     this.staff = [...DEFAULT_STAFF]
     this.invoiceSettings = { ...DEFAULT_INVOICE_SETTINGS }
+    this.invoiceClients = [...DEFAULT_INVOICE_CLIENTS]
     this.hotelVoucherSettings = { ...DEFAULT_HOTEL_VOUCHER_SETTINGS, urdu_guidelines: [...DEFAULT_URDU_GUIDELINES] }
     this.customInvoices = []
     this.hotelVouchers = []
@@ -291,7 +317,7 @@ class DemoStore {
 }
 
 // Bump this whenever DemoStore gains new fields, to force recreation in dev hot-reloads
-const STORE_VERSION = 7
+const STORE_VERSION = 8
 
 const globalStore = globalThis as typeof globalThis & {
   __demoStore?: DemoStore

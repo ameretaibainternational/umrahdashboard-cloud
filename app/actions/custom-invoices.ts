@@ -6,9 +6,15 @@ import { demoStore } from '@/lib/demo-store'
 import { uploadInvoicePdfToStorage } from '@/app/actions/storage'
 import { friendlyDbError } from '@/lib/friendly-db-error'
 import { requireAdmin, requireModeratorFeature } from '@/lib/permissions-server'
+import {
+  isDatabaseUrlConfigured,
+  isDirectDbConnectionError,
+  markDirectDbAuthFailed,
+  markDirectDbAvailable,
+} from '@/lib/sql'
 import type { CustomInvoiceLineItem } from '@/lib/types'
 
-const PATHS = ['/custom-invoices', '/settings/invoices', '/settings/storage']
+const PATHS = ['/custom-invoices', '/settings/invoices', '/settings/storage', '/invoices', '/calculator']
 
 export async function createCustomInvoiceWithPdf(payload: {
   invoice_date: string
@@ -49,15 +55,31 @@ export async function createCustomInvoiceWithPdf(payload: {
     return { success: true as const, invoice_number: inv.invoice_number, id: inv.id }
   }
 
+  const row = {
+    id,
+    ...invoicePayload,
+    storage_key: upload.storage_key,
+    file_size_bytes: upload.file_size_bytes,
+    created_by: ctx.userId,
+  }
+
   try {
-    const { insertCustomInvoice } = await import('@/lib/document-db')
-    const data = await insertCustomInvoice({
-      id,
-      ...invoicePayload,
-      storage_key: upload.storage_key,
-      file_size_bytes: upload.file_size_bytes,
-      created_by: ctx.userId,
-    })
+    if (isDatabaseUrlConfigured()) {
+      try {
+        markDirectDbAvailable()
+        const { insertCustomInvoiceDirect } = await import('@/lib/document-db')
+        const data = await insertCustomInvoiceDirect(row, { force: true })
+        markDirectDbAvailable()
+        PATHS.forEach(p => revalidatePath(p))
+        return { success: true as const, invoice_number: data.invoice_number, id: data.id }
+      } catch (error) {
+        if (!isDirectDbConnectionError(error)) throw error
+        markDirectDbAuthFailed()
+      }
+    }
+
+    const { insertCustomInvoiceSupabase } = await import('@/lib/supabase-document-db')
+    const data = await insertCustomInvoiceSupabase(row)
     PATHS.forEach(p => revalidatePath(p))
     return { success: true as const, invoice_number: data.invoice_number, id: data.id }
   } catch (e) {

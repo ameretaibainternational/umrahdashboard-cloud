@@ -330,7 +330,12 @@ BEGIN
 
     RAISE NOTICE 'Demo user created: demo@umrahdashboard.pk / Demo1234';
   ELSE
-    RAISE NOTICE 'Demo user already exists — skipped.';
+    INSERT INTO staff_users (id, name, username, role, permission, status)
+    SELECT u.id, 'Demo Admin', 'demo', 'Admin', 'Full Access', 'Active'
+    FROM auth.users u
+    WHERE u.email = 'demo@umrahdashboard.pk'
+      AND NOT EXISTS (SELECT 1 FROM staff_users s WHERE s.id = u.id);
+    RAISE NOTICE 'Demo auth user already exists — staff profile linked if it was missing.';
   END IF;
 
 END $$;

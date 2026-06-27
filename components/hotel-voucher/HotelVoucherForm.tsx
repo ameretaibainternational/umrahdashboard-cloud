@@ -23,7 +23,7 @@ import { createHotelVoucherWithPdf } from '@/app/actions/hotel-vouchers'
 import { downloadPdfBytes, downloadStoredPdf } from '@/lib/storage-client'
 import { uint8ToBase64 } from '@/lib/pdf-utils'
 import type { HotelVoucherSettings, HotelVoucherRecord } from '@/lib/types'
-import { BrandingSlider } from '@/components/branding/BrandingSlider'
+import { BrandingSlider, BrandingResetButton } from '@/components/branding/BrandingSlider'
 import {
   clampVoucherLogoPosition,
   DEFAULT_VOUCHER_LOGO_SIZE,
@@ -35,10 +35,10 @@ import {
   VOUCHER_INTRINSIC_BG_H,
   VOUCHER_INTRINSIC_BG_W,
   VOUCHER_LOGO_MAX_BYTES,
-  VOUCHER_LOGO_SIZE_MAX,
-  VOUCHER_LOGO_SIZE_MIN,
   VOUCHER_TEMPLATE_H,
   VOUCHER_TEMPLATE_W,
+  VOUCHER_LOGO_SIZE_MAX,
+  VOUCHER_LOGO_SIZE_MIN,
   type VoucherBranding,
 } from '@/lib/hotel-voucher-branding-layout'
 
@@ -200,8 +200,6 @@ const DEFAULT_DATA: VoucherData = {
 }
 
 // ─── Scaled preview container ──────────────────────────────────────────────────
-const PAGE_W = 794
-
 function ScaledPreview({ children }: { children: React.ReactNode }) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [scale, setScale] = useState(1)
@@ -210,21 +208,28 @@ function ScaledPreview({ children }: { children: React.ReactNode }) {
     const el = containerRef.current
     if (!el) return
     const ro = new ResizeObserver(entries => {
-      const w = entries[0]?.contentRect.width ?? PAGE_W
-      setScale(Math.min(w / PAGE_W, 1))
+      const w = entries[0]?.contentRect.width ?? VOUCHER_TEMPLATE_W
+      setScale(Math.min(w / VOUCHER_TEMPLATE_W, 1))
     })
     ro.observe(el)
     return () => ro.disconnect()
   }, [])
 
+  const scaledH = Math.round(VOUCHER_TEMPLATE_H * scale)
+
   return (
-    <div ref={containerRef} className="w-full overflow-hidden">
-      <div style={{
-        width: `${PAGE_W}px`,
-        transformOrigin: 'top left',
-        transform: `scale(${scale})`,
-      }}>
-        {children}
+    <div ref={containerRef} className="w-full">
+      <div className="overflow-hidden" style={{ height: scaledH }}>
+        <div
+          style={{
+            width: `${VOUCHER_TEMPLATE_W}px`,
+            height: `${VOUCHER_TEMPLATE_H}px`,
+            transformOrigin: 'top left',
+            transform: `scale(${scale})`,
+          }}
+        >
+          {children}
+        </div>
       </div>
     </div>
   )
@@ -292,6 +297,17 @@ export default function HotelVoucherForm({ initialSettings, existingVouchers = [
   function updateLogoY(nextY: number) {
     setLogoY(clampVoucherLogoPosition(logoX, nextY, logoSize).y)
   }
+
+  function resetLogoDefaults() {
+    setLogoSize(DEFAULT_VOUCHER_LOGO_SIZE)
+    setLogoX(DEFAULT_VOUCHER_LOGO_X)
+    setLogoY(DEFAULT_VOUCHER_LOGO_Y)
+  }
+
+  const isDefaultLogo =
+    logoSize === DEFAULT_VOUCHER_LOGO_SIZE &&
+    logoX === DEFAULT_VOUCHER_LOGO_X &&
+    logoY === DEFAULT_VOUCHER_LOGO_Y
 
   // Refs for PDF capture — always rendered in the hidden container
   const page1Ref = useRef<HTMLDivElement>(null)
@@ -559,27 +575,27 @@ export default function HotelVoucherForm({ initialSettings, existingVouchers = [
         {/* Voucher Info */}
         <Section title="Voucher Information">
           <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1">
+            <div className="space-y-1 min-w-0">
               <Label className="text-xs">Voucher No</Label>
               <Input placeholder="1502" value={data.voucherNo}
                 onChange={e => setField('voucherNo', e.target.value)} className="h-8 text-sm" />
             </div>
-            <div className="space-y-1">
+            <div className="space-y-1 min-w-0">
               <Label className="text-xs">Reference No</Label>
               <Input placeholder="ATT-1502" value={data.referenceNo}
                 onChange={e => setField('referenceNo', e.target.value)} className="h-8 text-sm" />
             </div>
-            <div className="space-y-1">
+            <div className="space-y-1 col-span-2 sm:col-span-1 min-w-0">
               <Label className="text-xs">Date</Label>
               <Input type="date" value={data.date}
                 onChange={e => setField('date', e.target.value)} className="h-8 text-sm" />
             </div>
-            <div className="space-y-1">
+            <div className="space-y-1 col-span-2 sm:col-span-1 min-w-0">
               <Label className="text-xs">Family Head (Name)</Label>
               <Input placeholder="SHAKIL AHMAD" value={data.familyHead}
                 onChange={e => setField('familyHead', e.target.value)} className="h-8 text-sm" />
             </div>
-            <div className="space-y-1 col-span-2">
+            <div className="space-y-1 col-span-2 min-w-0">
               <Label className="text-xs">Package Info</Label>
               <Input placeholder="Room (30) Nights" value={data.packageInfo}
                 onChange={e => setField('packageInfo', e.target.value)} className="h-8 text-sm" />
@@ -705,13 +721,13 @@ export default function HotelVoucherForm({ initialSettings, existingVouchers = [
                       <option value="RO">RO (Room Only)</option>
                     </select>
                   </div>
-                  <div className="space-y-1">
+                  <div className="space-y-1 col-span-2 sm:col-span-1 min-w-0">
                     <Label className="text-xs">Check In</Label>
                     <Input type="date" value={a.checkIn}
                       onChange={e => updateAccommodation(a.id, { checkIn: e.target.value })}
                       className="h-7 text-xs" />
                   </div>
-                  <div className="space-y-1">
+                  <div className="space-y-1 col-span-2 sm:col-span-1 min-w-0">
                     <Label className="text-xs">Check Out</Label>
                     <Input type="date" value={a.checkOut}
                       onChange={e => updateAccommodation(a.id, { checkOut: e.target.value })}
@@ -746,12 +762,12 @@ export default function HotelVoucherForm({ initialSettings, existingVouchers = [
               <Input placeholder="+966 14 000 0000" value={data.madinaHotelContact}
                 onChange={e => setField('madinaHotelContact', e.target.value)} className="h-8 text-sm" />
             </div>
-            <div className="space-y-1">
+            <div className="space-y-1 col-span-2 sm:col-span-1 min-w-0">
               <Label className="text-xs">Check-In Time</Label>
               <Input type="time" value={data.checkInTime}
                 onChange={e => setField('checkInTime', e.target.value)} className="h-8 text-sm" />
             </div>
-            <div className="space-y-1">
+            <div className="space-y-1 col-span-2 sm:col-span-1 min-w-0">
               <Label className="text-xs">Check-Out Time</Label>
               <Input type="time" value={data.checkOutTime}
                 onChange={e => setField('checkOutTime', e.target.value)} className="h-8 text-sm" />
@@ -802,6 +818,10 @@ export default function HotelVoucherForm({ initialSettings, existingVouchers = [
                 min={0}
                 max={logoMaxY}
                 onChange={updateLogoY}
+              />
+              <BrandingResetButton
+                onReset={resetLogoDefaults}
+                disabled={isDefaultLogo}
               />
             </div>
           )}

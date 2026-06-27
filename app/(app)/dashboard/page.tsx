@@ -81,15 +81,15 @@ export default async function DashboardPage() {
       {/* KPI grid */}
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
         <KpiCard label="Total Bookings"  value={String(totalBookings)}  icon={BookOpen}
-          iconBg="bg-amber-50" iconColor="text-gold" />
+          iconBg="bg-amber-50" iconColor="text-gold" href="/bookings" />
         <KpiCard label="Customers"       value={String(uniqueCustomers)} icon={Users}
-          iconBg="bg-amber-50" iconColor="text-gold" />
-        <KpiCard label="Revenue"         value={pkr(totalRevenue)}       icon={DollarSign}
-          iconBg="bg-emerald-50" iconColor="text-emerald-600" />
-        <KpiCard label="Profit"          value={pkr(totalProfit)}        icon={TrendingUp}
-          iconBg="bg-sky-50" iconColor="text-sky-500" />
-        <KpiCard label="Outstanding"     value={pkr(totalDue)}           icon={AlertCircle}
-          iconBg="bg-rose-50" iconColor="text-rose-500" />
+          iconBg="bg-amber-50" iconColor="text-gold" href="/accounts" />
+        <KpiCard label="Revenue (Bookings)"         value={pkr(totalRevenue)}       icon={DollarSign}
+          iconBg="bg-emerald-50" iconColor="text-emerald-600" href="/accounts" />
+        <KpiCard label="Your Profit (Earnings)"          value={pkr(totalProfit)}        icon={TrendingUp}
+          iconBg="bg-sky-50" iconColor="text-sky-500" href="/accounts" />
+        <KpiCard label="To receive from customers"     value={pkr(totalDue)}           icon={AlertCircle}
+          iconBg="bg-rose-50" iconColor="text-rose-500" href="/accounts" />
       </div>
 
       {/* Charts section */}

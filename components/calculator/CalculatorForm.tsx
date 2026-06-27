@@ -1,11 +1,16 @@
 'use client'
 
-import { useState, useMemo, useRef, useTransition } from 'react'
+import { useState, useMemo, useRef, useTransition, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { getCalc, generateInvoiceNumber } from '@/lib/calculations'
 import { pkr as fmtPkr } from '@/lib/formatters'
 import { createBooking } from '@/app/actions/bookings'
-import type { Airline, Hotel, VisaSettings, CurrencySettings, TransportRate, RoomType, CalcInput } from '@/lib/types'
+import { createPackageInvoiceWithPdf, updatePackageInvoiceWithPdf } from '@/app/actions/package-invoices'
+import { downloadPdfBytes } from '@/lib/storage-client'
+import { uint8ToBase64 } from '@/lib/pdf-utils'
+import { getPackageDataFromInvoice, isPackageInvoice } from '@/lib/package-invoice'
+import type { Airline, Hotel, VisaSettings, CurrencySettings, TransportRate, RoomType, CalcInput, CustomInvoice, PackageInvoiceData } from '@/lib/types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -26,48 +31,86 @@ interface Props {
   transportRates: TransportRate[]
   company: Company
   canSaveBooking?: boolean
+  editInvoice?: CustomInvoice | null
+}
+
+function initialFromEdit(editInvoice?: CustomInvoice | null): PackageInvoiceData | null {
+  if (!editInvoice) return null
+  return getPackageDataFromInvoice(editInvoice)
 }
 
 export default function CalculatorForm({
   airlines, makkahHotels, madinahHotels, visa, currency, transportRates, company,
   canSaveBooking = true,
+  editInvoice = null,
 }: Props) {
+  const router = useRouter()
   const printRef = useRef<HTMLDivElement>(null)
-  // Stable invoice number — generated once per calculator session
-  const invoiceNo = useRef(generateInvoiceNumber()).current
+  const initial = initialFromEdit(editInvoice)
+  const [invoiceNo, setInvoiceNo] = useState(() => editInvoice?.invoice_number ?? '')
+  const [pdfReady, setPdfReady] = useState(false)
+  const [savedInvoiceId, setSavedInvoiceId] = useState<string | null>(editInvoice?.id ?? null)
   const [isPending, startTransition] = useTransition()
   const [saved, setSaved] = useState(false)
   const [isDownloading, setIsDownloading] = useState(false)
 
-  const [adult, setAdult] = useState(1)
-  const [child, setChild] = useState(0)
-  const [infant, setInfant] = useState(0)
-  const [airlineId, setAirlineId] = useState(airlines[0]?.id ?? '')
-  const [transportType, setTransportType] = useState<'bus' | 'private'>('bus')
-  const [makkahHotelId, setMakkahHotelId] = useState(makkahHotels[0]?.id ?? '')
-  const [makkahRoom, setMakkahRoom] = useState<RoomType>('sharing')
-  const [makkahNights, setMakkahNights] = useState(10)
-  const [madinahHotelId, setMadinahHotelId] = useState(madinahHotels[0]?.id ?? '')
-  const [madinahRoom, setMadinahRoom] = useState<RoomType>('sharing')
-  const [madinahNights, setMadinahNights] = useState(10)
-  const [profitType, setProfitType] = useState<'percent' | 'fixed'>('percent')
-  const [profitValue, setProfitValue] = useState(8)
-  const [sellingOverride, setSellingOverride] = useState<number | null>(null)
-  const [advance, setAdvance] = useState(0)
-  const [customerName, setCustomerName] = useState('')
-  const [makkahZiarat, setMakkahZiarat] = useState(false)
-  const [madinahZiarat, setMadinahZiarat] = useState(false)
-  const [customTicket, setCustomTicket] = useState(false)
-  const [customTicketLabel, setCustomTicketLabel] = useState('')
-  const [customTicketAmount, setCustomTicketAmount] = useState(0)
-  const [customTicketCurrency, setCustomTicketCurrency] = useState<'SAR' | 'PKR'>('SAR')
-  const [travelDate, setTravelDate] = useState('')
-  const [departureCity, setDepartureCity] = useState('')
-  const [arrivalCity, setArrivalCity] = useState('')
-  const [returnCity, setReturnCity] = useState('')
+  const [adult, setAdult] = useState(initial?.adult ?? 1)
+  const [child, setChild] = useState(initial?.child ?? 0)
+  const [infant, setInfant] = useState(initial?.infant ?? 0)
+  const [airlineId, setAirlineId] = useState(initial?.airlineId || airlines[0]?.id || '')
+  const [transportType, setTransportType] = useState<'bus' | 'private'>(initial?.transportType ?? 'bus')
+  const [makkahHotelId, setMakkahHotelId] = useState(initial?.makkahHotelId || makkahHotels[0]?.id || '')
+  const [makkahRoom, setMakkahRoom] = useState<RoomType>(initial?.makkahRoom ?? 'sharing')
+  const [makkahNights, setMakkahNights] = useState(initial?.makkahNights ?? 10)
+  const [madinahHotelId, setMadinahHotelId] = useState(initial?.madinahHotelId || madinahHotels[0]?.id || '')
+  const [madinahRoom, setMadinahRoom] = useState<RoomType>(initial?.madinahRoom ?? 'sharing')
+  const [madinahNights, setMadinahNights] = useState(initial?.madinahNights ?? 10)
+  const [profitType, setProfitType] = useState<'percent' | 'fixed'>(initial?.profitType ?? 'percent')
+  const [profitValue, setProfitValue] = useState(initial?.profitValue ?? 8)
+  const [sellingOverride, setSellingOverride] = useState<number | null>(initial?.sellingOverride ?? null)
+  const [advance, setAdvance] = useState(initial?.advance ?? 0)
+  const [customerName, setCustomerName] = useState(initial?.customerName ?? editInvoice?.billed_to_name ?? '')
+  const [makkahZiarat, setMakkahZiarat] = useState(initial?.makkahZiarat ?? false)
+  const [madinahZiarat, setMadinahZiarat] = useState(initial?.madinahZiarat ?? false)
+  const [customTicket, setCustomTicket] = useState(initial?.customTicket ?? false)
+  const [customTicketLabel, setCustomTicketLabel] = useState(initial?.customTicketLabel ?? '')
+  const [customTicketAmount, setCustomTicketAmount] = useState(initial?.customTicketAmount ?? 0)
+  const [customTicketCurrency, setCustomTicketCurrency] = useState<'SAR' | 'PKR'>(initial?.customTicketCurrency ?? 'SAR')
+  const [travelDate, setTravelDate] = useState(initial?.travelDate ?? editInvoice?.invoice_date ?? '')
+  const [departureCity, setDepartureCity] = useState(initial?.departureCity ?? '')
+  const [arrivalCity, setArrivalCity] = useState(initial?.arrivalCity ?? '')
+  const [returnCity, setReturnCity] = useState(initial?.returnCity ?? '')
+
+  useEffect(() => {
+    setInvoiceNo(prev => prev || generateInvoiceNumber())
+    setPdfReady(true)
+  }, [])
+
+  useEffect(() => {
+    if (airlines.length > 0 && !airlines.some(a => a.id === airlineId)) {
+      setAirlineId(airlines[0].id)
+    }
+  }, [airlines, airlineId])
 
   const PK_CITIES = ['Islamabad', 'Lahore', 'Karachi', 'Peshawar', 'Multan', 'Sialkot', 'Faisalabad', 'Quetta']
   const SA_CITIES = ['Jeddah', 'Madinah', 'Riyadh', 'Dammam']
+
+  function resolveOptionValue(current: string, options: { id: string }[]): string | null {
+    return options.some(o => o.id === current) ? current : null
+  }
+
+  const airlineItems = useMemo(
+    () => airlines.map(a => ({ value: a.id, label: a.name })),
+    [airlines],
+  )
+  const makkahHotelItems = useMemo(
+    () => makkahHotels.map(h => ({ value: h.id, label: `${h.name} · ${h.distance}` })),
+    [makkahHotels],
+  )
+  const madinahHotelItems = useMemo(
+    () => madinahHotels.map(h => ({ value: h.id, label: `${h.name} · ${h.distance}` })),
+    [madinahHotels],
+  )
 
   const customTicketPkr = customTicketCurrency === 'SAR'
     ? customTicketAmount * currency.sar_to_pkr
@@ -104,39 +147,108 @@ export default function CalculatorForm({
      transportRates]
   )
 
-  async function handleDownload() {
+  async function generatePdfBytes(): Promise<Uint8Array> {
     const el = printRef.current
-    if (!el) return
+    if (!el) throw new Error('Invoice preview not ready.')
+    const [{ default: html2canvas }, { jsPDF }] = await Promise.all([
+      import('html2canvas'),
+      import('jspdf'),
+    ])
+    const canvas = await html2canvas(el, {
+      scale: 2,
+      useCORS: true,
+      allowTaint: true,
+      backgroundColor: '#ffffff',
+      logging: false,
+      imageTimeout: 15000,
+      scrollX: 0,
+      scrollY: 0,
+      width: el.scrollWidth,
+      height: el.scrollHeight,
+      windowWidth: el.scrollWidth,
+      onclone: (clonedDoc: Document) => {
+        clonedDoc.querySelectorAll('style, link[rel="stylesheet"]').forEach(e => e.remove())
+        const root = clonedDoc.body.querySelector('[data-calculator-invoice]') as HTMLElement | null
+        if (root) {
+          root.style.width = '794px'
+          root.style.boxSizing = 'border-box'
+        }
+        const origin = window.location.origin
+        clonedDoc.querySelectorAll<HTMLImageElement>('img').forEach(img => {
+          const src = img.getAttribute('src')
+          if (src?.startsWith('/')) img.src = `${origin}${src}`
+        })
+      },
+    })
+    const imgData = canvas.toDataURL('image/jpeg', 0.95)
+    const pdf = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' })
+    const pageW = 210
+    const pageH = 297
+    let renderW = pageW
+    let renderH = (canvas.height * pageW) / canvas.width
+    if (renderH > pageH) {
+      renderH = pageH
+      renderW = (canvas.width * pageH) / canvas.height
+    }
+    const offsetX = (pageW - renderW) / 2
+    pdf.addImage(imgData, 'JPEG', offsetX, 0, renderW, renderH)
+    return new Uint8Array(pdf.output('arraybuffer') as ArrayBuffer)
+  }
+
+  function buildPackageData(): PackageInvoiceData {
+    return {
+      adult, child, infant, airlineId, transportType,
+      makkahHotelId, makkahRoom, makkahNights,
+      madinahHotelId, madinahRoom, madinahNights,
+      profitType, profitValue, sellingOverride, advance,
+      customerName,
+      makkahZiarat, madinahZiarat,
+      customTicket, customTicketLabel, customTicketAmount, customTicketCurrency,
+      travelDate, departureCity, arrivalCity, returnCity,
+    }
+  }
+
+  async function handleDownload() {
     setIsDownloading(true)
     try {
-      const [{ default: html2canvas }, { jsPDF }] = await Promise.all([
-        import('html2canvas'),
-        import('jspdf'),
-      ])
-      const canvas = await html2canvas(el, {
-        scale: 2,
-        useCORS: true,
-        allowTaint: true,
-        backgroundColor: '#ffffff',
-        logging: false,
-        imageTimeout: 15000,
-        scrollX: 0,
-        scrollY: 0,
-        onclone: (clonedDoc: Document) => {
-          // Remove Tailwind stylesheets so html2canvas never hits lab()/oklch() color functions
-          clonedDoc.querySelectorAll('style, link[rel="stylesheet"]').forEach(e => e.remove())
-        },
-      })
-      const imgData = canvas.toDataURL('image/jpeg', 0.95)
-      const pdf = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' })
-      pdf.addImage(imgData, 'JPEG', 0, 0, 210, 297)
-      const filename = customerName
-        ? `${invoiceNo}_${customerName.trim().replace(/\s+/g, '_')}`
-        : invoiceNo
-      pdf.save(`${filename}.pdf`)
+      const bytes = await generatePdfBytes()
+      const pdfBase64 = uint8ToBase64(bytes)
+      const billedName = customerName || 'Walk-in Customer'
+      const invoiceDate = travelDate || new Date().toISOString().slice(0, 10)
+      const payload = {
+        invoice_number: invoiceNo,
+        invoice_date: invoiceDate,
+        billed_to_name: billedName,
+        total: calc.selling,
+        received: advance,
+        remaining: calc.remaining,
+        package_data: buildPackageData(),
+        pdf_base64: pdfBase64,
+        contact_phone: company.phone,
+        contact_email: company.website,
+        contact_location: company.address,
+      }
+
+      const isUpdate = Boolean(savedInvoiceId)
+      const result = isUpdate
+        ? await updatePackageInvoiceWithPdf({ id: savedInvoiceId!, ...payload })
+        : await createPackageInvoiceWithPdf(payload)
+
+      if ('error' in result && result.error) {
+        toast.error(result.error)
+        return
+      }
+
+      if (!isUpdate && 'id' in result && result.id) setSavedInvoiceId(result.id)
+      const filename = billedName !== 'Walk-in Customer'
+        ? `${invoiceNo}_${billedName.trim().replace(/\s+/g, '_')}.pdf`
+        : `${invoiceNo}.pdf`
+      downloadPdfBytes(bytes, filename)
+      toast.success(isUpdate ? 'Invoice updated and downloaded.' : 'Invoice saved and downloaded.')
+      router.refresh()
     } catch (err) {
       console.error('[PDF] calculator invoice failed:', err)
-      alert(`Could not generate PDF: ${err instanceof Error ? err.message : String(err)}`)
+      toast.error(`Could not save invoice: ${err instanceof Error ? err.message : String(err)}`)
     } finally {
       setIsDownloading(false)
     }
@@ -333,16 +445,26 @@ export default function CalculatorForm({
               ) : (
                 <div className="space-y-1.5">
                   <Label className="text-xs">Airline</Label>
-                  <Select value={airlineId} onValueChange={v => v && setAirlineId(v)}>
-                    <SelectTrigger className="w-full">
-                      <SelectValue>{airlines.find(a => a.id === airlineId)?.name ?? 'Select airline'}</SelectValue>
-                    </SelectTrigger>
-                    <SelectContent className="min-w-[220px] !w-auto">
-                      {airlines.map(a => (
-                        <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  {airlines.length === 0 ? (
+                    <p className="text-xs text-muted-foreground rounded-lg border border-dashed px-3 py-2">
+                      No airlines found. Add airlines in Settings first.
+                    </p>
+                  ) : (
+                    <Select
+                      items={airlineItems}
+                      value={resolveOptionValue(airlineId, airlines)}
+                      onValueChange={v => { if (v) setAirlineId(v) }}
+                    >
+                      <SelectTrigger className="w-full">
+                        <SelectValue placeholder="Select airline" />
+                      </SelectTrigger>
+                      <SelectContent className="min-w-[var(--anchor-width)] w-[var(--anchor-width)]">
+                        {airlines.map(a => (
+                          <SelectItem key={a.id} value={a.id} label={a.name}>{a.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
                 </div>
               )}
 
@@ -402,6 +524,7 @@ export default function CalculatorForm({
             const nights = isM ? makkahNights : madinahNights
             const setNights = isM ? setMakkahNights : setMadinahNights
             const hotels = isM ? makkahHotels : madinahHotels
+            const hotelItems = isM ? makkahHotelItems : madinahHotelItems
 
             return (
               <Card key={city} className="shadow-sm border-0">
@@ -413,13 +536,17 @@ export default function CalculatorForm({
                 <CardContent className="grid grid-cols-3 gap-4">
                   <div className="col-span-3 space-y-1.5">
                     <Label className="text-xs">Hotel</Label>
-                    <Select value={hotelId} onValueChange={v => v && setHotelId(v)}>
+                    <Select
+                      items={hotelItems}
+                      value={resolveOptionValue(hotelId, hotels)}
+                      onValueChange={v => { if (v) setHotelId(v) }}
+                    >
                       <SelectTrigger className="w-full">
-                        <SelectValue>{hotels.find(h => h.id === hotelId)?.name ?? 'Select hotel'}</SelectValue>
+                        <SelectValue placeholder="Select hotel" />
                       </SelectTrigger>
-                      <SelectContent className="min-w-[360px] !w-auto">
+                      <SelectContent className="min-w-[var(--anchor-width)] w-[var(--anchor-width)]">
                         {hotels.map(h => (
-                          <SelectItem key={h.id} value={h.id} className="py-2">
+                          <SelectItem key={h.id} value={h.id} label={h.name} className="py-2">
                             <span className="font-medium">{h.name}</span>
                             <span className="text-muted-foreground text-xs ml-1.5">· {h.distance}</span>
                           </SelectItem>
@@ -623,11 +750,11 @@ export default function CalculatorForm({
                   <Button
                     variant="outline"
                     onClick={handleDownload}
-                    disabled={isDownloading}
+                    disabled={isDownloading || !pdfReady || !invoiceNo}
                     className="bg-white/10 border-white/20 text-white hover:bg-white/20 hover:text-white text-xs"
                   >
                     <Download className="w-3.5 h-3.5 mr-1.5" />
-                    {isDownloading ? 'Generating…' : 'Download'}
+                    {isDownloading ? 'Saving…' : editInvoice ? 'Update & Download' : 'Save & Download'}
                   </Button>
                 </div>
               </div>
@@ -636,32 +763,32 @@ export default function CalculatorForm({
         </div>
       </div>
 
-      {/* Hidden capture target — always in DOM, positioned behind everything.
-          No opacity/visibility tricks: html2canvas respects those and produces a blank canvas. */}
-      <div style={{ position: 'fixed', top: 0, left: 0, zIndex: -9999, pointerEvents: 'none' }}>
-        <InvoicePrint
-          ref={printRef}
-          invoiceNo={invoiceNo}
-          customerName={customerName || 'Walk-in Customer'}
-          adult={adult} child={child} infant={infant}
-          airline={airline}
-          makkahHotel={makkahHotel} makkahRoom={makkahRoom} makkahNights={makkahNights}
-          madinahHotel={madinahHotel} madinahRoom={madinahRoom} madinahNights={madinahNights}
-          calc={calc}
-          advance={advance}
-          transportMode={visa.transport_mode}
-          company={company}
-          customTicket={customTicket}
-          customTicketLabel={customTicketLabel}
-          customTicketPkr={customTicketPkr}
-          makkahZiarat={makkahZiarat}
-          madinahZiarat={madinahZiarat}
-          travelDate={travelDate}
-          departureCity={departureCity}
-          arrivalCity={arrivalCity}
-          returnCity={returnCity}
-        />
-      </div>
+      {pdfReady && (
+        <div style={{ position: 'fixed', top: 0, left: 0, zIndex: -9999, pointerEvents: 'none', width: '210mm' }}>
+          <InvoicePrint
+            ref={printRef}
+            invoiceNo={invoiceNo}
+            customerName={customerName || 'Walk-in Customer'}
+            adult={adult} child={child} infant={infant}
+            airline={airline}
+            makkahHotel={makkahHotel} makkahRoom={makkahRoom} makkahNights={makkahNights}
+            madinahHotel={madinahHotel} madinahRoom={madinahRoom} madinahNights={madinahNights}
+            calc={calc}
+            advance={advance}
+            transportMode={visa.transport_mode}
+            company={company}
+            customTicket={customTicket}
+            customTicketLabel={customTicketLabel}
+            customTicketPkr={customTicketPkr}
+            makkahZiarat={makkahZiarat}
+            madinahZiarat={madinahZiarat}
+            travelDate={travelDate}
+            departureCity={departureCity}
+            arrivalCity={arrivalCity}
+            returnCity={returnCity}
+          />
+        </div>
+      )}
     </>
   )
 }

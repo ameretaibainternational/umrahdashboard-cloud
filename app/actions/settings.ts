@@ -190,3 +190,37 @@ export async function updateCompany(formData: FormData) {
   revalidatePath('/settings/company')
   return { success: true }
 }
+
+export async function upsertInvoiceClient(formData: FormData) {
+  const guard = await requireSettingsAccess(); if (guard) return guard
+  const id = formData.get('id') as string | null
+  const name = (formData.get('name') as string).trim()
+  if (!name) return { error: 'Client name is required.' }
+  const payload = {
+    name,
+    address: (formData.get('address') as string) || '',
+    client_number: (formData.get('client_number') as string) || '',
+  }
+  if (isDemoMode()) {
+    demoStore.upsertInvoiceClient(id ? { ...payload, id } : payload)
+  } else {
+    const sb = await getSupabase()
+    if (id) await sb.from('invoice_clients').update(payload).eq('id', id)
+    else await sb.from('invoice_clients').insert(payload)
+  }
+  revalidatePath('/settings/invoices')
+  revalidatePath('/custom-invoices')
+  return { success: true }
+}
+
+export async function deleteInvoiceClient(id: string) {
+  const guard = await requireSettingsAccess(); if (guard) return guard
+  if (isDemoMode()) demoStore.deleteInvoiceClient(id)
+  else {
+    const sb = await getSupabase()
+    await sb.from('invoice_clients').delete().eq('id', id)
+  }
+  revalidatePath('/settings/invoices')
+  revalidatePath('/custom-invoices')
+  return { success: true }
+}

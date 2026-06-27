@@ -53,6 +53,8 @@ const InvoicePrint = forwardRef<HTMLDivElement, Props>(function InvoicePrint(
 
   const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
 
+  const logoSrc = company.logo_url?.trim() || '/logo.png'
+
   // Helper: single label→value row inside a card
   const row = (label: string, value: string, bold = false) => (
     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '5px' }}>
@@ -66,22 +68,23 @@ const InvoicePrint = forwardRef<HTMLDivElement, Props>(function InvoicePrint(
   )
 
   return (
-    <div ref={ref} style={{ fontFamily: 'Inter, sans-serif', color: '#1a1a1a', background: 'white' }}>
-      <div style={{ width: '194mm', margin: '0 auto', padding: '8mm' }}>
+    <div ref={ref} data-calculator-invoice style={{ fontFamily: 'Inter, Arial, sans-serif', color: '#1a1a1a', background: 'white', width: '210mm', boxSizing: 'border-box' }}>
+      <div style={{ width: '100%', boxSizing: 'border-box', padding: '8mm' }}>
         {/* Header */}
         <div style={{ background: '#071426', color: 'white', borderRadius: '8px', padding: '16px 20px', marginBottom: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            {/* Logo */}
-            {company.logo_url ? (
-              /* eslint-disable-next-line @next/next/no-img-element */
-              <img
-                src={company.logo_url}
-                alt={company.name}
-                style={{ width: '44px', height: '44px', borderRadius: '100%', objectFit: 'contain', background: 'transparent', padding: '0px', flexShrink: 0 }}
-              />
-            ) : (
-              <img src="/logo.webp" alt="Fast Travels & Tours" style={{ width: '54px', height: '54px', borderRadius: '100%', objectFit: 'contain', background: 'transparent', padding: '0px', flexShrink: 0 }} />
-            )}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={logoSrc}
+              alt={company.name}
+              crossOrigin="anonymous"
+              style={{
+                width: '56px',
+                height: '56px',
+                objectFit: 'contain',
+                flexShrink: 0,
+              }}
+            />
             <div>
               <h1 style={{ fontSize: '18px', fontWeight: 800, margin: 0, color: '#d4a84f' }}>{company.name}</h1>
               {company.license && <p style={{ fontSize: '10px', color: 'rgba(255,255,255,0.55)', margin: '2px 0 0', fontWeight: 500 }}>{company.license}</p>}

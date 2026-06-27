@@ -1,3 +1,5 @@
+import { RotateCcw } from 'lucide-react'
+import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 
 export function BrandingSlider({
@@ -28,5 +30,27 @@ export function BrandingSlider({
         className="w-full h-2 accent-navy cursor-pointer"
       />
     </div>
+  )
+}
+
+export function BrandingResetButton({
+  onReset,
+  disabled = false,
+}: {
+  onReset: () => void
+  disabled?: boolean
+}) {
+  return (
+    <Button
+      type="button"
+      variant="outline"
+      size="sm"
+      onClick={onReset}
+      disabled={disabled}
+      className="h-8 w-full text-xs gap-1.5"
+    >
+      <RotateCcw className="w-3.5 h-3.5" />
+      Reset to defaults
+    </Button>
   )
 }

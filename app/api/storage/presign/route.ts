@@ -3,6 +3,7 @@ import { isDemoMode } from '@/lib/is-demo'
 import { demoStore } from '@/lib/demo-store'
 import { getPresignedDownloadUrl } from '@/lib/r2'
 import { canAccessDocument, getApiCallerContext, requireApiUser } from '@/lib/api-auth'
+import { isDirectDbConnectionError, markDirectDbAuthFailed } from '@/lib/sql'
 
 export async function GET(request: NextRequest) {
   const auth = await requireApiUser()
@@ -45,7 +46,15 @@ export async function GET(request: NextRequest) {
   }
 
   const { fetchFileForDownload } = await import('@/lib/document-db')
-  const row = await fetchFileForDownload(id, type)
+  let row: Awaited<ReturnType<typeof fetchFileForDownload>> | null = null
+  try {
+    row = await fetchFileForDownload(id, type)
+  } catch (error) {
+    if (!isDirectDbConnectionError(error)) throw error
+    markDirectDbAuthFailed()
+    const { fetchFileForDownloadSupabase } = await import('@/lib/supabase-document-db')
+    row = await fetchFileForDownloadSupabase(id, type)
+  }
 
   if (!row) return NextResponse.json({ error: 'Record not found' }, { status: 404 })
   if (!canAccessDocument(caller.permission, row.created_by, caller.userId)) {

@@ -14,6 +14,9 @@ export function isDirectDbConnectionError(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error)
   return (
     isPostgresAuthError(error) ||
+    message.includes('ECIRCUITBREAKER') ||
+    message.includes('too many authentication failures') ||
+    message.includes('DATABASE_URL connection unavailable') ||
     message.includes('DATABASE_URL is missing') ||
     message.includes('DATABASE_URL is for Supabase project') ||
     message.includes('ECONNREFUSED') ||
@@ -35,8 +38,30 @@ export function markDirectDbAvailable(): void {
   directDbDisabled = false
 }
 
+function extractPoolerHost(url?: string): string | null {
+  if (!url) return null
+  const match = url.match(/@([^:/]+)/)
+  return match?.[1] ?? null
+}
+
+/** Prefer DATABASE_PASSWORD (plain text) over DATABASE_URL when both are set. */
+function resolveDatabaseUrl(): string | undefined {
+  const ref = supabaseProjectRef()
+  const password = readEnv('DATABASE_PASSWORD')
+
+  if (password && ref) {
+    const host =
+      readEnv('SUPABASE_DB_POOLER_HOST') ??
+      extractPoolerHost(readEnv('DATABASE_URL')) ??
+      'aws-1-ap-south-1.pooler.supabase.com'
+    return `postgresql://postgres.${ref}:${encodeURIComponent(password)}@${host}:6543/postgres`
+  }
+
+  return readEnv('DATABASE_URL')
+}
+
 function connectPostgres() {
-  const url = readEnv('DATABASE_URL')
+  const url = resolveDatabaseUrl()
   if (!url) {
     throw new Error(
       'DATABASE_URL is missing from .env.local. In Supabase: Settings → Database → Connection string → URI (Transaction pooler, port 6543). Replace [YOUR-PASSWORD] with your database password, restart npm run dev, then try again.',
@@ -57,7 +82,7 @@ function connectPostgres() {
 /** True when DATABASE_URL is set for the same Supabase project (ignores read failures). */
 export function isDatabaseUrlConfigured(): boolean {
   if (isDemoMode()) return false
-  const url = readEnv('DATABASE_URL')
+  const url = resolveDatabaseUrl()
   if (!url) return false
   const appRef = supabaseProjectRef()
   const dbRef = databaseProjectRef(url)
@@ -97,26 +122,34 @@ function validateDatabaseUrl(url: string): void {
 /** Direct Postgres connection — bypasses Supabase Data API (PostgREST). */
 export function getSql() {
   if (isDemoMode() || directDbDisabled) return null
-  if (!readEnv('DATABASE_URL')) return null
+  if (!resolveDatabaseUrl()) return null
   return connectPostgres()
+}
+
+function databaseUnavailableError(): Error {
+  if (directDbDisabled) {
+    return new Error('DATABASE_URL connection unavailable')
+  }
+  return new Error(
+    'DATABASE_URL is missing from .env.local. In Supabase: Settings → Database → Connection string → URI (Transaction pooler, port 6543). Replace [YOUR-PASSWORD] with your database password, restart npm run dev, then try again.',
+  )
 }
 
 export function requireSql() {
   const sql = getSql()
-  if (!sql) {
-    throw new Error(
-      'DATABASE_URL is missing from .env.local. In Supabase: Settings → Database → Connection string → URI (Transaction pooler, port 6543). Replace [YOUR-PASSWORD] with your database password, restart npm run dev, then try again.',
-    )
-  }
+  if (!sql) throw databaseUnavailableError()
   return sql
 }
 
-/** For writes — always tries direct Postgres when DATABASE_URL is configured. */
-export function requireWriteSql() {
+/** For writes — uses direct Postgres when configured and not blocked by prior auth failures. */
+export function requireWriteSql(options?: { force?: boolean }) {
   if (isDemoMode() || !isDatabaseUrlConfigured()) {
     throw new Error(
       'DATABASE_URL is missing from .env.local. In Supabase: Settings → Database → Connection string → URI (Transaction pooler, port 6543). Replace [YOUR-PASSWORD] with your database password, restart npm run dev, then try again.',
     )
+  }
+  if (directDbDisabled && !options?.force) {
+    throw new Error('DATABASE_URL connection unavailable')
   }
   return connectPostgres()
 }

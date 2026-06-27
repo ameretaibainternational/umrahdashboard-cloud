@@ -10,10 +10,11 @@ import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import CustomInvoiceTemplate from './CustomInvoiceTemplate'
 import { createCustomInvoiceWithPdf } from '@/app/actions/custom-invoices'
-import { downloadStoredPdf } from '@/lib/storage-client'
+import { downloadPdfBytes, downloadStoredPdf } from '@/lib/storage-client'
 import { uint8ToBase64 } from '@/lib/pdf-utils'
 import { getNextInvoiceNumber, resolveInvoiceSettings } from '@/lib/invoice-defaults'
-import { BrandingSlider } from '@/components/branding/BrandingSlider'
+import { isPackageInvoice } from '@/lib/package-invoice'
+import { BrandingSlider, BrandingResetButton } from '@/components/branding/BrandingSlider'
 import {
   clampInvoiceLogoPosition,
   DEFAULT_LOGO_SIZE,
@@ -29,7 +30,7 @@ import {
   scaleRect,
   type InvoiceBranding,
 } from '@/lib/custom-invoice-branding-layout'
-import type { InvoiceSettings, CustomInvoice, CustomInvoiceLineItem } from '@/lib/types'
+import type { InvoiceSettings, CustomInvoice, CustomInvoiceLineItem, InvoiceClient } from '@/lib/types'
 
 // ─── Local line-item state (strings for inputs) ──────────────────────────────
 interface LineItemDraft {
@@ -215,14 +216,26 @@ function ScaledPreview({ children, totalPages }: { children: React.ReactNode; to
 interface Props {
   settings: InvoiceSettings
   existingInvoices: CustomInvoice[]
+  savedClients: InvoiceClient[]
 }
 
-export default function CustomInvoiceForm({ settings, existingInvoices }: Props) {
+function applyClientToBilled(client: InvoiceClient) {
+  return {
+    name: client.name,
+    address: client.address,
+    phone: client.client_number,
+  }
+}
+
+export default function CustomInvoiceForm({ settings, existingInvoices, savedClients }: Props) {
   const router = useRouter()
   const formId = useId()
   const today = new Date().toISOString().split('T')[0]
-  const savedInvoices = existingInvoices.filter(inv => !inv.file_deleted_at)
+  const savedInvoices = existingInvoices.filter(inv => !inv.file_deleted_at && !isPackageInvoice(inv))
   const resolvedSettings = resolveInvoiceSettings(settings)
+  const hasSavedClients = savedClients.length > 0
+  const initialClient = hasSavedClients ? savedClients[0] : null
+  const initialBilled = initialClient ? applyClientToBilled(initialClient) : { name: '', address: '', phone: '' }
 
   const applyDefaultFields = useCallback((source: InvoiceSettings) => {
     setBankName(source.payment_bank_name)
@@ -233,10 +246,26 @@ export default function CustomInvoiceForm({ settings, existingInvoices }: Props)
     setLocation(source.contact_location)
   }, [])
 
-  const resetForNewInvoice = useCallback((invoices: CustomInvoice[], source: InvoiceSettings) => {
-    setBilledName('')
-    setBilledAddr('')
-    setBilledPhone('')
+  const resetForNewInvoice = useCallback((
+    invoices: CustomInvoice[],
+    source: InvoiceSettings,
+    clients: InvoiceClient[],
+  ) => {
+    const first = clients[0]
+    if (first) {
+      const billed = applyClientToBilled(first)
+      setSelectedClientId(first.id)
+      setIsNewCustomer(false)
+      setBilledName(billed.name)
+      setBilledAddr(billed.address)
+      setBilledPhone(billed.phone)
+    } else {
+      setSelectedClientId('')
+      setIsNewCustomer(true)
+      setBilledName('')
+      setBilledAddr('')
+      setBilledPhone('')
+    }
     applyDefaultFields(source)
     setRows([newRow(`${formId}-0`)])
     setDate(new Date().toISOString().split('T')[0])
@@ -246,9 +275,11 @@ export default function CustomInvoiceForm({ settings, existingInvoices }: Props)
   // Form state
   const [invoiceNumber, setInvoiceNumber] = useState(() => getNextInvoiceNumber(existingInvoices))
   const [date, setDate]             = useState(today)
-  const [billedName, setBilledName] = useState('')
-  const [billedAddr, setBilledAddr] = useState('')
-  const [billedPhone, setBilledPhone] = useState('')
+  const [selectedClientId, setSelectedClientId] = useState(initialClient?.id ?? '')
+  const [isNewCustomer, setIsNewCustomer] = useState(!hasSavedClients)
+  const [billedName, setBilledName] = useState(initialBilled.name)
+  const [billedAddr, setBilledAddr] = useState(initialBilled.address)
+  const [billedPhone, setBilledPhone] = useState(initialBilled.phone)
   const [bankName, setBankName]     = useState(resolvedSettings.payment_bank_name)
   const [accountNo, setAccountNo]   = useState(resolvedSettings.payment_account_number)
   const [terms, setTerms]           = useState(resolvedSettings.terms_text)
@@ -295,6 +326,17 @@ export default function CustomInvoiceForm({ settings, existingInvoices }: Props)
     setLogoY(clampInvoiceLogoPosition(logoX, nextY, logoSize).y)
   }
 
+  function resetLogoDefaults() {
+    setLogoSize(DEFAULT_LOGO_SIZE)
+    setLogoX(DEFAULT_LOGO_X)
+    setLogoY(DEFAULT_LOGO_Y)
+  }
+
+  const isDefaultLogo =
+    logoSize === DEFAULT_LOGO_SIZE &&
+    logoX === DEFAULT_LOGO_X &&
+    logoY === DEFAULT_LOGO_Y
+
   useEffect(() => {
     return () => {
       if (signatureUrl) URL.revokeObjectURL(signatureUrl)
@@ -334,6 +376,41 @@ export default function CustomInvoiceForm({ settings, existingInvoices }: Props)
     setSignatureUrl(null)
     if (signatureInputRef.current) signatureInputRef.current.value = ''
   }
+
+  function handleClientSelect(id: string) {
+    setSelectedClientId(id)
+    const client = savedClients.find(c => c.id === id)
+    if (!client) return
+    const billed = applyClientToBilled(client)
+    setBilledName(billed.name)
+    setBilledAddr(billed.address)
+    setBilledPhone(billed.phone)
+  }
+
+  function handleNewCustomerChange(checked: boolean) {
+    setIsNewCustomer(checked)
+    if (!checked && hasSavedClients) {
+      const client = savedClients.find(c => c.id === selectedClientId) ?? savedClients[0]
+      handleClientSelect(client.id)
+      return
+    }
+    if (checked) {
+      setBilledName('')
+      setBilledAddr('')
+      setBilledPhone('')
+    }
+  }
+
+  useEffect(() => {
+    if (isNewCustomer || savedClients.length === 0) return
+    const client = savedClients.find(c => c.id === selectedClientId) ?? savedClients[0]
+    if (!client) return
+    const billed = applyClientToBilled(client)
+    if (client.id !== selectedClientId) setSelectedClientId(client.id)
+    setBilledName(billed.name)
+    setBilledAddr(billed.address)
+    setBilledPhone(billed.phone)
+  }, [savedClients, isNewCustomer, selectedClientId])
 
   useEffect(() => {
     applyDefaultFields(resolveInvoiceSettings(settings))
@@ -528,11 +605,12 @@ export default function CustomInvoiceForm({ settings, existingInvoices }: Props)
         return
       }
       if (!('success' in result) || !result.success) return
-      toast.success(`Invoice ${result.invoice_number} saved.`)
-      await downloadStoredPdf(result.id, 'invoice')
+      downloadPdfBytes(bytes, `${result.invoice_number}.pdf`)
+      toast.success(`Invoice ${result.invoice_number} saved and downloaded.`)
       resetForNewInvoice(
         [...existingInvoices, { invoice_number: result.invoice_number } as CustomInvoice],
         resolveInvoiceSettings(settings),
+        savedClients,
       )
       router.refresh()
     } catch (err) {
@@ -544,7 +622,7 @@ export default function CustomInvoiceForm({ settings, existingInvoices }: Props)
   }, [
     billedName, invoiceNumber, date, billedAddr, billedPhone, bankName, accountNo,
     terms, phone, email, location, rows, lockedCurrency, generateInvoicePdfBytes, router,
-    existingInvoices, settings, resetForNewInvoice,
+    existingInvoices, settings, resetForNewInvoice, savedClients,
   ])
 
   async function handleStoredDownload(inv: CustomInvoice) {
@@ -612,20 +690,52 @@ export default function CustomInvoiceForm({ settings, existingInvoices }: Props)
                 {/* Billed To */}
                 <div>
                   <p className="text-xs font-semibold text-navy mb-2 uppercase tracking-wide">Billed To</p>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    <div className="space-y-1.5">
-                      <Label className="text-xs">Name *</Label>
-                      <Input placeholder="ATIQ TRAVEL & TOURS" value={billedName} onChange={e => setBilledName(e.target.value)} className="h-9" />
+
+                  {hasSavedClients && (
+                    <div className="space-y-3 mb-3">
+                      {!isNewCustomer && (
+                        <div className="space-y-1.5">
+                          <Label className="text-xs">Saved Client</Label>
+                          <select
+                            value={selectedClientId}
+                            onChange={e => handleClientSelect(e.target.value)}
+                            className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                          >
+                            {savedClients.map(c => (
+                              <option key={c.id} value={c.id}>{c.name}</option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          id={`${formId}-new-customer`}
+                          checked={isNewCustomer}
+                          onChange={e => handleNewCustomerChange(e.target.checked)}
+                          className="w-3.5 h-3.5 accent-navy"
+                        />
+                        <Label htmlFor={`${formId}-new-customer`} className="text-xs cursor-pointer">New customer</Label>
+                      </div>
                     </div>
-                    <div className="space-y-1.5">
-                      <Label className="text-xs">Address</Label>
-                      <Input placeholder="DUBAI" value={billedAddr} onChange={e => setBilledAddr(e.target.value)} className="h-9" />
+                  )}
+
+                  {(isNewCustomer || !hasSavedClients) && (
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <div className="space-y-1.5">
+                        <Label className="text-xs">Name *</Label>
+                        <Input placeholder="ATIQ TRAVEL & TOURS" value={billedName} onChange={e => setBilledName(e.target.value)} className="h-9" />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label className="text-xs">Address</Label>
+                        <Input placeholder="DUBAI" value={billedAddr} onChange={e => setBilledAddr(e.target.value)} className="h-9" />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label className="text-xs">Client Number</Label>
+                        <Input placeholder="+971 50 000 0000" value={billedPhone} onChange={e => setBilledPhone(e.target.value)} className="h-9" />
+                      </div>
                     </div>
-                    <div className="space-y-1.5">
-                      <Label className="text-xs">Client Number</Label>
-                      <Input placeholder="+971 50 000 0000" value={billedPhone} onChange={e => setBilledPhone(e.target.value)} className="h-9" />
-                    </div>
-                  </div>
+                  )}
                 </div>
 
                 {/* Payment Method */}
@@ -884,6 +994,10 @@ export default function CustomInvoiceForm({ settings, existingInvoices }: Props)
                           min={0}
                           max={logoMaxY}
                           onChange={updateLogoY}
+                        />
+                        <BrandingResetButton
+                          onReset={resetLogoDefaults}
+                          disabled={isDefaultLogo}
                         />
                       </div>
                     )}

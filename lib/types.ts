@@ -152,6 +152,14 @@ export interface InvoiceSettings {
   updated_at?: string
 }
 
+export interface InvoiceClient {
+  id: string
+  name: string
+  address: string
+  client_number: string
+  created_at?: string
+}
+
 export interface CustomInvoiceLineItem {
   service: string
   pax_price: number | null   // null = column hidden for this row
@@ -164,9 +172,38 @@ export interface CustomInvoiceLineItem {
   night_price_unit: string   // "SAR" | "PKR" | ""
 }
 
+export interface PackageInvoiceData {
+  adult: number
+  child: number
+  infant: number
+  airlineId: string
+  transportType: 'bus' | 'private'
+  makkahHotelId: string
+  makkahRoom: RoomType
+  makkahNights: number
+  madinahHotelId: string
+  madinahRoom: RoomType
+  madinahNights: number
+  profitType: 'percent' | 'fixed'
+  profitValue: number
+  sellingOverride: number | null
+  advance: number
+  customerName: string
+  makkahZiarat: boolean
+  madinahZiarat: boolean
+  customTicket: boolean
+  customTicketLabel: string
+  customTicketAmount: number
+  customTicketCurrency: 'SAR' | 'PKR'
+  travelDate: string
+  departureCity: string
+  arrivalCity: string
+  returnCity: string
+}
+
 export interface CustomInvoice {
   id: string
-  invoice_number: string     // ATI-001, ATI-002, …
+  invoice_number: string     // ATI-001 or INV-20260626-1234
   invoice_date: string       // ISO date
   billed_to_name: string
   billed_to_address: string
@@ -186,6 +223,8 @@ export interface CustomInvoice {
   file_deleted_at?: string | null
   created_at: string
   created_by?: string | null
+  invoice_kind?: 'custom' | 'package'
+  package_data?: PackageInvoiceData | null
 }
 
 export interface HotelVoucherRecord {
