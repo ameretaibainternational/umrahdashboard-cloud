@@ -65,23 +65,21 @@ export default function Sidebar({ companyName, open, onClose, collapsed, onToggl
           'bg-navy text-white transition-all duration-300',
           'lg:translate-x-0 lg:z-10',
           open ? 'translate-x-0' : '-translate-x-full',
-          collapsed ? 'w-[72px]' : 'w-[272px]'
+          collapsed ? 'w-[272px] lg:w-[72px]' : 'w-[272px]',
         )}
       >
         <div className={cn(
-          'flex items-center border-b border-white/10 flex-shrink-0',
-          collapsed ? 'flex-col gap-2 px-2 py-4' : 'gap-3 px-4 py-4'
+          'flex items-center border-b border-white/10 flex-shrink-0 gap-3 px-4 py-4',
+          collapsed && 'lg:flex-col lg:gap-2 lg:px-2',
         )}>
           <div className="w-16 h-16 rounded-xl bg-transparent flex items-center justify-center flex-shrink-0">
             <img src="/logo.png" alt="Amere Taiba International" className="w-full h-full object-contain" />
           </div>
 
-          {!collapsed && (
-            <div className="min-w-0 flex-1">
-              <p className="text-sm font-bold truncate leading-tight">Amere Taiba</p>
-              <p className="text-[11px] text-white/50 leading-tight">International</p>
-            </div>
-          )}
+          <div className={cn('min-w-0 flex-1', collapsed && 'lg:hidden')}>
+            <p className="text-sm font-bold truncate leading-tight">Amere Taiba</p>
+            <p className="text-[11px] text-white/50 leading-tight">International</p>
+          </div>
 
           <button
             onClick={onToggleCollapse}
@@ -107,8 +105,8 @@ export default function Sidebar({ companyName, open, onClose, collapsed, onToggl
         </div>
 
         <nav className={cn(
-          'flex-1 overflow-y-auto py-3 space-y-0.5 sidebar-scroll',
-          collapsed ? 'px-1.5' : 'px-3'
+          'flex-1 overflow-y-auto py-3 space-y-0.5 sidebar-scroll px-3',
+          collapsed && 'lg:px-1.5',
         )}>
           {visibleItems.map(({ href, label, icon: Icon }) => (
             <Link
@@ -117,33 +115,31 @@ export default function Sidebar({ companyName, open, onClose, collapsed, onToggl
               onClick={onClose}
               title={collapsed ? label : undefined}
               className={cn(
-                'flex items-center rounded-lg text-sm font-medium transition-all duration-150',
-                collapsed
-                  ? 'justify-center px-0 py-2.5'
-                  : 'gap-3 px-3 py-2.5',
+                'flex items-center rounded-lg text-sm font-medium transition-all duration-150 gap-3 px-3 py-2.5',
+                collapsed && 'lg:justify-center lg:px-0 lg:gap-0',
                 isActive(href)
                   ? 'bg-gold-gradient text-navy font-semibold'
                   : 'text-white/70 hover:text-white hover:bg-white/10'
               )}
             >
               <Icon className="w-4 h-4 flex-shrink-0" />
-              {!collapsed && <span>{label}</span>}
+              <span className={cn(collapsed && 'lg:hidden')}>{label}</span>
             </Link>
           ))}
         </nav>
 
-        <div className={cn('py-3 border-t border-white/10', collapsed ? 'px-1.5' : 'px-3')}>
+        <div className={cn('py-3 border-t border-white/10 px-3', collapsed && 'lg:px-1.5')}>
           <form action={logout}>
             <button
               type="submit"
               title={collapsed ? 'Sign Out' : undefined}
               className={cn(
-                'w-full flex items-center rounded-lg text-sm font-medium text-white/60 hover:text-white hover:bg-white/10 transition-all',
-                collapsed ? 'justify-center py-2.5' : 'gap-3 px-3 py-2.5'
+                'w-full flex items-center rounded-lg text-sm font-medium text-white/60 hover:text-white hover:bg-white/10 transition-all gap-3 px-3 py-2.5',
+                collapsed && 'lg:justify-center lg:px-0 lg:gap-0',
               )}
             >
               <LogOut className="w-4 h-4 flex-shrink-0" />
-              {!collapsed && <span>Sign Out</span>}
+              <span className={cn(collapsed && 'lg:hidden')}>Sign Out</span>
             </button>
           </form>
         </div>

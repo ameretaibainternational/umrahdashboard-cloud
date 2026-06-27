@@ -4,7 +4,7 @@ import { useState, useTransition } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
-import { Download, Pencil, Trash2, Loader2 } from 'lucide-react'
+import { Download, Pencil, Trash2, Loader2, Calculator } from 'lucide-react'
 import { deleteCustomInvoice } from '@/app/actions/custom-invoices'
 import { downloadStoredPdf } from '@/lib/storage-client'
 import { pkr, formatDate } from '@/lib/formatters'
@@ -61,20 +61,23 @@ export default function PackageInvoicesTable({ invoices, canManage = true }: Pro
 
   return (
     <div className="rounded-xl border bg-white overflow-hidden shadow-sm">
-      <div className="px-6 py-4 border-b bg-muted/20 flex items-center justify-between">
+      <div className="px-4 sm:px-6 py-4 border-b bg-muted/20 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <p className="text-sm text-muted-foreground">
           {invoices.length} package invoice{invoices.length !== 1 ? 's' : ''}
         </p>
         {canManage && (
           <Link
             href="/calculator"
-            className="inline-flex items-center justify-center h-8 px-3 text-xs rounded-md border border-input bg-background hover:bg-accent hover:text-accent-foreground"
+            className="inline-flex items-center justify-center gap-1.5 h-9 px-3 text-xs font-medium rounded-md border border-input bg-background hover:bg-accent hover:text-accent-foreground whitespace-nowrap self-start sm:self-auto shrink-0"
           >
-            New from Calculator
+            <Calculator className="w-3.5 h-3.5" />
+            <span className="sm:hidden">Calculator</span>
+            <span className="hidden sm:inline">New from Calculator</span>
           </Link>
         )}
       </div>
-      <Table>
+      <div className="overflow-x-auto">
+      <Table className="min-w-[640px]">
         <TableHeader>
           <TableRow className="bg-muted/40">
             <TableHead className="text-xs">Invoice #</TableHead>
@@ -162,6 +165,7 @@ export default function PackageInvoicesTable({ invoices, canManage = true }: Pro
           })}
         </TableBody>
       </Table>
+      </div>
     </div>
   )
 }

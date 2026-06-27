@@ -79,7 +79,7 @@ export default async function DashboardPage() {
   return (
     <div className="space-y-6">
       {/* KPI grid */}
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+      <div className="grid grid-cols-1 min-[420px]:grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4">
         <KpiCard label="Total Bookings"  value={String(totalBookings)}  icon={BookOpen}
           iconBg="bg-amber-50" iconColor="text-gold" href="/bookings" />
         <KpiCard label="Customers"       value={String(uniqueCustomers)} icon={Users}

@@ -46,7 +46,11 @@ export default function AppShell({ children, companyName, isDemo, permission, st
   }, [])
 
   useEffect(() => {
-    if (pathname.startsWith('/custom-invoices') || pathname.startsWith('/umrah-poster')) {
+    if (
+      pathname.startsWith('/custom-invoices') ||
+      pathname.startsWith('/hotel-voucher') ||
+      pathname.startsWith('/umrah-poster')
+    ) {
       setSidebarCollapsed(true)
     }
   }, [pathname])

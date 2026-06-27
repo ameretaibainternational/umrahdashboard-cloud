@@ -42,7 +42,7 @@ export default async function AccountsPage() {
     <div className="space-y-6">
 
       {/* ── KPI Row ── */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 min-[420px]:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         <KpiCard
           label="Total Received"
           value={pkr(totalReceived)}

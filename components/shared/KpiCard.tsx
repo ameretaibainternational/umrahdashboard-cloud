@@ -20,15 +20,15 @@ export default function KpiCard({
 }: KpiCardProps) {
   const card = (
     <Card className={cn(
-      'p-5 flex items-start gap-4 shadow-sm border-0 bg-white transition-shadow',
+      'p-3 sm:p-5 flex flex-col sm:flex-row sm:items-start gap-2.5 sm:gap-4 shadow-sm border-0 bg-white transition-shadow min-w-0',
       href ? 'hover:shadow-md cursor-pointer hover:bg-slate-50/80' : 'hover:shadow-md',
     )}>
-      <div className={cn('w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0', iconBg)}>
-        <Icon className={cn('w-5 h-5', iconColor)} />
+      <div className={cn('w-9 h-9 sm:w-11 sm:h-11 rounded-xl flex items-center justify-center flex-shrink-0', iconBg)}>
+        <Icon className={cn('w-4 h-4 sm:w-5 sm:h-5', iconColor)} />
       </div>
-      <div className="min-w-0 flex-1">
-        <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide mb-1">{label}</p>
-        <p className="text-xl font-bold text-navy truncate">{value}</p>
+      <div className="min-w-0 flex-1 w-full">
+        <p className="text-[10px] sm:text-xs text-muted-foreground font-medium uppercase tracking-wide mb-0.5 sm:mb-1 leading-snug">{label}</p>
+        <p className="text-sm sm:text-lg lg:text-xl font-bold text-navy tabular-nums leading-tight break-words">{value}</p>
         {trend && (
           <p className={cn('text-xs mt-0.5', trendUp ? 'text-emerald-600' : 'text-muted-foreground')}>
             {trend}
