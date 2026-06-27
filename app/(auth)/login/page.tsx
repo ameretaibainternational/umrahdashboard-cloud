@@ -9,12 +9,15 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Turnstile } from '@marsidev/react-turnstile'
 import type { TurnstileInstance } from '@marsidev/react-turnstile'
+import { turnstileSiteKey } from '@/lib/turnstile'
 
 const IS_DEMO = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
   process.env.NEXT_PUBLIC_SUPABASE_URL.includes('your-project')
 
 const SHOW_DEMO_CREDENTIALS = process.env.NEXT_PUBLIC_SHOW_DEMO_CREDENTIALS === 'true'
-const TURNSTILE_SITE_KEY = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY
+const TURNSTILE_SITE_KEY = turnstileSiteKey()
+/** Site key is public; secret is server-only — UI follows site key presence. */
+const TURNSTILE_UI_ENABLED = Boolean(TURNSTILE_SITE_KEY)
 
 const DEMO_EMAIL = 'demo@umrahdashboard.pk'
 const DEMO_PASSWORD = 'Demo1234'
@@ -44,12 +47,12 @@ export default function LoginPage() {
   async function handleSubmit(formData: FormData) {
     setError('')
 
-    if (TURNSTILE_SITE_KEY && !turnstileToken) {
+    if (TURNSTILE_UI_ENABLED && !turnstileToken) {
       setError('Please complete the CAPTCHA verification.')
       return
     }
 
-    if (TURNSTILE_SITE_KEY) {
+    if (TURNSTILE_UI_ENABLED) {
       formData.set('cf_turnstile_token', turnstileToken)
     }
 
@@ -226,7 +229,7 @@ export default function LoginPage() {
             </div>
 
             {/* Cloudflare Turnstile CAPTCHA */}
-            {!IS_DEMO && TURNSTILE_SITE_KEY && (
+            {!IS_DEMO && TURNSTILE_UI_ENABLED && TURNSTILE_SITE_KEY && (
               <div className="flex justify-center">
                 <Turnstile
                   ref={turnstileRef}
@@ -251,7 +254,7 @@ export default function LoginPage() {
             {!IS_DEMO && (
               <Button
                 type="submit"
-                disabled={isPending || (!!TURNSTILE_SITE_KEY && !turnstileToken)}
+                disabled={isPending || (TURNSTILE_UI_ENABLED && !turnstileToken)}
                 className="w-full h-11 bg-navy hover:bg-navy-2 text-white font-semibold disabled:opacity-50"
               >
                 {isPending ? (

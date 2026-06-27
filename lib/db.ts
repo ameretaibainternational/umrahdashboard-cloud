@@ -291,14 +291,21 @@ export async function getHotelVouchers(): Promise<HotelVoucherRecord[]> {
 export async function getStorageUsage(): Promise<StorageUsage> {
   if (isDemoMode()) return { ...demoStore.storageUsage }
   const empty = { id: '', total_bytes: 0, updated_at: new Date().toISOString() }
-  if (!hasDirectDb()) return empty
-  try {
-    const { fetchStorageUsage } = await import('@/lib/document-db')
-    return await fetchStorageUsage()
-  } catch (error) {
-    if (isDirectDbConnectionError(error)) markDirectDbAuthFailed()
-    return empty
-  }
+
+  return withDirectDbFallback(
+    async () => {
+      const { fetchStorageUsage } = await import('@/lib/document-db')
+      return await fetchStorageUsage()
+    },
+    async () => {
+      try {
+        const { fetchStorageUsageSupabase } = await import('@/lib/supabase-document-db')
+        return await fetchStorageUsageSupabase()
+      } catch {
+        return empty
+      }
+    },
+  )
 }
 
 /** All invoice + voucher rows that still have a stored PDF file. */
@@ -342,7 +349,14 @@ export async function getStoredFiles(): Promise<StoredFileRow[]> {
       const { fetchStoredFiles } = await import('@/lib/document-db')
       return fetchStoredFiles(ownerId)
     },
-    async () => [],
+    async () => {
+      try {
+        const { fetchStoredFilesSupabase } = await import('@/lib/supabase-document-db')
+        return await fetchStoredFilesSupabase(ownerId)
+      } catch {
+        return []
+      }
+    },
   )
 }
 

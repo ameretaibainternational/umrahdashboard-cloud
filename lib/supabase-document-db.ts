@@ -1,5 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
-import type { CustomInvoiceLineItem, PackageInvoiceData } from '@/lib/types'
+import type { CustomInvoiceLineItem, PackageInvoiceData, StoredFileRow, StorageUsage } from '@/lib/types'
 import { encodePackageDataInTerms } from '@/lib/package-invoice'
 
 function isCreatedBySchemaError(message: string): boolean {
@@ -244,4 +244,157 @@ export async function markFileDeletedSupabase(id: string, type: 'invoice' | 'vou
   const supabase = await createClient()
   const table = type === 'invoice' ? 'custom_invoices' : 'hotel_vouchers'
   await supabase.from(table).update({ file_deleted_at: deletedAt }).eq('id', id)
+}
+
+type StoredFileDbRow = {
+  id: string
+  number: string
+  label: string
+  date: string
+  file_size_bytes: number
+  created_at: string
+  storage_key: string | null
+  file_deleted_at: string | null
+  created_by?: string | null
+}
+
+function mapStoredInvoiceRows(rows: StoredFileDbRow[]): StoredFileRow[] {
+  return rows
+    .filter(r => r.storage_key && !r.file_deleted_at && r.file_size_bytes)
+    .map(r => ({
+      id: r.id,
+      type: 'invoice' as const,
+      number: r.number,
+      label: r.label ?? '',
+      date: String(r.date).slice(0, 10),
+      file_size_bytes: Number(r.file_size_bytes),
+      created_at: r.created_at,
+    }))
+}
+
+function mapStoredVoucherRows(rows: StoredFileDbRow[]): StoredFileRow[] {
+  return rows
+    .filter(r => r.storage_key && !r.file_deleted_at && r.file_size_bytes)
+    .map(r => ({
+      id: r.id,
+      type: 'voucher' as const,
+      number: r.number,
+      label: r.label ?? '',
+      date: String(r.date).slice(0, 10),
+      file_size_bytes: Number(r.file_size_bytes),
+      created_at: r.created_at,
+    }))
+}
+
+export async function fetchStoredFilesSupabase(createdBy?: string | null): Promise<StoredFileRow[]> {
+  const supabase = await createClient()
+
+  type InvoiceRow = {
+    id: string
+    invoice_number: string
+    billed_to_name: string
+    invoice_date: string
+    file_size_bytes: number
+    created_at: string
+    storage_key: string | null
+    file_deleted_at: string | null
+    created_by?: string | null
+  }
+
+  type VoucherRow = {
+    id: string
+    voucher_number: string
+    family_head: string
+    voucher_date: string
+    file_size_bytes: number
+    created_at: string
+    storage_key: string | null
+    file_deleted_at: string | null
+    created_by?: string | null
+  }
+
+  async function loadInvoices(withOwner: boolean) {
+    let q = supabase
+      .from('custom_invoices')
+      .select('id, invoice_number, billed_to_name, invoice_date, file_size_bytes, created_at, storage_key, file_deleted_at, created_by')
+      .is('file_deleted_at', null)
+      .not('storage_key', 'is', null)
+    if (withOwner && createdBy) q = q.eq('created_by', createdBy)
+    return q
+  }
+
+  async function loadVouchers(withOwner: boolean) {
+    let q = supabase
+      .from('hotel_vouchers')
+      .select('id, voucher_number, family_head, voucher_date, file_size_bytes, created_at, storage_key, file_deleted_at, created_by')
+      .is('file_deleted_at', null)
+      .not('storage_key', 'is', null)
+    if (withOwner && createdBy) q = q.eq('created_by', createdBy)
+    return q
+  }
+
+  let invoiceRes = await loadInvoices(Boolean(createdBy))
+  let voucherRes = await loadVouchers(Boolean(createdBy))
+
+  if (createdBy && invoiceRes.error && isCreatedBySchemaError(invoiceRes.error.message)) {
+    invoiceRes = await loadInvoices(false)
+  }
+  if (createdBy && voucherRes.error && isCreatedBySchemaError(voucherRes.error.message)) {
+    voucherRes = await loadVouchers(false)
+  }
+
+  if (invoiceRes.error) throw new Error(invoiceRes.error.message)
+  if (voucherRes.error) throw new Error(voucherRes.error.message)
+
+  const invoiceRows = (invoiceRes.data ?? []) as InvoiceRow[]
+  const voucherRows = (voucherRes.data ?? []) as VoucherRow[]
+
+  const invoices = mapStoredInvoiceRows(
+    invoiceRows
+      .filter(r => !createdBy || !r.created_by || r.created_by === createdBy)
+      .map(r => ({
+        id: r.id,
+        number: r.invoice_number,
+        label: r.billed_to_name,
+        date: r.invoice_date,
+        file_size_bytes: r.file_size_bytes,
+        created_at: r.created_at,
+        storage_key: r.storage_key,
+        file_deleted_at: r.file_deleted_at,
+      })),
+  )
+
+  const vouchers = mapStoredVoucherRows(
+    voucherRows
+      .filter(r => !createdBy || !r.created_by || r.created_by === createdBy)
+      .map(r => ({
+        id: r.id,
+        number: r.voucher_number,
+        label: r.family_head,
+        date: r.voucher_date,
+        file_size_bytes: r.file_size_bytes,
+        created_at: r.created_at,
+        storage_key: r.storage_key,
+        file_deleted_at: r.file_deleted_at,
+      })),
+  )
+
+  return [...invoices, ...vouchers].sort((a, b) => a.created_at.localeCompare(b.created_at))
+}
+
+export async function fetchStorageUsageSupabase(): Promise<StorageUsage> {
+  const supabase = await createClient()
+  const { data, error } = await supabase.from('storage_usage').select('*').limit(1).maybeSingle()
+
+  if (!error && data) {
+    return {
+      id: data.id,
+      total_bytes: Number(data.total_bytes),
+      updated_at: data.updated_at ?? new Date().toISOString(),
+    }
+  }
+
+  const files = await fetchStoredFilesSupabase()
+  const total_bytes = files.reduce((sum, f) => sum + f.file_size_bytes, 0)
+  return { id: '', total_bytes, updated_at: new Date().toISOString() }
 }
