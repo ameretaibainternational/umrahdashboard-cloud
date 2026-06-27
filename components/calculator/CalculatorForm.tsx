@@ -9,6 +9,7 @@ import { createBooking } from '@/app/actions/bookings'
 import { createPackageInvoiceWithPdf, updatePackageInvoiceWithPdf } from '@/app/actions/package-invoices'
 import { downloadPdfBytes } from '@/lib/storage-client'
 import { uint8ToBase64 } from '@/lib/pdf-utils'
+import { preloadCompanyLogo, waitForImages } from '@/lib/company-logo'
 import { getPackageDataFromInvoice, isPackageInvoice } from '@/lib/package-invoice'
 import type { Airline, Hotel, VisaSettings, CurrencySettings, TransportRate, RoomType, CalcInput, CustomInvoice, PackageInvoiceData } from '@/lib/types'
 import { Button } from '@/components/ui/button'
@@ -49,6 +50,7 @@ export default function CalculatorForm({
   const initial = initialFromEdit(editInvoice)
   const [invoiceNo, setInvoiceNo] = useState(() => editInvoice?.invoice_number ?? '')
   const [pdfReady, setPdfReady] = useState(false)
+  const [logoDataUrl, setLogoDataUrl] = useState<string | null>(null)
   const [savedInvoiceId, setSavedInvoiceId] = useState<string | null>(editInvoice?.id ?? null)
   const [isPending, startTransition] = useTransition()
   const [saved, setSaved] = useState(false)
@@ -83,8 +85,14 @@ export default function CalculatorForm({
 
   useEffect(() => {
     setInvoiceNo(prev => prev || generateInvoiceNumber())
-    setPdfReady(true)
-  }, [])
+    let cancelled = false
+    preloadCompanyLogo(company.logo_url).then(dataUrl => {
+      if (cancelled) return
+      setLogoDataUrl(dataUrl)
+      setPdfReady(true)
+    })
+    return () => { cancelled = true }
+  }, [company.logo_url])
 
   useEffect(() => {
     if (airlines.length > 0 && !airlines.some(a => a.id === airlineId)) {
@@ -150,6 +158,7 @@ export default function CalculatorForm({
   async function generatePdfBytes(): Promise<Uint8Array> {
     const el = printRef.current
     if (!el) throw new Error('Invoice preview not ready.')
+    await waitForImages(el)
     const [{ default: html2canvas }, { jsPDF }] = await Promise.all([
       import('html2canvas'),
       import('jspdf'),
@@ -738,35 +747,38 @@ export default function CalculatorForm({
                     {saved ? 'Saved!' : 'Save Booking'}
                   </Button>
                 )}
-                <div className="grid grid-cols-2 gap-2">
-                  <Button
-                    variant="outline"
-                    onClick={handleCopyWhatsApp}
-                    className="bg-white/10 border-white/20 text-white hover:bg-white/20 hover:text-white text-xs"
-                  >
-                    <Copy className="w-3.5 h-3.5 mr-1.5" />
-                    WhatsApp
-                  </Button>
-                  <Button
-                    variant="outline"
-                    onClick={handleDownload}
-                    disabled={isDownloading || !pdfReady || !invoiceNo}
-                    className="bg-white/10 border-white/20 text-white hover:bg-white/20 hover:text-white text-xs"
-                  >
-                    <Download className="w-3.5 h-3.5 mr-1.5" />
-                    {isDownloading ? 'Saving…' : editInvoice ? 'Update & Download' : 'Save & Download'}
-                  </Button>
-                </div>
+                {canSaveBooking && (
+                  <div className="grid grid-cols-2 gap-2">
+                    <Button
+                      variant="outline"
+                      onClick={handleCopyWhatsApp}
+                      className="bg-white/10 border-white/20 text-white hover:bg-white/20 hover:text-white text-xs"
+                    >
+                      <Copy className="w-3.5 h-3.5 mr-1.5" />
+                      WhatsApp
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={handleDownload}
+                      disabled={isDownloading || !pdfReady || !logoDataUrl || !invoiceNo}
+                      className="bg-white/10 border-white/20 text-white hover:bg-white/20 hover:text-white text-xs"
+                    >
+                      <Download className="w-3.5 h-3.5 mr-1.5" />
+                      {isDownloading ? 'Saving…' : editInvoice ? 'Update & Download' : 'Save & Download'}
+                    </Button>
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>
         </div>
       </div>
 
-      {pdfReady && (
+      {pdfReady && logoDataUrl && (
         <div style={{ position: 'fixed', top: 0, left: 0, zIndex: -9999, pointerEvents: 'none', width: '210mm' }}>
           <InvoicePrint
             ref={printRef}
+            logoSrc={logoDataUrl}
             invoiceNo={invoiceNo}
             customerName={customerName || 'Walk-in Customer'}
             adult={adult} child={child} infant={infant}

@@ -1,6 +1,7 @@
 import {
   hasDirectDb,
   isDirectDbConnectionError,
+  isDirectDbRecoverableError,
   markDirectDbAuthFailed,
   requireSql,
   requireWriteSql,
@@ -9,7 +10,7 @@ import type { Booking, Expense, Payment } from '@/lib/types'
 
 let ownershipColumnsEnsured = false
 
-/** Adds created_by columns if missing — safe to run repeatedly. */
+/** Adds created_by columns if missing — best-effort, never blocks reads. */
 export async function ensureOwnershipColumns(): Promise<void> {
   if (ownershipColumnsEnsured || !hasDirectDb()) return
   try {
@@ -25,10 +26,24 @@ export async function ensureOwnershipColumns(): Promise<void> {
     await sql`CREATE INDEX IF NOT EXISTS idx_custom_invoices_created_by ON custom_invoices(created_by)`
     await sql`CREATE INDEX IF NOT EXISTS idx_hotel_vouchers_created_by ON hotel_vouchers(created_by)`
     await sql.unsafe(`NOTIFY pgrst, 'reload schema'`)
-    ownershipColumnsEnsured = true
   } catch (error) {
     if (isDirectDbConnectionError(error)) markDirectDbAuthFailed()
-    throw error
+  } finally {
+    ownershipColumnsEnsured = true
+  }
+}
+
+async function fetchOwnedRows<T extends { created_by?: string | null }>(
+  load: (filterOwner: boolean) => Promise<T[]>,
+  createdBy?: string | null,
+): Promise<T[]> {
+  if (!createdBy) return load(false)
+  try {
+    return await load(true)
+  } catch (error) {
+    if (!isDirectDbRecoverableError(error)) throw error
+    const rows = await load(false)
+    return rows.filter(row => !row.created_by || row.created_by === createdBy)
   }
 }
 
@@ -50,15 +65,13 @@ function mapBooking(row: Booking): Booking {
 }
 
 export async function fetchBookings(createdBy?: string | null): Promise<Booking[]> {
-  await ensureOwnershipColumns()
   const sql = requireSql()
-  const rows = createdBy
-    ? await sql<Booking[]>`
-        SELECT * FROM bookings WHERE created_by = ${createdBy} ORDER BY created_at DESC
-      `
-    : await sql<Booking[]>`
-        SELECT * FROM bookings ORDER BY created_at DESC
-      `
+  const rows = await fetchOwnedRows(
+    filterOwner => (filterOwner && createdBy
+      ? sql<Booking[]>`SELECT * FROM bookings WHERE created_by = ${createdBy} ORDER BY created_at DESC`
+      : sql<Booking[]>`SELECT * FROM bookings ORDER BY created_at DESC`),
+    createdBy,
+  )
   return rows.map(mapBooking)
 }
 
@@ -161,15 +174,13 @@ export async function updateBookingPaidTotals(
 }
 
 export async function fetchPayments(createdBy?: string | null): Promise<Payment[]> {
-  await ensureOwnershipColumns()
   const sql = requireSql()
-  const rows = createdBy
-    ? await sql<Payment[]>`
-        SELECT * FROM payments WHERE created_by = ${createdBy} ORDER BY created_at DESC
-      `
-    : await sql<Payment[]>`
-        SELECT * FROM payments ORDER BY created_at DESC
-      `
+  const rows = await fetchOwnedRows(
+    filterOwner => (filterOwner && createdBy
+      ? sql<Payment[]>`SELECT * FROM payments WHERE created_by = ${createdBy} ORDER BY created_at DESC`
+      : sql<Payment[]>`SELECT * FROM payments ORDER BY created_at DESC`),
+    createdBy,
+  )
   return rows.map(r => ({ ...r, amount_pkr: Number(r.amount_pkr) }))
 }
 
@@ -194,14 +205,12 @@ export async function insertExpense(row: {
 }
 
 export async function fetchExpenses(createdBy?: string | null): Promise<Expense[]> {
-  await ensureOwnershipColumns()
   const sql = requireSql()
-  const rows = createdBy
-    ? await sql<Expense[]>`
-        SELECT * FROM expenses WHERE created_by = ${createdBy} ORDER BY created_at DESC
-      `
-    : await sql<Expense[]>`
-        SELECT * FROM expenses ORDER BY created_at DESC
-      `
+  const rows = await fetchOwnedRows(
+    filterOwner => (filterOwner && createdBy
+      ? sql<Expense[]>`SELECT * FROM expenses WHERE created_by = ${createdBy} ORDER BY created_at DESC`
+      : sql<Expense[]>`SELECT * FROM expenses ORDER BY created_at DESC`),
+    createdBy,
+  )
   return rows.map(r => ({ ...r, amount_pkr: Number(r.amount_pkr) }))
 }

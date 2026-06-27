@@ -1,5 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
-import type { CustomInvoiceLineItem, PackageInvoiceData, StoredFileRow, StorageUsage } from '@/lib/types'
+import type { CustomInvoice, CustomInvoiceLineItem, PackageInvoiceData, StoredFileRow, StorageUsage } from '@/lib/types'
 import { encodePackageDataInTerms } from '@/lib/package-invoice'
 
 function isCreatedBySchemaError(message: string): boolean {
@@ -380,6 +380,25 @@ export async function fetchStoredFilesSupabase(createdBy?: string | null): Promi
   )
 
   return [...invoices, ...vouchers].sort((a, b) => a.created_at.localeCompare(b.created_at))
+}
+
+export async function fetchPackageInvoiceByIdSupabase(id: string, createdBy?: string | null): Promise<CustomInvoice | null> {
+  const supabase = await createClient()
+  const { isPackageInvoice } = await import('@/lib/package-invoice')
+  const { mapCustomInvoiceRow } = await import('@/lib/document-db')
+
+  let query = supabase.from('custom_invoices').select('*').eq('id', id)
+  if (createdBy) query = query.eq('created_by', createdBy)
+
+  let { data, error } = await query.maybeSingle()
+  if (error && createdBy && isCreatedBySchemaError(error.message)) {
+    ({ data, error } = await supabase.from('custom_invoices').select('*').eq('id', id).maybeSingle())
+  }
+  if (error || !data) return null
+  if (createdBy && 'created_by' in data && data.created_by && data.created_by !== createdBy) return null
+
+  const mapped = mapCustomInvoiceRow(data as Record<string, unknown>)
+  return isPackageInvoice(mapped) ? mapped : null
 }
 
 export async function fetchStorageUsageSupabase(): Promise<StorageUsage> {

@@ -2,6 +2,7 @@ import postgres from 'postgres'
 import {
   hasDirectDb,
   isDirectDbConnectionError,
+  isDirectDbRecoverableError,
   markDirectDbAuthFailed,
   markDirectDbAvailable,
   requireSql,
@@ -29,8 +30,8 @@ async function withDocumentDbFallback<T>(direct: () => Promise<T>, fallback: () 
       markDirectDbAvailable()
       return result
     } catch (error) {
-      if (!isDirectDbConnectionError(error)) throw error
-      markDirectDbAuthFailed()
+      if (!isDirectDbRecoverableError(error)) throw error
+      if (isDirectDbConnectionError(error)) markDirectDbAuthFailed()
     }
   }
   return fallback()
@@ -296,27 +297,16 @@ export async function fetchPackageInvoiceById(id: string, createdBy?: string | n
     ? await sql<Record<string, unknown>[]>`
         SELECT * FROM custom_invoices
         WHERE id = ${id} AND created_by = ${createdBy}
-          AND (
-            invoice_kind = 'package'
-            OR package_data IS NOT NULL
-            OR invoice_number LIKE 'INV-%'
-            OR terms_text LIKE '__PKG__:%'
-          )
         LIMIT 1
       `
     : await sql<Record<string, unknown>[]>`
-        SELECT * FROM custom_invoices
-        WHERE id = ${id}
-          AND (
-            invoice_kind = 'package'
-            OR package_data IS NOT NULL
-            OR invoice_number LIKE 'INV-%'
-            OR terms_text LIKE '__PKG__:%'
-          )
-        LIMIT 1
+        SELECT * FROM custom_invoices WHERE id = ${id} LIMIT 1
       `
   const row = rows[0]
-  return row ? mapCustomInvoiceRow(row) : null
+  if (!row) return null
+  const mapped = mapCustomInvoiceRow(row)
+  const { isPackageInvoice } = await import('@/lib/package-invoice')
+  return isPackageInvoice(mapped) ? mapped : null
 }
 
 export async function insertPackageInvoice(row: PackageInvoiceRow) {

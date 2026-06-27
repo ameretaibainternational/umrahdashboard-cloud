@@ -7,7 +7,7 @@
 import { isDemoMode } from './is-demo'
 import { demoStore } from './demo-store'
 import { isAdminPermission } from './permissions'
-import { hasDirectDb, isDirectDbConnectionError, markDirectDbAuthFailed } from './sql'
+import { hasDirectDb, isDirectDbConnectionError, isDirectDbRecoverableError, markDirectDbAuthFailed } from './sql'
 import type { Airline, Hotel, Booking, Payment, Expense, StaffUser, VisaSettings, CurrencySettings, TransportRate, Company, InvoiceSettings, InvoiceClient, CustomInvoice, HotelVoucherSettings, HotelVoucherRecord, StorageUsage, StoredFileRow, StaffActivityStats } from './types'
 import { DEFAULT_URDU_FOOTER, DEFAULT_URDU_GUIDELINES } from './hotel-voucher-defaults'
 import { resolveInvoiceSettings } from './invoice-defaults'
@@ -28,6 +28,28 @@ function filterByOwner<T extends { created_by?: string | null }>(rows: T[], owne
   return rows.filter(row => row.created_by === ownerId)
 }
 
+function isSupabaseMissingTableError(message: string): boolean {
+  return (
+    message.includes('does not exist') ||
+    message.includes('schema cache') ||
+    message.includes('Could not find the table') ||
+    message.includes('PGRST')
+  )
+}
+
+async function supabaseSelectAll<T>(
+  table: string,
+  orderCol = 'created_at',
+): Promise<T[]> {
+  const sb = await getSupabase()
+  const { data, error } = await sb.from(table).select('*').order(orderCol, { ascending: false })
+  if (error) {
+    if (isSupabaseMissingTableError(error.message)) return []
+    throw new Error(error.message)
+  }
+  return (data ?? []) as T[]
+}
+
 async function withDirectDbFallback<T>(
   direct: () => Promise<T>,
   fallback: () => Promise<T>,
@@ -36,9 +58,11 @@ async function withDirectDbFallback<T>(
   try {
     return await direct()
   } catch (error) {
-    if (isDirectDbConnectionError(error)) markDirectDbAuthFailed()
-    else throw error
-    return fallback()
+    if (isDirectDbRecoverableError(error)) {
+      if (isDirectDbConnectionError(error)) markDirectDbAuthFailed()
+      return fallback()
+    }
+    throw error
   }
 }
 
@@ -130,9 +154,8 @@ export async function getBookings(): Promise<Booking[]> {
       return fetchBookings(ownerId)
     },
     async () => {
-      const sb = await getSupabase()
-      const { data } = await sb.from('bookings').select('*').order('created_at', { ascending: false })
-      return filterByOwner(data ?? [], ownerId)
+      const rows = await supabaseSelectAll<Booking>('bookings')
+      return filterByOwner(rows, ownerId)
     },
   )
 }
@@ -148,9 +171,8 @@ export async function getPayments(): Promise<Payment[]> {
       return fetchPayments(ownerId)
     },
     async () => {
-      const sb = await getSupabase()
-      const { data } = await sb.from('payments').select('*').order('created_at', { ascending: false })
-      return filterByOwner(data ?? [], ownerId)
+      const rows = await supabaseSelectAll<Payment>('payments')
+      return filterByOwner(rows, ownerId)
     },
   )
 }
@@ -166,9 +188,8 @@ export async function getExpenses(): Promise<Expense[]> {
       return fetchExpenses(ownerId)
     },
     async () => {
-      const sb = await getSupabase()
-      const { data } = await sb.from('expenses').select('*').order('created_at', { ascending: false })
-      return filterByOwner(data ?? [], ownerId)
+      const rows = await supabaseSelectAll<Expense>('expenses', 'expense_date')
+      return filterByOwner(rows, ownerId)
     },
   )
 }
@@ -262,12 +283,8 @@ export async function getPackageInvoiceById(id: string): Promise<CustomInvoice |
       return fetchPackageInvoiceById(id, ownerId)
     },
     async () => {
-      const sb = await getSupabase()
-      const { data } = await sb.from('custom_invoices').select('*').eq('id', id).maybeSingle()
-      if (!data || !isPackageInvoice(data)) return null
-      if (ownerId && data.created_by !== ownerId) return null
-      const { mapCustomInvoiceRow } = await import('@/lib/document-db')
-      return mapCustomInvoiceRow(data as Record<string, unknown>)
+      const { fetchPackageInvoiceByIdSupabase } = await import('@/lib/supabase-document-db')
+      return fetchPackageInvoiceByIdSupabase(id, ownerId)
     },
   )
 }

@@ -26,6 +26,18 @@ export function isDirectDbConnectionError(error: unknown): boolean {
   )
 }
 
+/** Errors where direct Postgres should fall back to the Supabase API. */
+export function isDirectDbRecoverableError(error: unknown): boolean {
+  if (isDirectDbConnectionError(error)) return true
+  const message = error instanceof Error ? error.message : String(error)
+  return (
+    message.includes('does not exist') ||
+    message.includes('column') ||
+    message.includes('schema cache') ||
+    message.includes('42703')
+  )
+}
+
 /** Call after a failed Postgres login so reads fall back to the Supabase API. */
 export function markDirectDbAuthFailed(): void {
   directDbDisabled = true

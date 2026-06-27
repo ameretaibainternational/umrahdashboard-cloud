@@ -2,6 +2,7 @@ import { forwardRef } from 'react'
 import { Plane } from 'lucide-react'
 import type { Airline, Hotel, CalcResult, Company } from '@/lib/types'
 import { pkr } from '@/lib/formatters'
+import { DEFAULT_COMPANY_LOGO_PATH, resolveCompanyLogoPath } from '@/lib/company-logo'
 
 interface Props {
   invoiceNo: string
@@ -29,6 +30,7 @@ interface Props {
   departureCity: string
   arrivalCity: string
   returnCity: string
+  logoSrc?: string
 }
 
 const InvoicePrint = forwardRef<HTMLDivElement, Props>(function InvoicePrint(
@@ -37,7 +39,7 @@ const InvoicePrint = forwardRef<HTMLDivElement, Props>(function InvoicePrint(
     calc, advance, transportMode, company,
     customTicket, customTicketLabel, customTicketPkr,
     makkahZiarat, madinahZiarat, travelDate,
-    departureCity, arrivalCity, returnCity }, ref
+    departureCity, arrivalCity, returnCity, logoSrc: logoSrcProp }, ref
 ) {
   const today = new Date().toLocaleDateString('en-PK', { day: '2-digit', month: 'long', year: 'numeric' })
   const formattedTravelDate = travelDate
@@ -53,7 +55,7 @@ const InvoicePrint = forwardRef<HTMLDivElement, Props>(function InvoicePrint(
 
   const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
 
-  const logoSrc = company.logo_url?.trim() || '/logo.png'
+  const logoSrc = logoSrcProp || resolveCompanyLogoPath(company.logo_url)
 
   // Helper: single label→value row inside a card
   const row = (label: string, value: string, bold = false) => (
@@ -77,7 +79,13 @@ const InvoicePrint = forwardRef<HTMLDivElement, Props>(function InvoicePrint(
             <img
               src={logoSrc}
               alt={company.name}
-              crossOrigin="anonymous"
+              crossOrigin={logoSrc.startsWith('data:') ? undefined : 'anonymous'}
+              onError={e => {
+                const img = e.currentTarget
+                if (!img.src.includes(DEFAULT_COMPANY_LOGO_PATH)) {
+                  img.src = DEFAULT_COMPANY_LOGO_PATH
+                }
+              }}
               style={{
                 width: '56px',
                 height: '56px',
