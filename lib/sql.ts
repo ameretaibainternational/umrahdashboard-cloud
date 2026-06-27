@@ -22,6 +22,7 @@ export function isDirectDbConnectionError(error: unknown): boolean {
     message.includes('ECONNREFUSED') ||
     message.includes('ENOTFOUND') ||
     message.includes('ETIMEDOUT') ||
+    message.includes('CONNECT_TIMEOUT') ||
     message.includes('Connection terminated')
   )
 }
@@ -86,6 +87,7 @@ function connectPostgres() {
       prepare: false,
       max: 5,
       idle_timeout: 20,
+      connect_timeout: 5,
     })
   }
   return client
@@ -169,5 +171,7 @@ export function requireWriteSql(options?: { force?: boolean }) {
 /** True when DATABASE_URL is set and targets the same Supabase project as the app. */
 export function hasDirectDb(): boolean {
   if (isDemoMode() || directDbDisabled) return false
+  const disable = readEnv('DISABLE_DIRECT_DB')
+  if (disable === '1' || disable?.toLowerCase() === 'true') return false
   return isDatabaseUrlConfigured()
 }

@@ -4,7 +4,6 @@ import {
   isDirectDbConnectionError,
   isDirectDbRecoverableError,
   markDirectDbAuthFailed,
-  markDirectDbAvailable,
   requireSql,
   requireWriteSql,
 } from '@/lib/sql'
@@ -26,9 +25,7 @@ function pgTimestamp(v: unknown): string {
 async function withDocumentDbFallback<T>(direct: () => Promise<T>, fallback: () => Promise<T>): Promise<T> {
   if (hasDirectDb()) {
     try {
-      const result = await direct()
-      markDirectDbAvailable()
-      return result
+      return await direct()
     } catch (error) {
       if (!isDirectDbRecoverableError(error)) throw error
       if (isDirectDbConnectionError(error)) markDirectDbAuthFailed()
@@ -438,12 +435,46 @@ export async function fetchHotelVouchers(createdBy?: string | null): Promise<Hot
 
 export async function fetchStorageUsage(): Promise<StorageUsage> {
   const sql = requireSql()
-  const [row] = await sql<StorageUsage[]>`
-    SELECT * FROM storage_usage LIMIT 1
+  const [row] = await sql<{ total: string | number }[]>`
+    SELECT coalesce(sum(file_size_bytes), 0) AS total FROM (
+      SELECT file_size_bytes FROM custom_invoices
+        WHERE file_deleted_at IS NULL AND storage_key IS NOT NULL AND coalesce(file_size_bytes, 0) > 0
+      UNION ALL
+      SELECT file_size_bytes FROM hotel_vouchers
+        WHERE file_deleted_at IS NULL AND storage_key IS NOT NULL AND coalesce(file_size_bytes, 0) > 0
+    ) active_files
   `
-  return row
-    ? { ...row, total_bytes: Number(row.total_bytes), updated_at: pgTimestamp(row.updated_at) }
-    : { id: '', total_bytes: 0, updated_at: new Date().toISOString() }
+  const total_bytes = Number(row?.total ?? 0)
+  await sql`
+    UPDATE storage_usage
+      SET total_bytes = ${total_bytes}, updated_at = now()
+    WHERE id = (SELECT id FROM storage_usage LIMIT 1)
+  `
+  return { id: '', total_bytes, updated_at: new Date().toISOString() }
+}
+
+export async function fetchActiveStorageKeys(): Promise<string[]> {
+  const sql = requireSql()
+  const rows = await sql<{ storage_key: string }[]>`
+    SELECT storage_key FROM custom_invoices
+      WHERE file_deleted_at IS NULL AND storage_key IS NOT NULL
+    UNION
+    SELECT storage_key FROM hotel_vouchers
+      WHERE file_deleted_at IS NULL AND storage_key IS NOT NULL
+  `
+  return rows.map(r => r.storage_key)
+}
+
+export async function deleteCustomInvoiceDirect(id: string, options?: { force?: boolean }) {
+  const sql = requireWriteSql(options)
+  const [inv] = await sql<{ storage_key: string | null }[]>`
+    SELECT storage_key FROM custom_invoices WHERE id = ${id}
+  `
+  if (inv?.storage_key) {
+    const { deletePdfKeys } = await import('@/lib/r2')
+    await deletePdfKeys([inv.storage_key])
+  }
+  await sql`DELETE FROM custom_invoices WHERE id = ${id}`
 }
 
 export async function fetchStoredFiles(createdBy?: string | null): Promise<StoredFileRow[]> {

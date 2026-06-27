@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import type { CustomInvoice, CustomInvoiceLineItem, PackageInvoiceData, StoredFileRow, StorageUsage } from '@/lib/types'
 import { encodePackageDataInTerms } from '@/lib/package-invoice'
+import { storageUsageFromFiles } from '@/lib/storage-usage'
 
 function isCreatedBySchemaError(message: string): boolean {
   return message.includes('created_by') || message.includes('schema cache')
@@ -401,19 +402,62 @@ export async function fetchPackageInvoiceByIdSupabase(id: string, createdBy?: st
   return isPackageInvoice(mapped) ? mapped : null
 }
 
-export async function fetchStorageUsageSupabase(): Promise<StorageUsage> {
+export async function syncStorageUsageSupabase(total_bytes: number): Promise<void> {
   const supabase = await createClient()
-  const { data, error } = await supabase.from('storage_usage').select('*').limit(1).maybeSingle()
-
-  if (!error && data) {
-    return {
-      id: data.id,
-      total_bytes: Number(data.total_bytes),
-      updated_at: data.updated_at ?? new Date().toISOString(),
-    }
+  const { data } = await supabase.from('storage_usage').select('id').limit(1).maybeSingle()
+  const updated_at = new Date().toISOString()
+  if (data?.id) {
+    await supabase.from('storage_usage').update({ total_bytes, updated_at }).eq('id', data.id)
+  } else {
+    await supabase.from('storage_usage').insert({ total_bytes, updated_at })
   }
+}
 
+/** Storage keys for PDFs that should still exist in R2. */
+export async function fetchActiveStorageKeysSupabase(): Promise<string[]> {
+  const supabase = await createClient()
+  const keys: string[] = []
+  const { data: invoices } = await supabase
+    .from('custom_invoices')
+    .select('storage_key')
+    .is('file_deleted_at', null)
+    .not('storage_key', 'is', null)
+  for (const row of invoices ?? []) {
+    if (row.storage_key) keys.push(row.storage_key)
+  }
+  const { data: vouchers } = await supabase
+    .from('hotel_vouchers')
+    .select('storage_key')
+    .is('file_deleted_at', null)
+    .not('storage_key', 'is', null)
+  for (const row of vouchers ?? []) {
+    if (row.storage_key) keys.push(row.storage_key)
+  }
+  return keys
+}
+
+export async function deleteCustomInvoiceSupabase(id: string): Promise<void> {
+  const supabase = await createClient()
+  const { data: inv } = await supabase
+    .from('custom_invoices')
+    .select('storage_key')
+    .eq('id', id)
+    .maybeSingle()
+  if (inv?.storage_key) {
+    const { deletePdfKeys } = await import('@/lib/r2')
+    await deletePdfKeys([inv.storage_key])
+  }
+  const { error } = await supabase.from('custom_invoices').delete().eq('id', id)
+  if (error) throw new Error(error.message)
+}
+
+export async function fetchStorageUsageSupabase(): Promise<StorageUsage> {
   const files = await fetchStoredFilesSupabase()
-  const total_bytes = files.reduce((sum, f) => sum + f.file_size_bytes, 0)
-  return { id: '', total_bytes, updated_at: new Date().toISOString() }
+  const usage = storageUsageFromFiles(files)
+  try {
+    await syncStorageUsageSupabase(usage.total_bytes)
+  } catch {
+    // Counter sync is best-effort; display still uses computed total.
+  }
+  return usage
 }

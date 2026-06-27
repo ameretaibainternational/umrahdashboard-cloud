@@ -67,6 +67,32 @@ export async function deletePdfKeys(keys: string[]): Promise<void> {
   }))
 }
 
+/** List all invoice/voucher PDF keys in the R2 bucket. */
+export async function listStoredPdfKeys(): Promise<string[]> {
+  if (isDemoMode()) return demoFileStore.keys()
+  const { ListObjectsV2Command } = await import('@aws-sdk/client-s3')
+  const client = getClient()
+  const bucket = getBucket()
+  const keys: string[] = []
+  let continuationToken: string | undefined
+
+  do {
+    const res = await client.send(new ListObjectsV2Command({
+      Bucket: bucket,
+      Prefix: '',
+      ContinuationToken: continuationToken,
+    }))
+    for (const obj of res.Contents ?? []) {
+      if (obj.Key && (obj.Key.startsWith('invoices/') || obj.Key.startsWith('vouchers/'))) {
+        keys.push(obj.Key)
+      }
+    }
+    continuationToken = res.IsTruncated ? res.NextContinuationToken : undefined
+  } while (continuationToken)
+
+  return keys
+}
+
 export async function getPdfBuffer(key: string): Promise<Buffer> {
   if (isDemoMode()) {
     const buf = demoFileStore.get(key)

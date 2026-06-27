@@ -7,10 +7,9 @@ import { uploadInvoicePdfToStorage } from '@/app/actions/storage'
 import { friendlyDbError } from '@/lib/friendly-db-error'
 import { requireModeratorFeature } from '@/lib/permissions-server'
 import {
-  isDatabaseUrlConfigured,
-  isDirectDbConnectionError,
+  hasDirectDb,
+  isDirectDbRecoverableError,
   markDirectDbAuthFailed,
-  markDirectDbAvailable,
 } from '@/lib/sql'
 import type { PackageInvoiceData } from '@/lib/types'
 
@@ -82,18 +81,16 @@ async function persistPackageInvoice(
   }
 
   try {
-    if (isDatabaseUrlConfigured()) {
+    if (hasDirectDb()) {
       try {
-        markDirectDbAvailable()
         const { insertPackageInvoiceDirect, updatePackageInvoiceDirect } = await import('@/lib/document-db')
         const data = mode === 'create'
-          ? await insertPackageInvoiceDirect(row, { force: true })
-          : await updatePackageInvoiceDirect(row, { force: true })
-        markDirectDbAvailable()
+          ? await insertPackageInvoiceDirect(row)
+          : await updatePackageInvoiceDirect(row)
         PATHS.forEach(p => revalidatePath(p))
         return { success: true as const, invoice_number: data.invoice_number, id: data.id }
       } catch (error) {
-        if (!isDirectDbConnectionError(error)) throw error
+        if (!isDirectDbRecoverableError(error)) throw error
         markDirectDbAuthFailed()
       }
     }

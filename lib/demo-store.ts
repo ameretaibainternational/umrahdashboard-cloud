@@ -148,6 +148,14 @@ class DemoStore {
     }
   }
 
+  setStorageUsage(total_bytes: number) {
+    this.storageUsage = {
+      ...this.storageUsage,
+      total_bytes: Math.max(0, total_bytes),
+      updated_at: new Date().toISOString(),
+    }
+  }
+
   // Airlines
   upsertAirline(data: Omit<Airline, 'id'> & { id?: string }) {
     if (data.id) {
@@ -246,7 +254,14 @@ class DemoStore {
     this.reduceStorage(inv.file_size_bytes ?? 0)
     inv.file_deleted_at = new Date().toISOString()
   }
-  deleteCustomInvoice(id: string) { this.customInvoices = this.customInvoices.filter(i => i.id !== id) }
+  deleteCustomInvoice(id: string) {
+    const inv = this.customInvoices.find(i => i.id === id)
+    if (inv?.storage_key && !inv.file_deleted_at) {
+      demoFileStore.delete(inv.storage_key)
+      this.reduceStorage(inv.file_size_bytes ?? 0)
+    }
+    this.customInvoices = this.customInvoices.filter(i => i.id !== id)
+  }
 
   // Hotel Vouchers
   addHotelVoucher(

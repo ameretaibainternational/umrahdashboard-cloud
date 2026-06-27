@@ -14,7 +14,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import StorageUsageWidget from '@/components/storage/StorageUsageWidget'
-import { softDeleteStoredFiles } from '@/app/actions/storage'
+import { softDeleteStoredFiles, reconcileStorageUsage } from '@/app/actions/storage'
 import { downloadStorageZip } from '@/lib/storage-client'
 import { formatFileSize } from '@/lib/pdf-utils'
 import type { StoredFileRow } from '@/lib/types'
@@ -29,7 +29,7 @@ export default function StorageManagement({ files, totalBytes }: StorageManageme
   const [selected, setSelected] = useState<Set<string>>(() => new Set())
   const [downloadedSelection, setDownloadedSelection] = useState<string>('')
   const [confirmOpen, setConfirmOpen] = useState(false)
-  const [busy, setBusy] = useState<'download' | 'delete' | null>(null)
+  const [busy, setBusy] = useState<'download' | 'delete' | 'reconcile' | null>(null)
 
   const selectionKey = useMemo(
     () => [...selected].sort().join(','),
@@ -95,9 +95,43 @@ export default function StorageManagement({ files, totalBytes }: StorageManageme
     }
   }
 
+  async function handleReconcile() {
+    setBusy('reconcile')
+    try {
+      const result = await reconcileStorageUsage()
+      if ('error' in result && result.error) {
+        toast.error(result.error)
+        return
+      }
+      const removed = 'removed' in result ? result.removed : 0
+      toast.success(
+        removed > 0
+          ? `Storage synced — removed ${removed} orphaned file(s) from cloud storage.`
+          : 'Storage synced — usage now matches your active PDF files.',
+      )
+      router.refresh()
+    } catch {
+      toast.error('Could not sync storage.')
+    } finally {
+      setBusy(null)
+    }
+  }
+
   return (
     <div className="space-y-6 max-w-4xl">
       <StorageUsageWidget totalBytes={totalBytes} />
+
+      <div className="flex flex-wrap gap-2">
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          disabled={busy !== null}
+          onClick={handleReconcile}
+        >
+          {busy === 'reconcile' ? 'Syncing…' : 'Sync usage & clear orphans'}
+        </Button>
+      </div>
 
       <Card className="border shadow-sm">
         <CardHeader className="pb-2">

@@ -3,7 +3,8 @@ import type { NextConfig } from 'next'
 const nextConfig: NextConfig = {
   experimental: {
     serverActions: {
-      bodySizeLimit: '2mb',
+      // Package invoice PDFs are sent as base64 (~33% larger than binary).
+      bodySizeLimit: '6mb',
     },
   },
   images: {

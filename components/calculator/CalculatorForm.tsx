@@ -239,9 +239,21 @@ export default function CalculatorForm({
       }
 
       const isUpdate = Boolean(savedInvoiceId)
-      const result = isUpdate
-        ? await updatePackageInvoiceWithPdf({ id: savedInvoiceId!, ...payload })
-        : await createPackageInvoiceWithPdf(payload)
+      const persist = () => (
+        isUpdate
+          ? updatePackageInvoiceWithPdf({ id: savedInvoiceId!, ...payload })
+          : createPackageInvoiceWithPdf(payload)
+      )
+
+      let result
+      try {
+        result = await persist()
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err)
+        const transient = msg.includes('unexpected response') || msg.includes('Failed to fetch') || msg.includes('NetworkError')
+        if (!transient) throw err
+        result = await persist()
+      }
 
       if ('error' in result && result.error) {
         toast.error(result.error)

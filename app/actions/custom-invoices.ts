@@ -7,10 +7,9 @@ import { uploadInvoicePdfToStorage } from '@/app/actions/storage'
 import { friendlyDbError } from '@/lib/friendly-db-error'
 import { requireAdmin, requireModeratorFeature } from '@/lib/permissions-server'
 import {
-  isDatabaseUrlConfigured,
-  isDirectDbConnectionError,
+  hasDirectDb,
+  isDirectDbRecoverableError,
   markDirectDbAuthFailed,
-  markDirectDbAvailable,
 } from '@/lib/sql'
 import type { CustomInvoiceLineItem } from '@/lib/types'
 
@@ -64,16 +63,14 @@ export async function createCustomInvoiceWithPdf(payload: {
   }
 
   try {
-    if (isDatabaseUrlConfigured()) {
+    if (hasDirectDb()) {
       try {
-        markDirectDbAvailable()
         const { insertCustomInvoiceDirect } = await import('@/lib/document-db')
-        const data = await insertCustomInvoiceDirect(row, { force: true })
-        markDirectDbAvailable()
+        const data = await insertCustomInvoiceDirect(row)
         PATHS.forEach(p => revalidatePath(p))
         return { success: true as const, invoice_number: data.invoice_number, id: data.id }
       } catch (error) {
-        if (!isDirectDbConnectionError(error)) throw error
+        if (!isDirectDbRecoverableError(error)) throw error
         markDirectDbAuthFailed()
       }
     }
@@ -106,7 +103,30 @@ export async function deleteCustomInvoice(id: string) {
       if (!inv) return { error: 'Invoice not found.' }
       if (inv.created_by !== ctx.userId) return { error: 'You can only delete your own invoices.' }
     }
-    await supabase.from('custom_invoices').delete().eq('id', id)
+
+    try {
+      if (hasDirectDb()) {
+        try {
+          const { deleteCustomInvoiceDirect } = await import('@/lib/document-db')
+          await deleteCustomInvoiceDirect(id)
+        } catch (error) {
+          if (!isDirectDbRecoverableError(error)) throw error
+          markDirectDbAuthFailed()
+          const { deleteCustomInvoiceSupabase } = await import('@/lib/supabase-document-db')
+          await deleteCustomInvoiceSupabase(id)
+        }
+      } else {
+        const { deleteCustomInvoiceSupabase } = await import('@/lib/supabase-document-db')
+        await deleteCustomInvoiceSupabase(id)
+      }
+      const { syncStorageUsageSupabase } = await import('@/lib/supabase-document-db')
+      const { fetchStoredFilesSupabase } = await import('@/lib/supabase-document-db')
+      const { storageUsageFromFiles } = await import('@/lib/storage-usage')
+      const files = await fetchStoredFilesSupabase()
+      await syncStorageUsageSupabase(storageUsageFromFiles(files).total_bytes)
+    } catch (e) {
+      return { error: friendlyDbError(e instanceof Error ? e.message : 'Delete failed') }
+    }
   }
   PATHS.forEach(p => revalidatePath(p))
   return { success: true }

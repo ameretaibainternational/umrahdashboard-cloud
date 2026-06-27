@@ -8,9 +8,8 @@ import { requireModeratorFeature } from '@/lib/permissions-server'
 import { supabaseInsertRow } from '@/lib/supabase-fallback-insert'
 import {
   hasDirectDb,
-  isDirectDbConnectionError,
+  isDirectDbRecoverableError,
   markDirectDbAuthFailed,
-  markDirectDbAvailable,
 } from '@/lib/sql'
 
 type BookingPayload = {
@@ -49,11 +48,10 @@ export async function createBooking(payload: BookingPayload) {
       try {
         const { insertBooking } = await import('@/lib/crm-db')
         await insertBooking({ ...row, created_by: ctx.userId })
-        markDirectDbAvailable()
         REVALIDATE_PATHS.forEach(p => revalidatePath(p))
         return { success: true }
       } catch (error) {
-        if (!isDirectDbConnectionError(error)) throw error
+        if (!isDirectDbRecoverableError(error)) throw error
         markDirectDbAuthFailed()
       }
     }
@@ -90,9 +88,8 @@ export async function deleteBooking(id: string) {
             if (owner !== ctx.userId) return { error: 'You can only delete your own bookings.' }
           }
           await deleteBookingById(id)
-          markDirectDbAvailable()
         } catch (error) {
-          if (!isDirectDbConnectionError(error)) throw error
+          if (!isDirectDbRecoverableError(error)) throw error
           markDirectDbAuthFailed()
           const { createClient } = await import('@/lib/supabase/server')
           const supabase = await createClient()

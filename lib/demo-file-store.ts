@@ -14,6 +14,10 @@ class DemoFileStore {
     this.files.delete(key)
   }
 
+  keys(): string[] {
+    return [...this.files.keys()]
+  }
+
   clear() {
     this.files.clear()
   }
