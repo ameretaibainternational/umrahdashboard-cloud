@@ -1,6 +1,7 @@
 import { getBookings, getPayments } from '@/lib/db'
 import { pkr } from '@/lib/formatters'
 import KpiCard from '@/components/shared/KpiCard'
+import KpiGrid, { PageContainer } from '@/components/shared/KpiGrid'
 import DashboardCharts from '@/components/dashboard/DashboardCharts'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -77,9 +78,8 @@ export default async function DashboardPage() {
   const paymentMethodData = Object.entries(methodMap).map(([method, amount]) => ({ method, amount }))
 
   return (
-    <div className="space-y-6">
-      {/* KPI grid */}
-      <div className="grid grid-cols-1 min-[420px]:grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4">
+    <PageContainer>
+      <KpiGrid columns={5}>
         <KpiCard label="Total Bookings"  value={String(totalBookings)}  icon={BookOpen}
           iconBg="bg-amber-50" iconColor="text-gold" href="/bookings" />
         <KpiCard label="Customers"       value={String(uniqueCustomers)} icon={Users}
@@ -90,7 +90,7 @@ export default async function DashboardPage() {
           iconBg="bg-sky-50" iconColor="text-sky-500" href="/accounts" />
         <KpiCard label="To receive from customers"     value={pkr(totalDue)}           icon={AlertCircle}
           iconBg="bg-rose-50" iconColor="text-rose-500" href="/accounts" />
-      </div>
+      </KpiGrid>
 
       {/* Charts section */}
       <DashboardCharts
@@ -178,6 +178,6 @@ export default async function DashboardPage() {
           </Card>
         </div>
       </div>
-    </div>
+    </PageContainer>
   )
 }

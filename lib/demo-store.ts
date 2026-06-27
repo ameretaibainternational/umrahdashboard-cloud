@@ -212,6 +212,12 @@ class DemoStore {
     this.bookings = this.bookings.filter(b => b.id !== id)
     this.payments = this.payments.filter(p => p.booking_id !== id)
   }
+  updateBooking(id: string, data: Partial<Omit<Booking, 'id' | 'created_at' | 'created_by'>>) {
+    const booking = this.bookings.find(b => b.id === id)
+    if (!booking) return null
+    Object.assign(booking, data)
+    return booking
+  }
 
   // Payments
   addPayment(data: Omit<Payment, 'id' | 'created_at'>) {

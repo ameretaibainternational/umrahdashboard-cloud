@@ -132,6 +132,49 @@ export async function deleteBookingById(id: string): Promise<void> {
   await sql`DELETE FROM bookings WHERE id = ${id}`
 }
 
+export async function fetchBookingById(id: string, createdBy?: string | null): Promise<Booking | null> {
+  const sql = requireSql()
+  const [row] = await sql<Booking[]>`
+    SELECT * FROM bookings WHERE id = ${id}
+  `
+  if (!row) return null
+  if (createdBy && row.created_by && row.created_by !== createdBy) return null
+  return mapBooking(row)
+}
+
+export async function updateBookingById(
+  id: string,
+  payload: Omit<Booking, 'id' | 'created_at' | 'created_by'>,
+): Promise<void> {
+  const sql = requireWriteSql()
+  await sql`
+    UPDATE bookings SET
+      booking_date = ${payload.booking_date},
+      customer_name = ${payload.customer_name},
+      airline_name = ${payload.airline_name},
+      total_pkr = ${payload.total_pkr},
+      cost_pkr = ${payload.cost_pkr},
+      profit_pkr = ${payload.profit_pkr},
+      advance_pkr = ${payload.advance_pkr},
+      paid_pkr = ${payload.paid_pkr},
+      remaining_pkr = ${payload.remaining_pkr},
+      adult_count = ${payload.adult_count},
+      child_count = ${payload.child_count},
+      infant_count = ${payload.infant_count},
+      makkah_hotel_name = ${payload.makkah_hotel_name},
+      makkah_hotel_location = ${payload.makkah_hotel_location},
+      makkah_hotel_distance = ${payload.makkah_hotel_distance},
+      makkah_room_type = ${payload.makkah_room_type},
+      makkah_nights = ${payload.makkah_nights},
+      madinah_hotel_name = ${payload.madinah_hotel_name},
+      madinah_hotel_location = ${payload.madinah_hotel_location},
+      madinah_hotel_distance = ${payload.madinah_hotel_distance},
+      madinah_room_type = ${payload.madinah_room_type},
+      madinah_nights = ${payload.madinah_nights}
+    WHERE id = ${id}
+  `
+}
+
 export async function getBookingOwner(id: string): Promise<string | null | undefined> {
   await ensureOwnershipColumns()
   const sql = requireWriteSql()

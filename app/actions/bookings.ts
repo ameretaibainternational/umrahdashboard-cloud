@@ -118,3 +118,63 @@ export async function deleteBooking(id: string) {
   REVALIDATE_PATHS.forEach(p => revalidatePath(p))
   return { success: true }
 }
+
+export async function updateBooking(id: string, payload: BookingPayload) {
+  const ctx = await requireModeratorFeature('bookings')
+  if ('error' in ctx) return ctx
+
+  const profit_pkr = payload.total_pkr - payload.cost_pkr
+  const remaining_pkr = Math.max(0, payload.total_pkr - payload.paid_pkr)
+  const row = {
+    ...payload,
+    profit_pkr,
+    remaining_pkr,
+    booking_date: payload.booking_date ?? new Date().toISOString().split('T')[0],
+  }
+
+  if (isDemoMode()) {
+    const booking = demoStore.bookings.find(b => b.id === id)
+    if (!booking) return { error: 'Booking not found.' }
+    if (!ctx.isAdmin && booking.created_by !== ctx.userId) {
+      return { error: 'You can only edit your own bookings.' }
+    }
+    demoStore.updateBooking(id, row)
+    REVALIDATE_PATHS.forEach(p => revalidatePath(p))
+    return { success: true as const }
+  }
+
+  try {
+    if (hasDirectDb()) {
+      try {
+        if (!ctx.isAdmin) {
+          const { getBookingOwner } = await import('@/lib/crm-db')
+          const owner = await getBookingOwner(id)
+          if (owner === undefined) return { error: 'Booking not found.' }
+          if (owner !== ctx.userId) return { error: 'You can only edit your own bookings.' }
+        }
+        const { updateBookingById } = await import('@/lib/crm-db')
+        await updateBookingById(id, row)
+        REVALIDATE_PATHS.forEach(p => revalidatePath(p))
+        return { success: true as const }
+      } catch (error) {
+        if (!isDirectDbRecoverableError(error)) throw error
+        markDirectDbAuthFailed()
+      }
+    }
+
+    const { createClient } = await import('@/lib/supabase/server')
+    const supabase = await createClient()
+    if (!ctx.isAdmin) {
+      const { data: booking } = await supabase.from('bookings').select('created_by').eq('id', id).single()
+      if (!booking) return { error: 'Booking not found.' }
+      if (booking.created_by !== ctx.userId) return { error: 'You can only edit your own bookings.' }
+    }
+    const { error } = await supabase.from('bookings').update(row).eq('id', id)
+    if (error) return { error: friendlyDbError(error.message) }
+  } catch (e) {
+    return { error: friendlyDbError(e instanceof Error ? e.message : 'Update failed') }
+  }
+
+  REVALIDATE_PATHS.forEach(p => revalidatePath(p))
+  return { success: true as const }
+}

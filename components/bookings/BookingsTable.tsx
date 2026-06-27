@@ -1,24 +1,29 @@
 'use client'
 
 import { useState, useTransition } from 'react'
+import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { deleteBooking } from '@/app/actions/bookings'
 import { pkr, formatDate, bookingInvoiceId } from '@/lib/formatters'
 import type { Booking } from '@/lib/types'
+import BookingDialog from '@/components/bookings/BookingDialog'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { Trash2, Search, Loader2 } from 'lucide-react'
+import { Trash2, Search, Loader2, Eye, Pencil } from 'lucide-react'
 
 interface Props {
   bookings: Booking[]
 }
 
 export default function BookingsTable({ bookings }: Props) {
+  const router = useRouter()
   const [search, setSearch] = useState('')
   const [deleteId, setDeleteId] = useState<string | null>(null)
+  const [dialogBooking, setDialogBooking] = useState<Booking | null>(null)
+  const [dialogMode, setDialogMode] = useState<'view' | 'edit' | null>(null)
   const [isPending, startTransition] = useTransition()
 
   const filtered = bookings.filter(b =>
@@ -26,11 +31,26 @@ export default function BookingsTable({ bookings }: Props) {
     b.airline_name.toLowerCase().includes(search.toLowerCase())
   )
 
+  function openDialog(booking: Booking, mode: 'view' | 'edit') {
+    setDialogBooking(booking)
+    setDialogMode(mode)
+  }
+
+  function closeDialog() {
+    setDialogBooking(null)
+    setDialogMode(null)
+  }
+
   function handleDelete() {
     if (!deleteId) return
     startTransition(async () => {
-      await deleteBooking(deleteId)
-      toast.success('Booking deleted')
+      const result = await deleteBooking(deleteId)
+      if ('error' in result && result.error) {
+        toast.error(result.error)
+      } else {
+        toast.success('Booking deleted')
+        router.refresh()
+      }
       setDeleteId(null)
     })
   }
@@ -51,7 +71,8 @@ export default function BookingsTable({ bookings }: Props) {
       </div>
 
       <div className="rounded-xl border bg-white overflow-hidden shadow-sm">
-        <Table>
+        <div className="overflow-x-auto">
+        <Table className="min-w-[900px]">
           <TableHeader>
             <TableRow className="bg-muted/40">
               <TableHead className="text-xs">Invoice</TableHead>
@@ -63,7 +84,7 @@ export default function BookingsTable({ bookings }: Props) {
               <TableHead className="text-xs text-right">Due</TableHead>
               <TableHead className="text-xs">Date</TableHead>
               <TableHead className="text-xs">Status</TableHead>
-              <TableHead className="w-10" />
+              <TableHead className="text-xs text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -96,19 +117,53 @@ export default function BookingsTable({ bookings }: Props) {
                     </Badge>
                   </TableCell>
                   <TableCell>
-                    <button
-                      onClick={() => setDeleteId(b.id)}
-                      className="text-muted-foreground hover:text-red-500 transition-colors"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+                    <div className="flex items-center justify-end gap-1">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-8 w-8 p-0"
+                        title="View"
+                        onClick={() => openDialog(b, 'view')}
+                      >
+                        <Eye className="w-4 h-4" />
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-8 w-8 p-0"
+                        title="Edit"
+                        onClick={() => openDialog(b, 'edit')}
+                      >
+                        <Pencil className="w-4 h-4" />
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-8 w-8 p-0 text-muted-foreground hover:text-red-500"
+                        title="Delete"
+                        onClick={() => setDeleteId(b.id)}
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                    </div>
                   </TableCell>
                 </TableRow>
               ))
             )}
           </TableBody>
         </Table>
+        </div>
       </div>
+
+      <BookingDialog
+        booking={dialogBooking}
+        mode={dialogMode}
+        onClose={closeDialog}
+        onEdit={() => setDialogMode('edit')}
+      />
 
       <Dialog open={!!deleteId} onOpenChange={open => !open && setDeleteId(null)}>
         <DialogContent>

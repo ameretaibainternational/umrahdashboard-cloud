@@ -1,6 +1,7 @@
 import { getBookings, getPayments, getExpenses, getCompany } from '@/lib/db'
 import { pkr, formatDate } from '@/lib/formatters'
 import KpiCard from '@/components/shared/KpiCard'
+import KpiGrid, { PageContainer } from '@/components/shared/KpiGrid'
 import AddPaymentForm from '@/components/accounts/AddPaymentForm'
 import AddExpenseForm from '@/components/accounts/AddExpenseForm'
 import ClientLedger from '@/components/accounts/ClientLedger'
@@ -39,10 +40,9 @@ export default async function AccountsPage() {
   const cashBookBalance = totalReceived - totalExpenses
 
   return (
-    <div className="space-y-6">
+    <PageContainer>
 
-      {/* ── KPI Row ── */}
-      <div className="grid grid-cols-1 min-[420px]:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+      <KpiGrid columns={4}>
         <KpiCard
           label="Total Received"
           value={pkr(totalReceived)}
@@ -71,7 +71,7 @@ export default async function AccountsPage() {
           iconBg="bg-blue-50"
           iconColor="text-blue-600"
         />
-      </div>
+      </KpiGrid>
 
       {/* ── Record Customer Payment ── */}
       {unpaidBookings.length > 0 && <AddPaymentForm bookings={unpaidBookings} />}
@@ -154,6 +154,6 @@ export default async function AccountsPage() {
         </CardContent>
       </Card>
 
-    </div>
+    </PageContainer>
   )
 }

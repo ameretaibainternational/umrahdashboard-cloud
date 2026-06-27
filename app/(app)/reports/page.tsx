@@ -1,6 +1,7 @@
 import { getBookings } from '@/lib/db'
 import { pkr } from '@/lib/formatters'
 import KpiCard from '@/components/shared/KpiCard'
+import KpiGrid, { PageContainer } from '@/components/shared/KpiGrid'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { DollarSign, TrendingDown, TrendingUp } from 'lucide-react'
@@ -22,8 +23,8 @@ export default async function ReportsPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+    <PageContainer>
+      <KpiGrid columns={3}>
         <KpiCard label="Total Revenue" value={pkr(revenue)} icon={DollarSign}
           iconBg="bg-blue-50" iconColor="text-blue-600" trend={`${bookings.length} bookings`} />
         <KpiCard label="Total Cost" value={pkr(cost)} icon={TrendingDown}
@@ -31,7 +32,7 @@ export default async function ReportsPage() {
         <KpiCard label="Total Profit" value={pkr(profit)} icon={TrendingUp}
           iconBg="bg-emerald-50" iconColor="text-emerald-600"
           trend={`${margin}% margin`} trendUp={profit > 0} />
-      </div>
+      </KpiGrid>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card className="shadow-sm border-0">
@@ -88,6 +89,6 @@ export default async function ReportsPage() {
           </CardContent>
         </Card>
       </div>
-    </div>
+    </PageContainer>
   )
 }

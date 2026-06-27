@@ -61,7 +61,7 @@ export default function PackageInvoicesTable({ invoices, canManage = true }: Pro
 
   return (
     <div className="rounded-xl border bg-white overflow-hidden shadow-sm">
-      <div className="px-4 sm:px-6 py-4 border-b bg-muted/20 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <div className="px-4 sm:px-6 py-4 border-b bg-muted/20 flex flex-row justify-between gap-3 sm:flex-row sm:items-center sm:justify-between">
         <p className="text-sm text-muted-foreground">
           {invoices.length} package invoice{invoices.length !== 1 ? 's' : ''}
         </p>

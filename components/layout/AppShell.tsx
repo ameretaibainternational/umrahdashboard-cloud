@@ -110,7 +110,9 @@ export default function AppShell({ children, companyName, isDemo, permission, st
           storageTotalBytes={isAdminPermission(permission) ? storageTotalBytes : undefined}
         />
         <main className="flex-1 overflow-y-auto p-4 md:p-6">
-          {children}
+          <div className="mx-auto w-full max-w-7xl">
+            {children}
+          </div>
         </main>
       </div>
     </div>
