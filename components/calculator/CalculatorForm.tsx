@@ -8,7 +8,7 @@ import { pkr as fmtPkr } from '@/lib/formatters'
 import { createBooking } from '@/app/actions/bookings'
 import { upsertInvoiceClient } from '@/app/actions/settings'
 import { createPackageInvoiceWithPdf, updatePackageInvoiceWithPdf } from '@/app/actions/package-invoices'
-import { downloadPdfBytes } from '@/lib/storage-client'
+import { downloadCalculatorPdf, pdfDownloadHint } from '@/lib/storage-client'
 import { uint8ToBase64 } from '@/lib/pdf-utils'
 import { preloadCompanyLogo } from '@/lib/company-logo'
 import { getPackageDataFromInvoice } from '@/lib/package-invoice'
@@ -316,8 +316,16 @@ export default function CalculatorForm({
     setIsDownloading(true)
     try {
       const bytes = await generatePdfBytes()
-      const pdfBase64 = uint8ToBase64(bytes)
       const billedName = customerName || 'Walk-in Customer'
+      const filename = billedName !== 'Walk-in Customer'
+        ? `${invoiceNo}_${billedName.trim().replace(/\s+/g, '_')}.pdf`
+        : `${invoiceNo}.pdf`
+
+      // Download immediately after PDF generation — before server save/booking —
+      // so iPhone Safari still opens the file (async server calls break anchor downloads).
+      const downloadMethod = await downloadCalculatorPdf(bytes, filename)
+
+      const pdfBase64 = uint8ToBase64(bytes)
       const invoiceDate = travelDate || new Date().toISOString().slice(0, 10)
       const payload = {
         invoice_number: invoiceNo,
@@ -367,14 +375,15 @@ export default function CalculatorForm({
         }
       }
 
-      const filename = billedName !== 'Walk-in Customer'
-        ? `${invoiceNo}_${billedName.trim().replace(/\s+/g, '_')}.pdf`
-        : `${invoiceNo}.pdf`
-      downloadPdfBytes(bytes, filename)
+      const iosHint = pdfDownloadHint(downloadMethod)
       toast.success(
-        canSaveBooking
-          ? 'Booking created, invoice saved and downloaded.'
-          : (isUpdate ? 'Invoice updated and downloaded.' : 'Invoice saved and downloaded.'),
+        iosHint
+          ? (canSaveBooking
+            ? `Booking created and invoice saved. ${iosHint}`
+            : (isUpdate ? `Invoice updated. ${iosHint}` : `Invoice saved. ${iosHint}`))
+          : (canSaveBooking
+            ? 'Booking created, invoice saved and downloaded.'
+            : (isUpdate ? 'Invoice updated and downloaded.' : 'Invoice saved and downloaded.')),
       )
       router.refresh()
     } catch (err) {
