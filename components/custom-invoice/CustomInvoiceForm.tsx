@@ -2,16 +2,19 @@
 
 import { useState, useRef, useEffect, useCallback, useId } from 'react'
 import { useRouter } from 'next/navigation'
-import { Plus, Trash2, Download, ChevronDown, ChevronUp } from 'lucide-react'
+import { Plus, Trash2, Download, ChevronDown, ChevronUp, Pencil } from 'lucide-react'
+import Link from 'next/link'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import CustomInvoiceTemplate from './CustomInvoiceTemplate'
-import { createCustomInvoiceWithPdf } from '@/app/actions/custom-invoices'
+import { createCustomInvoiceWithPdf, updateCustomInvoiceWithPdf } from '@/app/actions/custom-invoices'
+import { upsertInvoiceService } from '@/app/actions/settings'
 import { downloadPdfBytes, downloadStoredPdf } from '@/lib/storage-client'
 import { uint8ToBase64 } from '@/lib/pdf-utils'
+import { applyInvoicePdfCloneStyles } from '@/lib/invoice-pdf-onclone'
 import { getNextInvoiceNumber, resolveInvoiceSettings } from '@/lib/invoice-defaults'
 import { isPackageInvoice } from '@/lib/package-invoice'
 import { BrandingSlider, BrandingResetButton } from '@/components/branding/BrandingSlider'
@@ -30,7 +33,8 @@ import {
   scaleRect,
   type InvoiceBranding,
 } from '@/lib/custom-invoice-branding-layout'
-import type { InvoiceSettings, CustomInvoice, CustomInvoiceLineItem, InvoiceClient } from '@/lib/types'
+import type { InvoiceSettings, CustomInvoice, CustomInvoiceLineItem, InvoiceClient, InvoicePaymentMethod, InvoiceService } from '@/lib/types'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 
 // ─── Local line-item state (strings for inputs) ──────────────────────────────
 interface LineItemDraft {
@@ -55,6 +59,30 @@ function newRow(id: string, defaultCurrency = 'PKR'): LineItemDraft {
     use_night_price: false, night_price: '', night_price_unit: defaultCurrency,
     total_pax: '1', total: '', total_unit: '', received: '0',
   }
+}
+
+function lineItemToDraft(item: CustomInvoiceLineItem, id: string): LineItemDraft {
+  return {
+    id,
+    service: item.service,
+    use_pax_price: item.pax_price != null,
+    pax_price: item.pax_price != null ? String(item.pax_price) : '',
+    pax_price_unit: item.pax_price_unit || 'PKR',
+    use_night_price: item.night_price != null,
+    night_price: item.night_price != null ? String(item.night_price) : '',
+    night_price_unit: item.night_price_unit || 'PKR',
+    total_pax: String(item.total_pax || 1),
+    total: String(item.total),
+    total_unit: item.total_unit || 'PKR',
+    received: String(item.received),
+  }
+}
+
+function findPaymentMethodId(methods: InvoicePaymentMethod[], bankName: string, accountNo: string): string {
+  const match = methods.find(
+    m => m.bank_name === bankName && m.account_number === accountNo,
+  )
+  return match?.id ?? ''
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -217,6 +245,9 @@ interface Props {
   settings: InvoiceSettings
   existingInvoices: CustomInvoice[]
   savedClients: InvoiceClient[]
+  paymentMethods: InvoicePaymentMethod[]
+  services: InvoiceService[]
+  editInvoice?: CustomInvoice | null
 }
 
 function applyClientToBilled(client: InvoiceClient) {
@@ -227,15 +258,34 @@ function applyClientToBilled(client: InvoiceClient) {
   }
 }
 
-export default function CustomInvoiceForm({ settings, existingInvoices, savedClients }: Props) {
+export default function CustomInvoiceForm({
+  settings,
+  existingInvoices,
+  savedClients,
+  paymentMethods,
+  services,
+  editInvoice = null,
+}: Props) {
   const router = useRouter()
   const formId = useId()
+  const isEditMode = !!editInvoice
   const today = new Date().toISOString().split('T')[0]
   const savedInvoices = existingInvoices.filter(inv => !inv.file_deleted_at && !isPackageInvoice(inv))
   const resolvedSettings = resolveInvoiceSettings(settings)
   const hasSavedClients = savedClients.length > 0
-  const initialClient = hasSavedClients ? savedClients[0] : null
-  const initialBilled = initialClient ? applyClientToBilled(initialClient) : { name: '', address: '', phone: '' }
+  const editClientMatch = editInvoice
+    ? savedClients.find(c => c.name === editInvoice.billed_to_name)
+    : null
+  const initialClient = editClientMatch ?? (hasSavedClients ? savedClients[0] : null)
+  const initialBilled = editInvoice
+    ? {
+        name: editInvoice.billed_to_name,
+        address: editInvoice.billed_to_address,
+        phone: editInvoice.billed_to_client_number,
+      }
+    : initialClient
+      ? applyClientToBilled(initialClient)
+      : { name: '', address: '', phone: '' }
 
   const applyDefaultFields = useCallback((source: InvoiceSettings) => {
     setBankName(source.payment_bank_name)
@@ -273,21 +323,34 @@ export default function CustomInvoiceForm({ settings, existingInvoices, savedCli
   }, [applyDefaultFields, formId])
 
   // Form state
-  const [invoiceNumber, setInvoiceNumber] = useState(() => getNextInvoiceNumber(existingInvoices))
-  const [date, setDate]             = useState(today)
+  const [editingId, setEditingId] = useState(editInvoice?.id ?? '')
+  const [invoiceNumber, setInvoiceNumber] = useState(() => editInvoice?.invoice_number ?? getNextInvoiceNumber(existingInvoices))
+  const [date, setDate]             = useState(editInvoice?.invoice_date ?? today)
   const [selectedClientId, setSelectedClientId] = useState(initialClient?.id ?? '')
-  const [isNewCustomer, setIsNewCustomer] = useState(!hasSavedClients)
+  const [isNewCustomer, setIsNewCustomer] = useState(editInvoice ? !editClientMatch : !hasSavedClients)
   const [billedName, setBilledName] = useState(initialBilled.name)
   const [billedAddr, setBilledAddr] = useState(initialBilled.address)
   const [billedPhone, setBilledPhone] = useState(initialBilled.phone)
-  const [bankName, setBankName]     = useState(resolvedSettings.payment_bank_name)
-  const [accountNo, setAccountNo]   = useState(resolvedSettings.payment_account_number)
-  const [terms, setTerms]           = useState(resolvedSettings.terms_text)
-  const [phone, setPhone]           = useState(resolvedSettings.contact_phone)
-  const [email, setEmail]           = useState(resolvedSettings.contact_email)
-  const [location, setLocation]     = useState(resolvedSettings.contact_location)
-  const [rows, setRows]             = useState<LineItemDraft[]>(() => [newRow(`${formId}-0`)])
+  const [selectedPaymentMethodId, setSelectedPaymentMethodId] = useState(() =>
+    editInvoice
+      ? findPaymentMethodId(paymentMethods, editInvoice.payment_bank_name, editInvoice.payment_account_number)
+      : paymentMethods[0]?.id ?? '',
+  )
+  const [bankName, setBankName]     = useState(editInvoice?.payment_bank_name ?? resolvedSettings.payment_bank_name)
+  const [accountNo, setAccountNo]   = useState(editInvoice?.payment_account_number ?? resolvedSettings.payment_account_number)
+  const [terms, setTerms]           = useState(editInvoice?.terms_text ?? resolvedSettings.terms_text)
+  const [phone, setPhone]           = useState(editInvoice?.contact_phone ?? resolvedSettings.contact_phone)
+  const [email, setEmail]           = useState(editInvoice?.contact_email ?? resolvedSettings.contact_email)
+  const [location, setLocation]     = useState(editInvoice?.contact_location ?? resolvedSettings.contact_location)
+  const [rows, setRows]             = useState<LineItemDraft[]>(() =>
+    editInvoice?.line_items?.length
+      ? editInvoice.line_items.map((item, i) => lineItemToDraft(item, `${formId}-${i}`))
+      : [newRow(`${formId}-0`)],
+  )
   const [showForm, setShowForm]     = useState(true)
+  const [newServiceRowId, setNewServiceRowId] = useState<string | null>(null)
+  const [newServiceName, setNewServiceName] = useState('')
+  const [isSavingService, setIsSavingService] = useState(false)
   const [logoUrl, setLogoUrl]       = useState<string | null>(null)
   const [logoSize, setLogoSize]     = useState(DEFAULT_LOGO_SIZE)
   const [logoX, setLogoX]           = useState(DEFAULT_LOGO_X)
@@ -377,6 +440,41 @@ export default function CustomInvoiceForm({ settings, existingInvoices, savedCli
     if (signatureInputRef.current) signatureInputRef.current.value = ''
   }
 
+  function handlePaymentMethodSelect(id: string) {
+    setSelectedPaymentMethodId(id)
+    const method = paymentMethods.find(m => m.id === id)
+    if (!method) return
+    setBankName(method.bank_name)
+    setAccountNo(method.account_number)
+  }
+
+  async function handleSaveNewService() {
+    const name = newServiceName.trim()
+    if (!name) {
+      toast.error('Service name is required.')
+      return
+    }
+    setIsSavingService(true)
+    try {
+      const fd = new FormData()
+      fd.set('name', name)
+      const result = await upsertInvoiceService(fd)
+      if ('error' in result && result.error) {
+        toast.error(result.error)
+        return
+      }
+      if (newServiceRowId) {
+        updateRow(newServiceRowId, { service: name })
+      }
+      toast.success('Service saved!')
+      setNewServiceRowId(null)
+      setNewServiceName('')
+      router.refresh()
+    } finally {
+      setIsSavingService(false)
+    }
+  }
+
   function handleClientSelect(id: string) {
     setSelectedClientId(id)
     const client = savedClients.find(c => c.id === id)
@@ -413,12 +511,18 @@ export default function CustomInvoiceForm({ settings, existingInvoices, savedCli
   }, [savedClients, isNewCustomer, selectedClientId])
 
   useEffect(() => {
-    applyDefaultFields(resolveInvoiceSettings(settings))
-  }, [settings, applyDefaultFields])
+    if (editInvoice?.id) setEditingId(editInvoice.id)
+  }, [editInvoice?.id])
 
   useEffect(() => {
+    if (isEditMode) return
+    applyDefaultFields(resolveInvoiceSettings(settings))
+  }, [settings, applyDefaultFields, isEditMode])
+
+  useEffect(() => {
+    if (isEditMode) return
     setInvoiceNumber(getNextInvoiceNumber(existingInvoices))
-  }, [existingInvoices])
+  }, [existingInvoices, isEditMode])
 
   const printRef = useRef<HTMLDivElement>(null)
   const [isDownloading, setIsDownloading] = useState(false)
@@ -504,27 +608,7 @@ export default function CustomInvoiceForm({ settings, existingInvoices, savedCli
           scrollX: 0,
           scrollY: 0,
           onclone: (clonedDoc: Document) => {
-            clonedDoc.querySelectorAll('style, link[rel="stylesheet"]').forEach(el => el.remove())
-            clonedDoc.querySelectorAll<HTMLElement>('[data-invoice-root]').forEach(el => {
-              el.style.backgroundImage = 'none'
-              el.style.backgroundColor = 'transparent'
-            })
-            // Logo is painted manually on the PDF composite — hide from html2canvas to avoid duplicates/misses.
-            clonedDoc.querySelectorAll<HTMLElement>('[data-invoice-branding-logo]').forEach(el => {
-              el.style.display = 'none'
-            })
-            clonedDoc.querySelectorAll<HTMLElement>('[data-invoice-row-text]').forEach(el => {
-              const top = parseFloat(el.style.top)
-              if (!Number.isNaN(top)) el.style.top = `${top - 4}px`
-              el.style.lineHeight = el.style.fontSize || '12px'
-              el.style.fontFamily = 'Arial, Helvetica, sans-serif'
-            })
-            clonedDoc.querySelectorAll<HTMLElement>('[data-invoice-hdr-text]').forEach(el => {
-              const top = parseFloat(el.style.top)
-              if (!Number.isNaN(top)) el.style.top = `${top - 3}px`
-              el.style.lineHeight = el.style.fontSize || '12px'
-              el.style.fontFamily = 'Arial, Helvetica, sans-serif'
-            })
+            applyInvoicePdfCloneStyles(clonedDoc)
           },
         })
 
@@ -583,7 +667,7 @@ export default function CustomInvoiceForm({ settings, existingInvoices, savedCli
         lockedCurrency,
       )
       const bytes = await generateInvoicePdfBytes(inv, false)
-      const result = await createCustomInvoiceWithPdf({
+      const payload = {
         invoice_date: inv.invoice_date,
         billed_to_name: inv.billed_to_name,
         billed_to_address: inv.billed_to_address,
@@ -599,19 +683,30 @@ export default function CustomInvoiceForm({ settings, existingInvoices, savedCli
         received: inv.received,
         remaining: inv.remaining,
         pdf_base64: uint8ToBase64(bytes),
-      })
+      }
+
+      const updateId = editInvoice?.id ?? editingId
+      const result = updateId
+        ? await updateCustomInvoiceWithPdf({ ...payload, id: updateId, invoice_number: invoiceNumber || inv.invoice_number })
+        : await createCustomInvoiceWithPdf(payload)
+
       if ('error' in result && result.error) {
         toast.error(result.error)
         return
       }
       if (!('success' in result) || !result.success) return
       downloadPdfBytes(bytes, `${result.invoice_number}.pdf`)
-      toast.success(`Invoice ${result.invoice_number} saved and downloaded.`)
-      resetForNewInvoice(
-        [...existingInvoices, { invoice_number: result.invoice_number } as CustomInvoice],
-        resolveInvoiceSettings(settings),
-        savedClients,
-      )
+      if (updateId) {
+        toast.success(`Invoice ${result.invoice_number} updated, booking synced, and downloaded.`)
+        router.push('/custom-invoices')
+      } else {
+        toast.success(`Invoice ${result.invoice_number} saved, booking created, and downloaded.`)
+        resetForNewInvoice(
+          [...existingInvoices, { invoice_number: result.invoice_number } as CustomInvoice],
+          resolveInvoiceSettings(settings),
+          savedClients,
+        )
+      }
       router.refresh()
     } catch (err) {
       console.error('[PDF] save error:', err)
@@ -622,7 +717,7 @@ export default function CustomInvoiceForm({ settings, existingInvoices, savedCli
   }, [
     billedName, invoiceNumber, date, billedAddr, billedPhone, bankName, accountNo,
     terms, phone, email, location, rows, lockedCurrency, generateInvoicePdfBytes, router,
-    existingInvoices, settings, resetForNewInvoice, savedClients,
+    existingInvoices, settings, resetForNewInvoice, savedClients, editInvoice, editingId,
   ])
 
   async function handleStoredDownload(inv: CustomInvoice) {
@@ -659,7 +754,7 @@ export default function CustomInvoiceForm({ settings, existingInvoices, savedCli
       <Card className="border-0 shadow-sm">
         <CardHeader className="pb-3 cursor-pointer" onClick={() => setShowForm(v => !v)}>
           <div className="flex items-center justify-between">
-            <CardTitle className="text-base">New Custom Invoice</CardTitle>
+            <CardTitle className="text-base">{isEditMode ? `Edit Invoice ${invoiceNumber}` : 'New Custom Invoice'}</CardTitle>
             {showForm ? <ChevronUp className="w-4 h-4 text-muted-foreground" /> : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
           </div>
         </CardHeader>
@@ -741,6 +836,21 @@ export default function CustomInvoiceForm({ settings, existingInvoices, savedCli
                 {/* Payment Method */}
                 <div>
                   <p className="text-xs font-semibold text-navy mb-2 uppercase tracking-wide">Payment Method</p>
+                  {paymentMethods.length > 0 && (
+                    <div className="space-y-1.5 mb-3">
+                      <Label className="text-xs">Saved Payment Method</Label>
+                      <select
+                        value={selectedPaymentMethodId}
+                        onChange={e => handlePaymentMethodSelect(e.target.value)}
+                        className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                      >
+                        <option value="">Custom / manual</option>
+                        {paymentMethods.map(m => (
+                          <option key={m.id} value={m.id}>{m.label}</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
                   <div className="grid grid-cols-2 gap-3">
                     <div className="space-y-1.5">
                       <Label className="text-xs">Bank Name</Label>
@@ -783,12 +893,40 @@ export default function CustomInvoiceForm({ settings, existingInvoices, savedCli
                           {/* Service */}
                           <div className="space-y-1.5">
                             <Label className="text-xs">Service</Label>
-                            <Input
-                              placeholder="e.g. 03 MONTH UMRAH VISA"
-                              value={row.service}
-                              onChange={e => updateRow(row.id, { service: e.target.value })}
-                              className="h-9"
-                            />
+                            <div className="flex gap-2">
+                              {services.length > 0 && (
+                                <select
+                                  value={services.some(s => s.name === row.service) ? row.service : ''}
+                                  onChange={e => {
+                                    if (e.target.value) updateRow(row.id, { service: e.target.value })
+                                  }}
+                                  className="flex h-9 min-w-[140px] rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                                >
+                                  <option value="">Select service…</option>
+                                  {services.map(s => (
+                                    <option key={s.id} value={s.name}>{s.name}</option>
+                                  ))}
+                                </select>
+                              )}
+                              <Input
+                                placeholder="e.g. 03 MONTH UMRAH VISA"
+                                value={row.service}
+                                onChange={e => updateRow(row.id, { service: e.target.value })}
+                                className="h-9 flex-1"
+                              />
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                className="h-9 text-xs shrink-0"
+                                onClick={() => {
+                                  setNewServiceRowId(row.id)
+                                  setNewServiceName(row.service)
+                                }}
+                              >
+                                New service
+                              </Button>
+                            </div>
                           </div>
 
                           <div className="flex flex-wrap gap-3 items-end">
@@ -1070,7 +1208,7 @@ export default function CustomInvoiceForm({ settings, existingInvoices, savedCli
                     className="bg-navy hover:bg-navy-2 text-white"
                   >
                     <Download className="w-4 h-4 mr-2" />
-                    {isDownloading ? 'Saving PDF…' : 'Save & Download Invoice'}
+                    {isDownloading ? 'Saving PDF…' : isEditMode ? 'Update & Download Invoice' : 'Save & Download Invoice'}
                   </Button>
                 </div>
               </div>
@@ -1104,6 +1242,13 @@ export default function CustomInvoiceForm({ settings, existingInvoices, savedCli
                     <p className="text-xs text-muted-foreground">{inv.billed_to_name} · {inv.invoice_date}</p>
                   </div>
                   <div className="flex items-center gap-3">
+                    <Link
+                      href={`/custom-invoices?edit=${inv.id}`}
+                      className="inline-flex items-center justify-center gap-1 h-7 px-3 text-xs rounded-md border border-input bg-background hover:bg-accent hover:text-accent-foreground"
+                    >
+                      <Pencil className="w-3 h-3" />
+                      Edit
+                    </Link>
                     {inv.storage_key ? (
                       <Button
                         size="sm"
@@ -1125,6 +1270,30 @@ export default function CustomInvoiceForm({ settings, existingInvoices, savedCli
           </CardContent>
         </Card>
       )}
+
+      <Dialog open={!!newServiceRowId} onOpenChange={open => { if (!open) { setNewServiceRowId(null); setNewServiceName('') } }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>New Service</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-1.5">
+              <Label className="text-xs">Service Name *</Label>
+              <Input
+                value={newServiceName}
+                onChange={e => setNewServiceName(e.target.value)}
+                placeholder="03 MONTH UMRAH VISA"
+              />
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => { setNewServiceRowId(null); setNewServiceName('') }}>Cancel</Button>
+              <Button type="button" disabled={isSavingService} className="bg-navy hover:bg-navy-2 text-white" onClick={() => void handleSaveNewService()}>
+                {isSavingService ? 'Saving…' : 'Save Service'}
+              </Button>
+            </DialogFooter>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/*
         ── Hidden capture target ─────────────────────────────────────────

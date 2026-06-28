@@ -19,6 +19,8 @@ type PackageInvoicePayload = {
   invoice_number: string
   invoice_date: string
   billed_to_name: string
+  billed_to_address?: string
+  billed_to_client_number?: string
   total: number
   received: number
   remaining: number
@@ -51,8 +53,8 @@ async function persistPackageInvoice(
     if (mode === 'create') {
       const inv = demoStore.addCustomInvoice({
         ...row,
-        billed_to_address: '',
-        billed_to_client_number: '',
+        billed_to_address: payload.billed_to_address ?? '',
+        billed_to_client_number: payload.billed_to_client_number ?? '',
         payment_bank_name: '',
         payment_account_number: '',
         terms_text: '',

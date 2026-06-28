@@ -10,6 +10,7 @@ const tabs = [
   { href: '/settings/transport', label: 'Transport' },
   { href: '/settings/hotels',    label: 'Hotels' },
   { href: '/settings/ziarats',   label: 'Ziarats' },
+  { href: '/settings/flight-cities', label: 'Flight Cities' },
   { href: '/settings/currency',  label: 'Currency' },
   { href: '/settings/company',   label: 'Company' },
   { href: '/settings/invoices',  label: 'Invoices' },

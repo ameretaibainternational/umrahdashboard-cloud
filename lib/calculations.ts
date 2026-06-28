@@ -5,7 +5,13 @@ function getAdultVisaRate(visa: VisaSettings, pax: number): number {
   if (pax === 2) return visa.visa_rate_2_pax
   if (pax === 3) return visa.visa_rate_3_pax
   if (pax === 4) return visa.visa_rate_4_pax
-  return visa.visa_rate_group_pax  // 5+
+  return visa.visa_rate_group_pax
+}
+
+function hotelRateSar(hotel: CalcInput['makkahHotel'], room: CalcInput['makkahRoom']): number {
+  if (!hotel) return 0
+  const key = `${room}_sar` as keyof typeof hotel
+  return (hotel[key] as number) ?? 0
 }
 
 export function getCalc(
@@ -19,25 +25,21 @@ export function getCalc(
           makkahHotel, makkahRoom, makkahNights,
           madinahHotel, madinahRoom, madinahNights,
           profitType, profitValue, sellingOverride, advance,
-          makkahZiarat, madinahZiarat,
+          makkahZiarat, madinahZiarat, badrZiarat, taifZiarat,
+          includeMakkahHotel, includeMadinahHotel,
           customTicket, customTicketPkr } = input
 
   const pax = Math.max(1, adult + child + infant)
 
-  // Tickets (PKR)
-  // Custom ticket: already converted to PKR by the form (handles SAR→PKR or direct PKR entry)
-  // Standard ticket: per-pax PKR rates from the airline record
   const ticketCost = customTicket
     ? customTicketPkr
     : airline
       ? adult * airline.adult_pkr + child * airline.child_pkr + infant * airline.infant_pkr
       : 0
 
-  // Visa (PKR) — tier rate by total PAX; children use adult visa rate
   const visaAdultSar = getAdultVisaRate(visa, pax)
   const visaCost = ((adult + child) * visaAdultSar + infant * visa.infant_sar) * sarToPkr
 
-  // Transport (PKR)
   let transportCost = 0
   if (transportMode === 'separate') {
     const paxKey = Math.min(Math.max(pax, 1), 4)
@@ -45,22 +47,20 @@ export function getCalc(
     transportCost = (rate?.rate_sar ?? 0) * sarToPkr
   }
 
-  // Hotels (PKR)
-  const makkahRateSar = makkahHotel ? (makkahHotel[`${makkahRoom}_sar`] as number) : 0
+  const makkahRateSar = includeMakkahHotel ? hotelRateSar(makkahHotel, makkahRoom) : 0
   const makkahCost = makkahRateSar * sarToPkr * makkahNights * pax
 
-  const madinahRateSar = madinahHotel ? (madinahHotel[`${madinahRoom}_sar`] as number) : 0
+  const madinahRateSar = includeMadinahHotel ? hotelRateSar(madinahHotel, madinahRoom) : 0
   const madinahCost = madinahRateSar * sarToPkr * madinahNights * pax
 
-  // Ziarats (PKR) — currently a flat group rate (not multiplied by PAX)
-  // To switch to per-PAX pricing, change: visa.makkah_ziarat_rate * sarToPkr * pax
   const makkahZiaratCost = makkahZiarat ? visa.makkah_ziarat_rate * sarToPkr : 0
   const madinahZiaratCost = madinahZiarat ? visa.madina_ziarat_rate * sarToPkr : 0
+  const badrZiaratCost = badrZiarat ? (visa.badr_ziarat_rate ?? 0) * sarToPkr : 0
+  const taifZiaratCost = taifZiarat ? (visa.taif_ziarat_rate ?? 0) * sarToPkr : 0
 
   const totalCost = ticketCost + visaCost + transportCost + makkahCost + madinahCost
-    + makkahZiaratCost + madinahZiaratCost
+    + makkahZiaratCost + madinahZiaratCost + badrZiaratCost + taifZiaratCost
 
-  // Selling price
   let autoSelling: number
   if (profitType === 'fixed') {
     autoSelling = totalCost + profitValue
@@ -68,8 +68,15 @@ export function getCalc(
     autoSelling = Math.round(totalCost + totalCost * (profitValue / 100))
   }
 
+  const autoProfit = autoSelling - totalCost
   const selling = sellingOverride && sellingOverride > 0 ? sellingOverride : autoSelling
-  const profit = selling - totalCost
+  let profit: number
+  if (sellingOverride && sellingOverride > 0 && sellingOverride !== autoSelling) {
+    const discount = Math.max(0, autoSelling - sellingOverride)
+    profit = discount > autoProfit ? 2 * autoProfit - discount : autoProfit - discount
+  } else {
+    profit = selling - totalCost
+  }
   const remaining = Math.max(0, selling - advance)
   const perPax = Math.round(selling / pax)
 
@@ -82,6 +89,8 @@ export function getCalc(
     madinahCost,
     makkahZiaratCost,
     madinahZiaratCost,
+    badrZiaratCost,
+    taifZiaratCost,
     totalCost,
     selling,
     profit,

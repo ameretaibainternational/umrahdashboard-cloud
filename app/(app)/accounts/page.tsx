@@ -1,13 +1,12 @@
 import { getBookings, getPayments, getExpenses, getCompany } from '@/lib/db'
-import { pkr, formatDate } from '@/lib/formatters'
+import { pkr } from '@/lib/formatters'
 import KpiCard from '@/components/shared/KpiCard'
 import KpiGrid, { PageContainer } from '@/components/shared/KpiGrid'
 import AddPaymentForm from '@/components/accounts/AddPaymentForm'
 import AddExpenseForm from '@/components/accounts/AddExpenseForm'
 import ClientLedger from '@/components/accounts/ClientLedger'
+import ExpenseLedger from '@/components/accounts/ExpenseLedger'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { Badge } from '@/components/ui/badge'
 import { Wallet, TrendingDown, AlertCircle, DollarSign } from 'lucide-react'
 
 export default async function AccountsPage() {
@@ -25,9 +24,9 @@ export default async function AccountsPage() {
   // Total cash paid out to suppliers / expenses
   const totalExpenses = expenses.reduce((sum, e) => sum + e.amount_pkr, 0)
 
-  // Outstanding = total still owed by customers across all bookings
+  // Remaining = total still owed by customers across all bookings
   // This is maintained correctly as payments are added (booking.remaining_pkr is decremented)
-  const totalOutstanding = bookings.reduce((sum, b) => sum + b.remaining_pkr, 0)
+  const totalRemaining = bookings.reduce((sum, b) => sum + b.remaining_pkr, 0)
 
   // Estimated cash profit = what came in minus what went out to suppliers
   // (Different from booking profit which is selling price − cost price)
@@ -58,8 +57,8 @@ export default async function AccountsPage() {
           iconColor="text-rose-600"
         />
         <KpiCard
-          label="Outstanding"
-          value={pkr(totalOutstanding)}
+          label="Remaining"
+          value={pkr(totalRemaining)}
           icon={AlertCircle}
           iconBg="bg-amber-50"
           iconColor="text-amber-600"
@@ -87,44 +86,7 @@ export default async function AccountsPage() {
       />
 
       {/* ── Supplier / Expense Ledger ── */}
-      <Card className="shadow-sm border-0">
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base font-semibold">Supplier / Expense Ledger</CardTitle>
-          <p className="text-xs text-muted-foreground">All recorded supplier and Umrah expense payments.</p>
-        </CardHeader>
-        <CardContent className="p-0">
-          <Table>
-            <TableHeader>
-              <TableRow className="bg-muted/40">
-                <TableHead className="text-xs">Date</TableHead>
-                <TableHead className="text-xs">Type</TableHead>
-                <TableHead className="text-xs">Supplier / Description</TableHead>
-                <TableHead className="text-xs">Method</TableHead>
-                <TableHead className="text-xs text-right">Amount</TableHead>
-                <TableHead className="text-xs">Note</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {expenses.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={6} className="text-center text-muted-foreground py-10 text-sm">
-                    No expense records yet. Use the form above to add supplier payments.
-                  </TableCell>
-                </TableRow>
-              ) : expenses.map(e => (
-                <TableRow key={e.id} className="hover:bg-muted/20">
-                  <TableCell className="text-xs text-muted-foreground whitespace-nowrap">{formatDate(e.expense_date)}</TableCell>
-                  <TableCell><Badge variant="outline" className="text-[10px]">{e.expense_type}</Badge></TableCell>
-                  <TableCell className="text-sm font-medium">{e.supplier}</TableCell>
-                  <TableCell><Badge variant="outline" className="text-[10px]">{e.method}</Badge></TableCell>
-                  <TableCell className="text-right text-sm font-semibold text-rose-600">{pkr(e.amount_pkr)}</TableCell>
-                  <TableCell className="text-xs text-muted-foreground">{e.note || '—'}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
+      <ExpenseLedger expenses={expenses} companyName={company.name} />
 
       {/* ── Cash Book Summary ── */}
       <Card className="shadow-sm border-0">

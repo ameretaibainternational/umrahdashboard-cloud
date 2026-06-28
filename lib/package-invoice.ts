@@ -47,12 +47,12 @@ export function parsePackageInvoiceData(raw: unknown): PackageInvoiceData | null
     airlineId: String(d.airlineId ?? ''),
     transportType: d.transportType === 'private' ? 'private' : 'bus',
     makkahHotelId: String(d.makkahHotelId ?? ''),
-    makkahRoom: (['sharing', 'quad', 'triple', 'double'].includes(String(d.makkahRoom))
+    makkahRoom: (['room', 'sharing', 'quad', 'triple', 'double'].includes(String(d.makkahRoom))
       ? d.makkahRoom
       : 'sharing') as PackageInvoiceData['makkahRoom'],
     makkahNights: Number(d.makkahNights ?? 10),
     madinahHotelId: String(d.madinahHotelId ?? ''),
-    madinahRoom: (['sharing', 'quad', 'triple', 'double'].includes(String(d.madinahRoom))
+    madinahRoom: (['room', 'sharing', 'quad', 'triple', 'double'].includes(String(d.madinahRoom))
       ? d.madinahRoom
       : 'sharing') as PackageInvoiceData['madinahRoom'],
     madinahNights: Number(d.madinahNights ?? 10),
@@ -63,6 +63,11 @@ export function parsePackageInvoiceData(raw: unknown): PackageInvoiceData | null
     customerName: String(d.customerName ?? ''),
     makkahZiarat: Boolean(d.makkahZiarat),
     madinahZiarat: Boolean(d.madinahZiarat),
+    badrZiarat: Boolean(d.badrZiarat),
+    taifZiarat: Boolean(d.taifZiarat),
+    walkingZiarat: Boolean(d.walkingZiarat),
+    includeMakkahHotel: d.includeMakkahHotel !== false,
+    includeMadinahHotel: d.includeMadinahHotel !== false,
     customTicket: Boolean(d.customTicket),
     customTicketLabel: String(d.customTicketLabel ?? ''),
     customTicketAmount: Number(d.customTicketAmount ?? 0),
@@ -70,6 +75,7 @@ export function parsePackageInvoiceData(raw: unknown): PackageInvoiceData | null
     travelDate: String(d.travelDate ?? ''),
     departureCity: String(d.departureCity ?? ''),
     arrivalCity: String(d.arrivalCity ?? ''),
+    saDepartureCity: String(d.saDepartureCity ?? ''),
     returnCity: String(d.returnCity ?? ''),
   }
 }

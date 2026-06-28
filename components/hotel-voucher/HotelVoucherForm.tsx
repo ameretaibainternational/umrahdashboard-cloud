@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useEffect, useCallback } from 'react'
+import { useState, useRef, useEffect, useCallback, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { VoucherPage1, VoucherPage2 } from './HotelVoucherTemplate'
 import type { VoucherData, Pilgrim, Accommodation } from './HotelVoucherTemplate'
@@ -9,6 +9,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import {
   Dialog,
   DialogContent,
@@ -16,13 +18,15 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { Plus, Trash2, Download, Eye, FileText } from 'lucide-react'
+import { Plus, Trash2, Download, Eye, FileText, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { updateHotelVoucherGuidelines } from '@/app/actions/hotel-voucher'
 import { createHotelVoucherWithPdf } from '@/app/actions/hotel-vouchers'
+import { upsertHotel } from '@/app/actions/settings'
 import { downloadPdfBytes, downloadStoredPdf } from '@/lib/storage-client'
 import { uint8ToBase64 } from '@/lib/pdf-utils'
-import type { HotelVoucherSettings, HotelVoucherRecord } from '@/lib/types'
+import { applyVoucherPdfCloneStyles } from '@/lib/invoice-pdf-onclone'
+import type { Hotel, HotelVoucherSettings, HotelVoucherRecord } from '@/lib/types'
 import { BrandingSlider, BrandingResetButton } from '@/components/branding/BrandingSlider'
 import {
   clampVoucherLogoPosition,
@@ -182,7 +186,37 @@ function emptyPilgrim(): Pilgrim {
 }
 
 function emptyAccommodation(): Accommodation {
-  return { id: uid(), hotelName: '', confirmNo: '', city: 'Makkah', roomType: '', mealPlan: 'BB', checkIn: '', checkOut: '', nights: '' }
+  return { id: uid(), hotelName: '', confirmNo: '', city: 'Makkah', roomType: 'Room', mealPlan: 'BB', checkIn: '', checkOut: '', nights: '' }
+}
+
+const VOUCHER_ROOM_TYPES = ['Room', 'Double', 'Triple', 'Quad'] as const
+
+function calcCheckOut(checkIn: string, nights: string): string {
+  if (!checkIn || !nights) return ''
+  const n = parseInt(nights, 10)
+  if (!n || n < 1) return ''
+  const [y, m, d] = checkIn.split('-').map(Number)
+  const date = new Date(y, m - 1, d)
+  date.setDate(date.getDate() + n)
+  const yy = date.getFullYear()
+  const mm = String(date.getMonth() + 1).padStart(2, '0')
+  const dd = String(date.getDate()).padStart(2, '0')
+  return `${yy}-${mm}-${dd}`
+}
+
+function hotelLabel(h: Hotel) {
+  return `${h.name} · ${h.distance}`
+}
+
+function hotelsForCity(city: string, makkahHotels: Hotel[], madinahHotels: Hotel[]): Hotel[] {
+  if (city === 'Makkah') return makkahHotels
+  if (city === 'Madina') return madinahHotels
+  return []
+}
+
+function resolveHotelId(hotelName: string, hotels: Hotel[]): string {
+  const match = hotels.find(h => hotelLabel(h) === hotelName || h.name === hotelName)
+  return match?.id ?? ''
 }
 
 const DEFAULT_DATA: VoucherData = {
@@ -195,8 +229,12 @@ const DEFAULT_DATA: VoucherData = {
   accommodations: [emptyAccommodation(), { ...emptyAccommodation(), id: uid(), city: 'Madina' }],
   makkahHotelContact: '',
   madinaHotelContact: '',
+  makkahTransportContact: '',
+  madinaTransportContact: '',
+  jeddahTransportContact: '',
   checkInTime: '14:00',
   checkOutTime: '12:00',
+  showVisaNumber: true,
 }
 
 // ─── Scaled preview container ──────────────────────────────────────────────────
@@ -252,11 +290,19 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 // ─── Main component ───────────────────────────────────────────────────────────
 interface HotelVoucherFormProps {
   initialSettings: Pick<HotelVoucherSettings, 'urdu_guidelines' | 'urdu_footer'>
+  makkahHotels: Hotel[]
+  madinahHotels: Hotel[]
   existingVouchers?: HotelVoucherRecord[]
   canEditGuidelines?: boolean
 }
 
-export default function HotelVoucherForm({ initialSettings, existingVouchers = [], canEditGuidelines = false }: HotelVoucherFormProps) {
+export default function HotelVoucherForm({
+  initialSettings,
+  makkahHotels,
+  madinahHotels,
+  existingVouchers = [],
+  canEditGuidelines = false,
+}: HotelVoucherFormProps) {
   const savedVouchers = existingVouchers.filter(v => !v.file_deleted_at)
   const router = useRouter()
   const [data, setData] = useState<VoucherData>(DEFAULT_DATA)
@@ -270,6 +316,9 @@ export default function HotelVoucherForm({ initialSettings, existingVouchers = [
   const [draftGuidelines, setDraftGuidelines] = useState('')
   const [draftFooter, setDraftFooter] = useState('')
   const [isSavingGuidelines, setIsSavingGuidelines] = useState(false)
+  const [hotelSelections, setHotelSelections] = useState<Record<string, string>>({})
+  const [newHotelForAccommodationId, setNewHotelForAccommodationId] = useState<string | null>(null)
+  const [isSavingHotel, startHotelTransition] = useTransition()
   const [logoUrl, setLogoUrl] = useState<string | null>(null)
   const [logoSize, setLogoSize] = useState(DEFAULT_VOUCHER_LOGO_SIZE)
   const [logoX, setLogoX] = useState(DEFAULT_VOUCHER_LOGO_X)
@@ -332,8 +381,61 @@ export default function HotelVoucherForm({ initialSettings, existingVouchers = [
   function updateAccommodation(id: string, patch: Partial<Accommodation>) {
     setData(prev => ({
       ...prev,
-      accommodations: prev.accommodations.map(a => a.id === id ? { ...a, ...patch } : a),
+      accommodations: prev.accommodations.map(a => {
+        if (a.id !== id) return a
+        const updated = { ...a, ...patch }
+        if ('checkIn' in patch || 'nights' in patch) {
+          updated.checkOut = calcCheckOut(updated.checkIn, updated.nights)
+        }
+        return updated
+      }),
     }))
+  }
+
+  function handleHotelSelect(accommodationId: string, hotelId: string, city: string) {
+    const hotels = hotelsForCity(city, makkahHotels, madinahHotels)
+    const hotel = hotels.find(h => h.id === hotelId)
+    if (!hotel) return
+    setHotelSelections(prev => ({ ...prev, [accommodationId]: hotelId }))
+    updateAccommodation(accommodationId, { hotelName: hotelLabel(hotel) })
+    if (city === 'Makkah' && hotel.contact_number) {
+      setField('makkahHotelContact', hotel.contact_number)
+    }
+    if (city === 'Madina' && hotel.contact_number) {
+      setField('madinaHotelContact', hotel.contact_number)
+    }
+  }
+
+  function handleAccommodationCityChange(accommodationId: string, city: string) {
+    updateAccommodation(accommodationId, { city, hotelName: '' })
+    setHotelSelections(prev => {
+      const next = { ...prev }
+      delete next[accommodationId]
+      return next
+    })
+  }
+
+  function handleNewHotelSubmit(formData: FormData) {
+    startHotelTransition(async () => {
+      const result = await upsertHotel(formData)
+      if (result && 'error' in result && result.error) {
+        toast.error(result.error)
+        return
+      }
+      toast.success('Hotel saved!')
+      const accommodationId = newHotelForAccommodationId
+      setNewHotelForAccommodationId(null)
+      router.refresh()
+      if (accommodationId) {
+        const city = formData.get('city') as string
+        const name = (formData.get('name') as string).trim()
+        const distance = (formData.get('distance') as string) || ''
+        const contact = (formData.get('contact_number') as string) || ''
+        updateAccommodation(accommodationId, { hotelName: `${name} · ${distance}` })
+        if (city === 'Makkah' && contact) setField('makkahHotelContact', contact)
+        if (city === 'Madinah' && contact) setField('madinaHotelContact', contact)
+      }
+    })
   }
   function addAccommodation() { setData(prev => ({ ...prev, accommodations: [...prev.accommodations, emptyAccommodation()] })) }
   function removeAccommodation(id: string) {
@@ -433,6 +535,7 @@ export default function HotelVoucherForm({ initialSettings, existingVouchers = [
       scrollY: 0,
       onclone: (clonedDoc: Document) => {
         clonedDoc.querySelectorAll('style, link[rel="stylesheet"]').forEach(el => el.remove())
+        applyVoucherPdfCloneStyles(clonedDoc)
         clonedDoc.querySelectorAll<HTMLElement>('[data-bg]').forEach(el => { el.style.display = 'none' })
         clonedDoc.querySelectorAll<HTMLElement>('[data-voucher-p1]').forEach(el => { el.style.backgroundColor = 'transparent' })
         hideBrandingLogoInClone(clonedDoc)
@@ -631,10 +734,23 @@ export default function HotelVoucherForm({ initialSettings, existingVouchers = [
                       className="h-7 text-xs" />
                   </div>
                   <div className="space-y-1">
-                    <Label className="text-xs">Visa Number</Label>
-                    <Input placeholder="Visa No" value={p.visaNumber}
-                      onChange={e => updatePilgrim(p.id, { visaNumber: e.target.value })}
-                      className="h-7 text-xs" />
+                    <div className="flex items-center justify-between gap-2">
+                      <Label className="text-xs">Visa Number</Label>
+                      {i === 0 && (
+                        <label className="flex items-center gap-1.5 cursor-pointer select-none shrink-0">
+                          <Checkbox
+                            checked={data.showVisaNumber}
+                            onCheckedChange={v => setField('showVisaNumber', Boolean(v))}
+                          />
+                          <span className="text-xs font-medium">Show</span>
+                        </label>
+                      )}
+                    </div>
+                    {data.showVisaNumber && (
+                      <Input placeholder="Visa No" value={p.visaNumber}
+                        onChange={e => updatePilgrim(p.id, { visaNumber: e.target.value })}
+                        className="h-7 text-xs" />
+                    )}
                   </div>
                   <div className="space-y-1">
                     <Label className="text-xs">PNR</Label>
@@ -669,7 +785,12 @@ export default function HotelVoucherForm({ initialSettings, existingVouchers = [
         {/* Accommodations */}
         <Section title="Accommodation Details">
           <div className="space-y-3">
-            {data.accommodations.map((a, i) => (
+            {data.accommodations.map((a, i) => {
+              const cityHotels = hotelsForCity(a.city, makkahHotels, madinahHotels)
+              const selectedHotelId = hotelSelections[a.id] || resolveHotelId(a.hotelName, cityHotels)
+              const useHotelDropdown = a.city === 'Makkah' || a.city === 'Madina'
+
+              return (
               <div key={a.id} className="border rounded-md p-3 space-y-2 bg-muted/30">
                 <div className="flex items-center justify-between mb-1">
                   <span className="text-xs font-semibold text-muted-foreground">Hotel {i + 1}</span>
@@ -681,22 +802,10 @@ export default function HotelVoucherForm({ initialSettings, existingVouchers = [
                   )}
                 </div>
                 <div className="grid grid-cols-2 gap-2">
-                  <div className="space-y-1 col-span-2">
-                    <Label className="text-xs">Hotel Name</Label>
-                    <Input placeholder="Hilton Makkah" value={a.hotelName}
-                      onChange={e => updateAccommodation(a.id, { hotelName: e.target.value })}
-                      className="h-7 text-xs" />
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs">Confirmation No</Label>
-                    <Input placeholder="CONF-001" value={a.confirmNo}
-                      onChange={e => updateAccommodation(a.id, { confirmNo: e.target.value })}
-                      className="h-7 text-xs" />
-                  </div>
                   <div className="space-y-1">
                     <Label className="text-xs">City</Label>
                     <select value={a.city}
-                      onChange={e => updateAccommodation(a.id, { city: e.target.value })}
+                      onChange={e => handleAccommodationCityChange(a.id, e.target.value)}
                       className="h-7 text-xs w-full rounded-md border border-input bg-background px-2">
                       <option value="Makkah">Makkah</option>
                       <option value="Madina">Madina</option>
@@ -705,10 +814,58 @@ export default function HotelVoucherForm({ initialSettings, existingVouchers = [
                     </select>
                   </div>
                   <div className="space-y-1">
-                    <Label className="text-xs">Room Type</Label>
-                    <Input placeholder="Double / Quad" value={a.roomType}
-                      onChange={e => updateAccommodation(a.id, { roomType: e.target.value })}
+                    <Label className="text-xs">Confirmation No</Label>
+                    <Input placeholder="CONF-001" value={a.confirmNo}
+                      onChange={e => updateAccommodation(a.id, { confirmNo: e.target.value })}
                       className="h-7 text-xs" />
+                  </div>
+                  <div className="space-y-1 col-span-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <Label className="text-xs">Hotel Name</Label>
+                      {useHotelDropdown && (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="h-6 text-[10px] px-2"
+                          onClick={() => setNewHotelForAccommodationId(a.id)}
+                        >
+                          <Plus className="w-3 h-3 mr-1" /> New Hotel
+                        </Button>
+                      )}
+                    </div>
+                    {useHotelDropdown ? (
+                      <Select
+                        items={cityHotels.map(h => ({ value: h.id, label: hotelLabel(h) }))}
+                        value={selectedHotelId || null}
+                        onValueChange={v => { if (v) handleHotelSelect(a.id, v, a.city) }}
+                      >
+                        <SelectTrigger className="h-7 text-xs w-full">
+                          <SelectValue placeholder="Select hotel" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {cityHotels.map(h => (
+                            <SelectItem key={h.id} value={h.id} label={hotelLabel(h)}>
+                              {hotelLabel(h)}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      <Input placeholder="Hotel name" value={a.hotelName}
+                        onChange={e => updateAccommodation(a.id, { hotelName: e.target.value })}
+                        className="h-7 text-xs" />
+                    )}
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Room Type</Label>
+                    <select value={a.roomType || 'Room'}
+                      onChange={e => updateAccommodation(a.id, { roomType: e.target.value })}
+                      className="h-7 text-xs w-full rounded-md border border-input bg-background px-2">
+                      {VOUCHER_ROOM_TYPES.map(r => (
+                        <option key={r} value={r}>{r}</option>
+                      ))}
+                    </select>
                   </div>
                   <div className="space-y-1">
                     <Label className="text-xs">Meal Plan</Label>
@@ -727,21 +884,20 @@ export default function HotelVoucherForm({ initialSettings, existingVouchers = [
                       onChange={e => updateAccommodation(a.id, { checkIn: e.target.value })}
                       className="h-7 text-xs" />
                   </div>
-                  <div className="space-y-1 col-span-2 sm:col-span-1 min-w-0">
-                    <Label className="text-xs">Check Out</Label>
-                    <Input type="date" value={a.checkOut}
-                      onChange={e => updateAccommodation(a.id, { checkOut: e.target.value })}
-                      className="h-7 text-xs" />
-                  </div>
                   <div className="space-y-1">
                     <Label className="text-xs">Nights</Label>
                     <Input type="number" min="1" placeholder="7" value={a.nights}
                       onChange={e => updateAccommodation(a.id, { nights: e.target.value })}
                       className="h-7 text-xs" />
                   </div>
+                  <div className="space-y-1 col-span-2 sm:col-span-1 min-w-0">
+                    <Label className="text-xs">Check Out (auto)</Label>
+                    <Input type="date" value={a.checkOut} readOnly
+                      className="h-7 text-xs bg-muted/50" />
+                  </div>
                 </div>
               </div>
-            ))}
+            )})}
             <Button type="button" variant="outline" size="sm" onClick={addAccommodation}
               className="w-full h-8 text-xs gap-1.5 border-dashed">
               <Plus className="w-3.5 h-3.5" /> Add Hotel
@@ -761,6 +917,21 @@ export default function HotelVoucherForm({ initialSettings, existingVouchers = [
               <Label className="text-xs">Madina Hotel Contact</Label>
               <Input placeholder="+966 14 000 0000" value={data.madinaHotelContact}
                 onChange={e => setField('madinaHotelContact', e.target.value)} className="h-8 text-sm" />
+            </div>
+            <div className="space-y-1 col-span-2">
+              <Label className="text-xs">Makkah Transport Contact</Label>
+              <Input placeholder="+966 12 000 0000" value={data.makkahTransportContact}
+                onChange={e => setField('makkahTransportContact', e.target.value)} className="h-8 text-sm" />
+            </div>
+            <div className="space-y-1 col-span-2">
+              <Label className="text-xs">Madina Transport Contact</Label>
+              <Input placeholder="+966 14 000 0000" value={data.madinaTransportContact}
+                onChange={e => setField('madinaTransportContact', e.target.value)} className="h-8 text-sm" />
+            </div>
+            <div className="space-y-1 col-span-2">
+              <Label className="text-xs">Jeddah Transport Contact</Label>
+              <Input placeholder="+966 12 000 0000" value={data.jeddahTransportContact}
+                onChange={e => setField('jeddahTransportContact', e.target.value)} className="h-8 text-sm" />
             </div>
             <div className="space-y-1 col-span-2 sm:col-span-1 min-w-0">
               <Label className="text-xs">Check-In Time</Label>
@@ -902,6 +1073,62 @@ export default function HotelVoucherForm({ initialSettings, existingVouchers = [
           <VoucherPage2 ref={page2Ref} urduLines={urduLines} urduFooter={urduFooter} branding={branding} />
         </div>
       </div>
+
+      <Dialog open={!!newHotelForAccommodationId} onOpenChange={open => !open && setNewHotelForAccommodationId(null)}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>New Hotel</DialogTitle>
+          </DialogHeader>
+          {(() => {
+            const acc = data.accommodations.find(a => a.id === newHotelForAccommodationId)
+            const city = acc?.city === 'Madina' ? 'Madinah' : 'Makkah'
+            return (
+              <form action={handleNewHotelSubmit} className="space-y-4">
+                <input type="hidden" name="city" value={city} />
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5 col-span-2">
+                    <Label className="text-xs">City</Label>
+                    <Input value={city} readOnly className="bg-muted/50" />
+                  </div>
+                  <div className="space-y-1.5 col-span-2">
+                    <Label className="text-xs">Hotel Name</Label>
+                    <Input name="name" required />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Distance</Label>
+                    <Input name="distance" placeholder="e.g. 200 MTR" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Contact Number</Label>
+                    <Input name="contact_number" placeholder="+966 12 000 0000" />
+                  </div>
+                  <div className="space-y-1.5 col-span-2">
+                    <Label className="text-xs">Location (optional)</Label>
+                    <Input name="location" />
+                  </div>
+                </div>
+                <div className="grid grid-cols-5 gap-3">
+                  {['room', 'sharing', 'quad', 'triple', 'double'].map(r => (
+                    <div key={r} className="space-y-1.5">
+                      <Label className="text-xs capitalize">{r} SAR</Label>
+                      <Input type="number" name={`${r}_sar`} min={0} defaultValue={0} />
+                    </div>
+                  ))}
+                </div>
+                <DialogFooter>
+                  <Button type="button" variant="outline" onClick={() => setNewHotelForAccommodationId(null)}>
+                    Cancel
+                  </Button>
+                  <Button type="submit" disabled={isSavingHotel} className="bg-navy hover:bg-navy/90 text-white">
+                    {isSavingHotel && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                    Save Hotel
+                  </Button>
+                </DialogFooter>
+              </form>
+            )
+          })()}
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={guidelinesOpen} onOpenChange={setGuidelinesOpen}>
         <DialogContent className="max-w-2xl sm:max-w-2xl">

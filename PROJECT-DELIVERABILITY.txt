@@ -1,0 +1,591 @@
+================================================================================
+  AMERE TAIBA INTERNATIONAL — UMRAH CRM
+  PROJECT DELIVERABILITY & TECHNICAL HANDOVER DOCUMENT
+================================================================================
+
+Document version : 1.0
+Last updated     : June 2025
+Prepared for     : Client handover
+Project folder   : fast-travels-crm
+Package name     : fast-travels-crm (v0.1.0)
+
+Purpose of this file
+--------------------
+This document explains how the CRM is built, hosted, configured, and maintained.
+Any developer taking over the project should read this first before changing code
+or infrastructure.
+
+IMPORTANT: Never commit real passwords or API keys to Git. Store secrets only in
+.env.local (local) and Netlify Environment Variables (production).
+
+
+================================================================================
+1. PROJECT OVERVIEW
+================================================================================
+
+Product name     : Amere Taiba International Umrah CRM
+Business use     : Umrah travel agency operations — package pricing, bookings,
+                   invoices, hotel vouchers, accounts, staff management
+
+What the system does
+--------------------
+- Build Umrah packages with live cost/profit calculator
+- Save bookings and package invoices (PDF stored in cloud)
+- Create custom ATI-branded invoices and hotel vouchers
+- Record customer payments and supplier expenses
+- Dashboard, reports, and admin settings (hotels, airlines, visa rates, etc.)
+- Role-based staff access (Admin / Moderator / Viewer)
+
+Production URL (Netlify)
+------------------------
+  https://ameretaiba.netlify.app
+  (Confirm with client — URL may vary if site was renamed)
+
+Source code (primary deployment repo)
+-------------------------------------
+  GitHub : https://github.com/ameretaibainternational/umrahdashboard-cloud
+  Git remote name in developer machine : "cloud"
+  Branch : master
+
+Other git remotes (for reference only)
+--------------------------------------
+  origin → https://github.com/fasttravelcrm/CRM.git
+  demo   → https://github.com/umrahdashboard-cloud/umrah-dashboard-demo.git
+
+Backend services used
+---------------------
+  1. Supabase  — PostgreSQL database + Auth + Row Level Security
+  2. Cloudflare R2 — PDF file storage (invoices & vouchers)
+  3. Netlify   — Hosting (Next.js SSR / server actions)
+  4. Cloudflare Turnstile (optional) — Bot protection on login
+
+
+================================================================================
+2. TECH STACK
+================================================================================
+
+Layer              Technology                    Version / Notes
+-----------------  ----------------------------  ---------------------------
+Framework          Next.js (App Router)          16.2.9
+UI library         React                         19.2.4
+Language           TypeScript                    5.x
+Styling            Tailwind CSS                  4.x
+Components         shadcn/ui + Base UI           Custom components in /components
+Database           Supabase (PostgreSQL)         Hosted — project ref below
+Auth               Supabase Auth                 Email/password login
+PDF generation     jsPDF + html2canvas           Client-side invoice PDFs
+Charts             Recharts                      Dashboard & reports
+File storage       Cloudflare R2 (S3-compatible) @aws-sdk/client-s3
+Optional DB path   postgres.js (direct SQL)      Disabled in production — see §8
+Hosting            Netlify + @netlify/plugin-nextjs
+Bot protection     Cloudflare Turnstile          Optional env vars
+
+
+Supabase project reference
+--------------------------
+  Project name (dashboard) : ameretaibainternational
+  Project ref (URL id)     : iwzkwkekrswptyipidzc
+  API URL pattern          : https://iwzkwkekrswptyipidzc.supabase.co
+
+  All credentials live in Supabase Dashboard → Settings → API
+  (Do NOT paste keys into this document.)
+
+
+================================================================================
+3. SYSTEM ARCHITECTURE
+================================================================================
+
+High-level flow
+---------------
+
+  [Browser]
+      │
+      ▼
+  [Netlify — Next.js 16 App Router]
+      │
+      ├── Server Components → read data via lib/db.ts
+      ├── Server Actions  → write data via app/actions/*.ts
+      ├── API Routes      → app/api/storage/* (PDF download, presigned URLs)
+      │
+      ├──► Supabase PostgREST API (primary data path)
+      │         └── PostgreSQL tables (bookings, payments, custom_invoices, …)
+      │
+      ├──► Cloudflare R2 (PDF blobs)
+      │         └── Keys: invoices/{uuid}.pdf, vouchers/{uuid}.pdf
+      │
+      └──► (Optional) Direct Postgres via DATABASE_URL
+                └── Disabled in production — use DISABLE_DIRECT_DB=true
+
+Request auth flow
+-----------------
+  1. User logs in → Supabase Auth session stored in HTTP-only cookies
+  2. proxy.ts (root middleware) checks session on every page load
+  3. app/(app)/layout.tsx loads staff profile from staff_users table
+  4. Server actions call requireAdmin() or requireModeratorFeature() before writes
+
+Data layer pattern (lib/db.ts)
+------------------------------
+  - Demo mode  → in-memory demoStore (no Supabase needed)
+  - Production → Supabase API, with optional direct Postgres fallback
+  - PDF metadata in Supabase; PDF bytes in R2
+
+Why DISABLE_DIRECT_DB is recommended
+------------------------------------
+  Direct Postgres (DATABASE_URL) can timeout from Netlify/serverless regions.
+  When it fails, every request waits ~5 seconds before falling back to Supabase.
+  Set DISABLE_DIRECT_DB=true (or remove DATABASE_URL) on Netlify for best speed.
+
+
+================================================================================
+4. FOLDER STRUCTURE (KEY PATHS)
+================================================================================
+
+fast-travels-crm/
+├── app/
+│   ├── (auth)/login/          Login page
+│   ├── (app)/                 Protected app pages (dashboard, calculator, …)
+│   │   ├── dashboard/
+│   │   ├── calculator/        Umrah package calculator
+│   │   ├── bookings/          Booking list (view/edit/delete)
+│   │   ├── invoices/          Saved package invoices
+│   │   ├── custom-invoices/   ATI custom invoice builder
+│   │   ├── hotel-voucher/     Hotel voucher generator
+│   │   ├── umrah-poster/      Marketing poster tool
+│   │   ├── accounts/          Payments & expenses
+│   │   ├── reports/
+│   │   ├── users/             Staff management (admin only)
+│   │   └── settings/[tab]/    Admin settings tabs
+│   ├── actions/               Server actions (all mutations)
+│   └── api/storage/           PDF download & presign endpoints
+├── components/                React UI components
+├── lib/
+│   ├── db.ts                  Main read layer (bookings, settings, …)
+│   ├── crm-db.ts              Direct SQL for bookings/payments/expenses
+│   ├── document-db.ts         Direct SQL for invoices/vouchers/storage
+│   ├── supabase-document-db.ts Supabase fallback for documents
+│   ├── sql.ts                 Postgres connection + DISABLE_DIRECT_DB logic
+│   ├── permissions.ts         Route access rules (client + shared)
+│   ├── permissions-server.ts  Server-side auth guards
+│   ├── r2.ts                  Cloudflare R2 upload/delete/list
+│   └── types.ts               TypeScript interfaces
+├── supabase/migrations/       SQL migrations (run in order in Supabase)
+├── public/logo.png            Company logo
+├── proxy.ts                   Auth middleware (session check)
+├── netlify.toml               Netlify build config
+├── .env.local                 Local secrets (NOT in Git)
+└── PROJECT-DELIVERABILITY.txt This file
+
+
+================================================================================
+5. APPLICATION MODULES & FEATURES
+================================================================================
+
+Module               Route                    Description
+-------------------  -----------------------  ---------------------------------
+Dashboard            /dashboard               KPIs, charts, recent bookings
+Umrah Calculator     /calculator              Package builder, save booking,
+                                              save/download package invoice PDF
+Bookings             /bookings                List, search, view, edit, delete
+Package Invoices     /invoices                Saved calculator invoices
+Custom Invoices      /custom-invoices         Branded invoice template + PDF
+Hotel Voucher        /hotel-voucher           Hotel voucher PDF generator
+Umrah Poster         /umrah-poster            Poster design tool
+Accounts             /accounts                Record payments & expenses, ledger
+Reports              /reports                 Revenue/cost/profit summaries
+Settings             /settings/*              Visa, airlines, hotels, currency,
+                                              company, invoice clients, storage
+Users & Staff        /users                   Create/manage staff (admin only)
+
+PDF storage behaviour
+---------------------
+- Package & custom invoice PDFs → R2 key: invoices/{uuid}.pdf
+- Hotel voucher PDFs          → R2 key: vouchers/{uuid}.pdf
+- Metadata (customer name, amounts, etc.) → Supabase tables
+- Settings → Storage tab: view usage, download, delete PDFs, sync orphans
+
+Booking actions (Bookings page)
+-------------------------------
+- View  : read-only dialog with customer, financials, hotels
+- Edit  : update booking fields; profit/remaining auto-recalculated
+- Delete: removes booking (and linked payment records in demo mode)
+
+
+================================================================================
+6. USER ROLES & PERMISSIONS
+================================================================================
+
+Role (staff_users)   permission field   Access
+-------------------  -----------------  -----------------------------------------
+Admin                Full Access        Everything including Settings & Users
+Moderator            Moderator          Dashboard, calculator, bookings,
+                                        invoices, vouchers, accounts
+                                        (own records only unless admin)
+Viewer               View Only          Calculator only (read/use, limited save)
+
+Record ownership
+----------------
+- Non-admin staff only see/edit/delete records they created (created_by column)
+- Admins see all records
+
+Permission logic files
+----------------------
+  lib/permissions.ts         — route access, role helpers
+  lib/permissions-server.ts  — requireAdmin(), requireModeratorFeature()
+  components/layout/AppShell.tsx — redirects unauthorized routes
+
+
+================================================================================
+7. DATABASE (SUPABASE)
+================================================================================
+
+Run migrations IN ORDER in Supabase → SQL Editor
+-------------------------------------------------
+  001_initial.sql              Core tables, RLS, seed data (hotels, airlines)
+  002_expenses.sql             Expenses / supplier payments table
+  003_visa_ziarat_rates.sql    Visa & ziarat rate columns
+  004_custom_invoices.sql      Custom invoice tables + settings
+  005_hotel_voucher_settings.sql Hotel voucher config
+  006_r2_storage.sql           PDF metadata columns, storage_usage, triggers
+  007_staff_roles_ownership.sql created_by columns, staff roles
+  008_package_invoices.sql     package_data, invoice_kind on custom_invoices
+  009_invoice_clients.sql      Saved invoice client dropdown list
+  010_storage_usage_fix.sql    Fix storage counter on delete/update
+
+One-time helper scripts (run if needed)
+---------------------------------------
+  supabase/setup-missing-tables.sql
+  supabase/run-once-link-staff-profile.sql
+  supabase/run-once-staff-roles.sql
+  supabase/fix-storage-triggers.sql
+  supabase/fix-api-schema-cache.sql
+
+Main tables
+-----------
+  staff_users       Staff profiles linked to auth.users
+  company           Company name, phone, logo (single row)
+  visa_settings     Visa SAR rates
+  currency_settings SAR → PKR rate
+  transport_rates   Bus/private transport SAR rates
+  airlines          Ticket prices per airline
+  hotels            Makkah/Madinah hotel room rates
+  bookings          Saved packages from calculator
+  payments          Customer payment records
+  expenses          Supplier/expense records
+  custom_invoices   Custom + package invoices (metadata)
+  hotel_vouchers    Hotel voucher records
+  invoice_settings  Default invoice footer/terms
+  invoice_clients   Saved "Billed To" clients for dropdown
+  storage_usage     Running total of PDF bytes (single row)
+
+Row Level Security (RLS)
+------------------------
+  All tables use authenticated-only policies (auth_all pattern in migrations).
+  Server actions enforce additional ownership checks for moderators.
+
+
+================================================================================
+8. ENVIRONMENT VARIABLES
+================================================================================
+
+Create .env.local for local dev. Mirror the same keys on Netlify.
+
+Required — Supabase
+-------------------
+  NEXT_PUBLIC_SUPABASE_URL          https://{project-ref}.supabase.co
+  NEXT_PUBLIC_SUPABASE_ANON_KEY     Public anon key (safe for browser)
+  SUPABASE_SERVICE_ROLE_KEY         Server-only — NEVER expose to client
+
+Required — Cloudflare R2 (PDF storage)
+--------------------------------------
+  R2_ACCOUNT_ID
+  R2_ACCESS_KEY_ID
+  R2_SECRET_ACCESS_KEY
+  R2_BUCKET_NAME                    e.g. umrah-dashboard-files
+
+Recommended — Performance
+---------------------------
+  DISABLE_DIRECT_DB=true            Skip broken/slow direct Postgres; use Supabase API
+
+Optional — Direct Postgres (usually NOT needed on Netlify)
+----------------------------------------------------------
+  DATABASE_URL                      Supabase pooler URI (port 6543)
+  DATABASE_PASSWORD                 Alternative to embedding password in URL
+  SUPABASE_DB_POOLER_HOST           Override pooler hostname if needed
+
+Optional — Login bot protection (Cloudflare Turnstile)
+------------------------------------------------------
+  NEXT_PUBLIC_TURNSTILE_SITE_KEY
+  TURNSTILE_SECRET_KEY
+  Also whitelist your domain in Cloudflare Turnstile dashboard
+
+Optional — Demo mode
+--------------------
+  NEXT_PUBLIC_SHOW_DEMO_CREDENTIALS=true   Show demo login hints on login page
+  Leave NEXT_PUBLIC_SUPABASE_URL empty or containing "your-project" → demo mode
+  (In-memory data only — resets on server restart)
+
+
+================================================================================
+9. LOCAL DEVELOPMENT SETUP
+================================================================================
+
+Prerequisites
+-------------
+  Node.js 20.x (matches Netlify NODE_VERSION in netlify.toml)
+  npm
+  Supabase project with migrations applied
+  Cloudflare R2 bucket + API token
+
+Steps
+-----
+  1. Clone repository
+       git clone https://github.com/ameretaibainternational/umrahdashboard-cloud.git
+       cd umrahdashboard-cloud   (or fast-travels-crm)
+
+  2. Install dependencies
+       npm install
+
+  3. Copy and fill environment variables
+       Create .env.local — see Section 8
+       Set DISABLE_DIRECT_DB=true unless direct Postgres is verified working
+
+  4. Run Supabase migrations (Section 7) if not already done
+
+  5. Create admin user (Section 10)
+
+  6. Start dev server
+       npm run dev
+       Open http://localhost:3000
+
+Build & lint
+------------
+  npm run build    Production build (run before deploy)
+  npm run lint     ESLint
+  npx tsc --noEmit TypeScript check
+
+
+================================================================================
+10. AUTHENTICATION & FIRST ADMIN USER
+================================================================================
+
+1. Supabase Dashboard → Authentication → Users → Add user
+     Email    : (your admin email)
+     Password : (strong password)
+
+2. Supabase SQL Editor — link user to staff_users:
+
+     INSERT INTO staff_users (id, name, username, role, permission, status)
+     SELECT id, 'Admin', 'admin', 'Admin', 'Full Access', 'Active'
+     FROM auth.users WHERE email = 'YOUR_ADMIN_EMAIL';
+
+3. Log in at /login
+
+Adding more staff
+-----------------
+  Use the in-app Users & Staff page (admin only).
+  This creates both a Supabase Auth account and a staff_users row.
+
+
+================================================================================
+11. DEPLOYMENT (NETLIFY)
+================================================================================
+
+Configuration file : netlify.toml
+  Build command    : npm run build
+  Publish directory: .next
+  Node version     : 20
+  Plugin           : @netlify/plugin-nextjs
+
+Deploy steps
+------------
+  1. Push to GitHub (cloud remote → master branch)
+  2. Netlify auto-builds on push (if connected)
+  3. Set ALL environment variables in Netlify → Site settings → Environment variables
+  4. Critical for speed: DISABLE_DIRECT_DB=true (or omit DATABASE_URL)
+  5. Redeploy after env changes
+
+Push to production repo
+-----------------------
+  git add .
+  git commit -m "Your message"
+  git push cloud master
+
+Server action body limit
+------------------------
+  next.config.ts sets serverActions.bodySizeLimit to 6mb
+  (Package invoice PDFs are sent as base64 from calculator)
+
+
+================================================================================
+12. FILE STORAGE (CLOUDFLARE R2)
+================================================================================
+
+Bucket purpose   : Store generated PDF files only
+Metadata location: Supabase (custom_invoices, hotel_vouchers tables)
+Usage tracking   : storage_usage table + Settings → Storage page
+
+Storage admin tasks
+-------------------
+  Settings → Storage → "Sync usage & clear orphans"
+  Removes R2 files with no active database reference and resets usage counter
+
+When deleting invoices
+--------------------
+  - Delete from Invoices/Bookings page → also removes R2 PDF (if implemented)
+  - Soft delete from Storage page → marks file_deleted_at, removes R2 blob
+  - Hard delete without cleanup may leave orphan files — run sync orphans
+
+R2 free tier
+------------
+  Cloudflare R2: 10 GB/month free storage
+  App soft limit display: 9 GB (see lib/storage-config.ts)
+
+
+================================================================================
+13. KEY CODE PATTERNS (FOR DEVELOPERS)
+================================================================================
+
+Server actions (mutations)
+--------------------------
+  All write operations live in app/actions/
+  Pattern: check permission → demo or Supabase/direct SQL → revalidatePath()
+
+Reading data
+------------
+  Pages call functions in lib/db.ts (Server Components)
+  Never query Supabase directly from client components for sensitive data
+
+PDF upload flow
+---------------
+  1. Client generates PDF bytes (calculator / invoice forms)
+  2. Base64 sent to server action
+  3. app/actions/storage.ts → uploadInvoicePdfToStorage() → lib/r2.ts
+  4. Metadata saved to custom_invoices or hotel_vouchers table
+
+Auth middleware
+---------------
+  proxy.ts — redirects unauthenticated users to /login
+  Uses cookie-based session (no network call on each request after cookie set)
+
+Demo mode
+---------
+  lib/is-demo.ts + lib/demo-store.ts
+  Activated when NEXT_PUBLIC_SUPABASE_URL is missing or placeholder
+
+
+================================================================================
+14. TROUBLESHOOTING GUIDE
+================================================================================
+
+Problem: App very slow (5–10 seconds per page/action)
+Cause   : DATABASE_URL set but connection failing/timeouts
+Fix     : Set DISABLE_DIRECT_DB=true on Netlify and in .env.local
+          Remove or comment out DATABASE_URL
+          Redeploy / restart dev server
+
+Problem: "Could not save invoice: unexpected response from server"
+Cause   : Server action timeout or PDF too large
+Fix     : Ensure DISABLE_DIRECT_DB=true; retry usually works
+          bodySizeLimit is 6mb in next.config.ts
+
+Problem: Storage shows wrong usage (e.g. 0.7 MB but no files listed)
+Cause   : Old storage_usage counter out of sync
+Fix     : Settings → Storage → "Sync usage & clear orphans"
+          Run 010_storage_usage_fix.sql in Supabase
+
+Problem: Login redirect loop
+Cause   : staff_users row missing for auth user
+Fix     : Run staff link SQL (Section 10)
+
+Problem: Turnstile not working on Netlify
+Cause   : Missing env vars or domain not whitelisted in Cloudflare
+Fix     : Add TURNSTILE keys to Netlify; whitelist ameretaiba.netlify.app
+
+Problem: Accounts page crash / invoice edit crash
+Cause   : Missing table or column in Supabase
+Fix     : Run pending migrations; run setup-missing-tables.sql
+
+Problem: Viewer can see buttons they shouldn't
+Fix     : Check permission in component; viewer role hides save/delete in calculator
+
+Problem: Storage dashboard shows 0%
+Cause   : Was fixed to read from Supabase when direct DB unavailable
+          Ensure latest code deployed
+
+
+================================================================================
+15. SECURITY CHECKLIST
+================================================================================
+
+  [ ] SUPABASE_SERVICE_ROLE_KEY only on server (never NEXT_PUBLIC_)
+  [ ] R2 credentials only in server env vars
+  [ ] .env.local listed in .gitignore — never committed
+  [ ] Netlify env vars set for Production context
+  [ ] Supabase RLS enabled on all tables
+  [ ] Staff passwords managed via Supabase Auth (Users page uses service role)
+  [ ] Rotate R2 API keys if ever exposed
+  [ ] Turnstile enabled for production login if bot abuse occurs
+
+
+================================================================================
+16. MAINTENANCE TASKS
+================================================================================
+
+Regular
+-------
+  - Monitor Netlify deploy logs after each push
+  - Monitor Supabase database size & auth users
+  - Monitor R2 storage usage in Settings → Storage
+  - Backup: export important PDFs via Storage bulk download
+
+When adding features
+--------------------
+  - Add types to lib/types.ts
+  - Add migration SQL if schema changes
+  - Add server action with permission guard
+  - Add revalidatePath for affected routes
+  - Test as Admin and Moderator roles
+
+Before handover to new developer
+--------------------------------
+  - Transfer Supabase project ownership or add client as org member
+  - Transfer Cloudflare R2 bucket access
+  - Transfer Netlify site ownership
+  - Transfer GitHub repo access
+  - Provide this document + .env.local template (without values)
+  - Document admin login email (password via secure channel only)
+
+
+================================================================================
+17. USEFUL COMMANDS
+================================================================================
+
+  npm run dev              Start local development server
+  npm run build            Production build test
+  npm run lint             Run ESLint
+  npx tsc --noEmit         TypeScript validation
+
+  git push cloud master    Push to client production GitHub repo
+
+  gh repo view             View GitHub repo info (if gh CLI installed)
+
+
+================================================================================
+18. DOCUMENT REVISION HISTORY
+================================================================================
+
+  v1.0 — June 2025 — Initial handover document
+         Covers: Next.js 16, Supabase iwzkwkekrswptyipidzc, R2 storage,
+         Netlify deploy, roles, migrations 001–010, booking view/edit,
+         package invoices, storage sync, performance fixes.
+
+
+================================================================================
+END OF DOCUMENT
+================================================================================
+
+For questions about this codebase, refer to:
+  - README.md (shorter setup guide)
+  - AGENTS.md / CLAUDE.md (AI assistant rules for Next.js 16)
+  - supabase/migrations/ (schema source of truth)
+  - Git commit history on cloud/master branch

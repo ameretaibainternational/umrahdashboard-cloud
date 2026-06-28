@@ -23,7 +23,7 @@ interface LedgerRow {
   invoiceId: string
   packageAmount: number   // booking total (total_pkr)
   receivedAmount: number  // this payment's amount
-  balance: number         // booking.total_pkr - booking.paid_pkr (current outstanding)
+  balance: number         // booking.total_pkr - booking.paid_pkr (current remaining)
   method: string
   note: string
 }
@@ -168,7 +168,7 @@ export default function ClientLedger({ payments, bookings, companyName }: Props)
     <table>
       <tr><td>Total Package Amount</td><td>${pkr(totals.totalPackage)}</td></tr>
       <tr><td>Total Received</td><td>${pkr(totals.totalReceived)}</td></tr>
-      <tr><td><strong>Outstanding Balance</strong></td><td><strong>${pkr(totals.totalBalance)}</strong></td></tr>
+      <tr><td><strong>Remaining Balance</strong></td><td><strong>${pkr(totals.totalBalance)}</strong></td></tr>
     </table>
   </div>
   <div class="footer">${companyName} · Printed on ${today}</div>
@@ -214,7 +214,7 @@ export default function ClientLedger({ payments, bookings, companyName }: Props)
     lines.push('')
     lines.push(`Total Package   : ${pkr(totals.totalPackage)}`)
     lines.push(`Total Received  : ${pkr(totals.totalReceived)}`)
-    lines.push(`Outstanding Bal : ${pkr(totals.totalBalance)}`)
+    lines.push(`Remaining Bal   : ${pkr(totals.totalBalance)}`)
 
     const text = lines.join('\n')
 
@@ -341,7 +341,7 @@ export default function ClientLedger({ payments, bookings, companyName }: Props)
                 <span className="font-semibold text-emerald-400">{pkr(totals.totalReceived)}</span>
               </div>
               <div className="border-t border-white/20 pt-2 flex justify-between">
-                <span className="text-sm font-bold">Outstanding Balance</span>
+                <span className="text-sm font-bold">Remaining Balance</span>
                 <span className="text-base font-bold text-rose-300">{pkr(totals.totalBalance)}</span>
               </div>
             </div>

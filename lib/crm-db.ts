@@ -20,7 +20,9 @@ export async function ensureOwnershipColumns(): Promise<void> {
     await sql`ALTER TABLE expenses ADD COLUMN IF NOT EXISTS created_by UUID`
     await sql`ALTER TABLE custom_invoices ADD COLUMN IF NOT EXISTS created_by UUID`
     await sql`ALTER TABLE hotel_vouchers ADD COLUMN IF NOT EXISTS created_by UUID`
+    await sql`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS source_invoice_id UUID`
     await sql`CREATE INDEX IF NOT EXISTS idx_bookings_created_by ON bookings(created_by)`
+    await sql`CREATE INDEX IF NOT EXISTS idx_bookings_source_invoice_id ON bookings(source_invoice_id)`
     await sql`CREATE INDEX IF NOT EXISTS idx_payments_created_by ON payments(created_by)`
     await sql`CREATE INDEX IF NOT EXISTS idx_expenses_created_by ON expenses(created_by)`
     await sql`CREATE INDEX IF NOT EXISTS idx_custom_invoices_created_by ON custom_invoices(created_by)`
@@ -80,27 +82,53 @@ export async function insertBooking(
 ): Promise<void> {
   await ensureOwnershipColumns()
   const sql = requireWriteSql()
-  await sql`
-    INSERT INTO bookings (
-      booking_date, customer_name, airline_name,
-      total_pkr, cost_pkr, profit_pkr, advance_pkr, paid_pkr, remaining_pkr,
-      adult_count, child_count, infant_count,
-      makkah_hotel_name, makkah_hotel_location, makkah_hotel_distance, makkah_room_type, makkah_nights,
-      madinah_hotel_name, madinah_hotel_location, madinah_hotel_distance, madinah_room_type, madinah_nights,
-      created_by
-    ) VALUES (
-      ${payload.booking_date ?? new Date().toISOString().slice(0, 10)},
-      ${payload.customer_name}, ${payload.airline_name},
-      ${payload.total_pkr}, ${payload.cost_pkr}, ${payload.profit_pkr},
-      ${payload.advance_pkr}, ${payload.paid_pkr}, ${payload.remaining_pkr},
-      ${payload.adult_count}, ${payload.child_count}, ${payload.infant_count},
-      ${payload.makkah_hotel_name}, ${payload.makkah_hotel_location}, ${payload.makkah_hotel_distance},
-      ${payload.makkah_room_type}, ${payload.makkah_nights},
-      ${payload.madinah_hotel_name}, ${payload.madinah_hotel_location}, ${payload.madinah_hotel_distance},
-      ${payload.madinah_room_type}, ${payload.madinah_nights},
-      ${payload.created_by ?? null}
-    )
-  `
+  try {
+    await sql`
+      INSERT INTO bookings (
+        booking_date, customer_name, airline_name,
+        total_pkr, cost_pkr, profit_pkr, advance_pkr, paid_pkr, remaining_pkr,
+        adult_count, child_count, infant_count,
+        makkah_hotel_name, makkah_hotel_location, makkah_hotel_distance, makkah_room_type, makkah_nights,
+        madinah_hotel_name, madinah_hotel_location, madinah_hotel_distance, madinah_room_type, madinah_nights,
+        created_by, source_invoice_id
+      ) VALUES (
+        ${payload.booking_date ?? new Date().toISOString().slice(0, 10)},
+        ${payload.customer_name}, ${payload.airline_name},
+        ${payload.total_pkr}, ${payload.cost_pkr}, ${payload.profit_pkr},
+        ${payload.advance_pkr}, ${payload.paid_pkr}, ${payload.remaining_pkr},
+        ${payload.adult_count}, ${payload.child_count}, ${payload.infant_count},
+        ${payload.makkah_hotel_name}, ${payload.makkah_hotel_location}, ${payload.makkah_hotel_distance},
+        ${payload.makkah_room_type}, ${payload.makkah_nights},
+        ${payload.madinah_hotel_name}, ${payload.madinah_hotel_location}, ${payload.madinah_hotel_distance},
+        ${payload.madinah_room_type}, ${payload.madinah_nights},
+        ${payload.created_by ?? null}, ${payload.source_invoice_id ?? null}
+      )
+    `
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    if (!message.includes('source_invoice_id')) throw error
+    await sql`
+      INSERT INTO bookings (
+        booking_date, customer_name, airline_name,
+        total_pkr, cost_pkr, profit_pkr, advance_pkr, paid_pkr, remaining_pkr,
+        adult_count, child_count, infant_count,
+        makkah_hotel_name, makkah_hotel_location, makkah_hotel_distance, makkah_room_type, makkah_nights,
+        madinah_hotel_name, madinah_hotel_location, madinah_hotel_distance, madinah_room_type, madinah_nights,
+        created_by
+      ) VALUES (
+        ${payload.booking_date ?? new Date().toISOString().slice(0, 10)},
+        ${payload.customer_name}, ${payload.airline_name},
+        ${payload.total_pkr}, ${payload.cost_pkr}, ${payload.profit_pkr},
+        ${payload.advance_pkr}, ${payload.paid_pkr}, ${payload.remaining_pkr},
+        ${payload.adult_count}, ${payload.child_count}, ${payload.infant_count},
+        ${payload.makkah_hotel_name}, ${payload.makkah_hotel_location}, ${payload.makkah_hotel_distance},
+        ${payload.makkah_room_type}, ${payload.makkah_nights},
+        ${payload.madinah_hotel_name}, ${payload.madinah_hotel_location}, ${payload.madinah_hotel_distance},
+        ${payload.madinah_room_type}, ${payload.madinah_nights},
+        ${payload.created_by ?? null}
+      )
+    `
+  }
 }
 
 export async function getBookingForPayment(bookingId: string): Promise<{
@@ -256,4 +284,65 @@ export async function fetchExpenses(createdBy?: string | null): Promise<Expense[
     createdBy,
   )
   return rows.map(r => ({ ...r, amount_pkr: Number(r.amount_pkr) }))
+}
+
+type InvoiceBookingSnapshot = {
+  customer_name: string
+  booking_date: string
+  total_pkr: number
+}
+
+function matchesInvoiceSnapshot(booking: Booking, snapshot: InvoiceBookingSnapshot): boolean {
+  return (
+    booking.customer_name === snapshot.customer_name &&
+    booking.booking_date === snapshot.booking_date &&
+    booking.total_pkr === snapshot.total_pkr
+  )
+}
+
+export async function findBookingForCustomInvoiceDirect(
+  invoiceId: string,
+  snapshot: InvoiceBookingSnapshot,
+  createdBy?: string | null,
+): Promise<Booking | null> {
+  await ensureOwnershipColumns()
+  const sql = requireSql()
+
+  try {
+    const linked = createdBy
+      ? await sql<Booking[]>`
+          SELECT * FROM bookings
+          WHERE source_invoice_id = ${invoiceId} AND created_by = ${createdBy}
+          LIMIT 1
+        `
+      : await sql<Booking[]>`
+          SELECT * FROM bookings WHERE source_invoice_id = ${invoiceId} LIMIT 1
+        `
+    if (linked[0]) return mapBooking(linked[0])
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    if (!message.includes('source_invoice_id')) throw error
+  }
+
+  const rows = createdBy
+    ? await sql<Booking[]>`
+        SELECT * FROM bookings
+        WHERE created_by = ${createdBy}
+        ORDER BY created_at DESC
+      `
+    : await sql<Booking[]>`SELECT * FROM bookings ORDER BY created_at DESC`
+
+  const match = rows.map(mapBooking).find(b => matchesInvoiceSnapshot(b, snapshot))
+  return match ?? null
+}
+
+export async function linkBookingToInvoiceDirect(bookingId: string, invoiceId: string): Promise<void> {
+  await ensureOwnershipColumns()
+  const sql = requireWriteSql()
+  try {
+    await sql`UPDATE bookings SET source_invoice_id = ${invoiceId} WHERE id = ${bookingId}`
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    if (!message.includes('source_invoice_id')) throw error
+  }
 }

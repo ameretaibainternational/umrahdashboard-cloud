@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { isDemoMode } from '@/lib/is-demo'
 import { demoStore } from '@/lib/demo-store'
 import { uploadInvoicePdfToStorage } from '@/app/actions/storage'
+import { createBooking, updateBooking } from '@/app/actions/bookings'
 import { friendlyDbError } from '@/lib/friendly-db-error'
 import { requireAdmin, requireModeratorFeature } from '@/lib/permissions-server'
 import {
@@ -13,9 +14,9 @@ import {
 } from '@/lib/sql'
 import type { CustomInvoiceLineItem } from '@/lib/types'
 
-const PATHS = ['/custom-invoices', '/settings/invoices', '/settings/storage', '/invoices', '/calculator']
+const PATHS = ['/custom-invoices', '/settings/invoices', '/settings/storage', '/invoices', '/calculator', '/bookings', '/dashboard', '/accounts', '/reports']
 
-export async function createCustomInvoiceWithPdf(payload: {
+type CustomInvoicePayload = {
   invoice_date: string
   billed_to_name: string
   billed_to_address: string
@@ -31,7 +32,73 @@ export async function createCustomInvoiceWithPdf(payload: {
   received: number
   remaining: number
   pdf_base64: string
-}) {
+}
+
+async function buildBookingPayloadFromInvoice(
+  invoiceId: string,
+  payload: Omit<CustomInvoicePayload, 'pdf_base64'>,
+  existingPaidPkr = 0,
+) {
+  const cost_pkr = Math.max(0, payload.total - payload.received)
+  const paid_pkr = Math.max(existingPaidPkr, payload.received)
+  return {
+    customer_name: payload.billed_to_name,
+    airline_name: '',
+    total_pkr: payload.total,
+    cost_pkr,
+    profit_pkr: payload.total - cost_pkr,
+    advance_pkr: payload.received,
+    paid_pkr,
+    remaining_pkr: Math.max(0, payload.total - paid_pkr),
+    adult_count: 0,
+    child_count: 0,
+    infant_count: 0,
+    makkah_hotel_name: null,
+    makkah_hotel_location: null,
+    makkah_hotel_distance: null,
+    makkah_room_type: null,
+    makkah_nights: null,
+    madinah_hotel_name: null,
+    madinah_hotel_location: null,
+    madinah_hotel_distance: null,
+    madinah_room_type: null,
+    madinah_nights: null,
+    booking_date: payload.invoice_date,
+    source_invoice_id: invoiceId,
+  }
+}
+
+async function createBookingFromInvoice(invoiceId: string, payload: Omit<CustomInvoicePayload, 'pdf_base64'>) {
+  await createBooking(await buildBookingPayloadFromInvoice(invoiceId, payload))
+}
+
+async function syncBookingFromInvoice(
+  invoiceId: string,
+  payload: Omit<CustomInvoicePayload, 'pdf_base64'>,
+  previous: { billed_to_name: string; invoice_date: string; total: number },
+) {
+  const { findBookingForCustomInvoice, linkBookingToInvoice } = await import('@/lib/db')
+  const linked = await findBookingForCustomInvoice(invoiceId, {
+    customer_name: previous.billed_to_name,
+    booking_date: previous.invoice_date,
+    total_pkr: previous.total,
+  })
+
+  const bookingPayload = await buildBookingPayloadFromInvoice(invoiceId, payload, linked?.paid_pkr ?? 0)
+  const { source_invoice_id: _, ...updatePayload } = bookingPayload
+
+  if (linked) {
+    if (!linked.source_invoice_id) {
+      await linkBookingToInvoice(linked.id, invoiceId)
+    }
+    await updateBooking(linked.id, updatePayload)
+    return
+  }
+
+  await createBooking(bookingPayload)
+}
+
+export async function createCustomInvoiceWithPdf(payload: CustomInvoicePayload) {
   const ctx = await requireModeratorFeature('custom_invoices')
   if ('error' in ctx) return ctx
 
@@ -50,6 +117,7 @@ export async function createCustomInvoiceWithPdf(payload: {
       file_deleted_at: null,
       created_by: ctx.userId,
     })
+    await createBookingFromInvoice(id, invoicePayload)
     PATHS.forEach(p => revalidatePath(p))
     return { success: true as const, invoice_number: inv.invoice_number, id: inv.id }
   }
@@ -67,6 +135,7 @@ export async function createCustomInvoiceWithPdf(payload: {
       try {
         const { insertCustomInvoiceDirect } = await import('@/lib/document-db')
         const data = await insertCustomInvoiceDirect(row)
+        await createBookingFromInvoice(id, invoicePayload)
         PATHS.forEach(p => revalidatePath(p))
         return { success: true as const, invoice_number: data.invoice_number, id: data.id }
       } catch (error) {
@@ -77,10 +146,65 @@ export async function createCustomInvoiceWithPdf(payload: {
 
     const { insertCustomInvoiceSupabase } = await import('@/lib/supabase-document-db')
     const data = await insertCustomInvoiceSupabase(row)
+    await createBookingFromInvoice(id, invoicePayload)
     PATHS.forEach(p => revalidatePath(p))
     return { success: true as const, invoice_number: data.invoice_number, id: data.id }
   } catch (e) {
     return { error: friendlyDbError(e instanceof Error ? e.message : 'Save failed') }
+  }
+}
+
+export async function updateCustomInvoiceWithPdf(payload: CustomInvoicePayload & { id: string; invoice_number: string }) {
+  const ctx = await requireModeratorFeature('custom_invoices')
+  if ('error' in ctx) return ctx
+
+  const { getCustomInvoiceById } = await import('@/lib/db')
+  const existing = await getCustomInvoiceById(payload.id)
+  if (!existing) return { error: 'Invoice not found.' }
+  if (!ctx.isAdmin && existing.created_by !== ctx.userId) {
+    return { error: 'You can only edit your own invoices.' }
+  }
+
+  const upload = await uploadInvoicePdfToStorage(payload.id, payload.pdf_base64)
+  if ('error' in upload) return { error: upload.error }
+
+  const { pdf_base64: _, id, invoice_number, ...invoiceFields } = payload
+  const row = {
+    id,
+    invoice_number,
+    ...invoiceFields,
+    storage_key: upload.storage_key,
+    file_size_bytes: upload.file_size_bytes,
+  }
+
+  if (isDemoMode()) {
+    demoStore.updateCustomInvoice(payload.id, row)
+    await syncBookingFromInvoice(payload.id, invoiceFields, existing)
+    PATHS.forEach(p => revalidatePath(p))
+    return { success: true as const, invoice_number: payload.invoice_number, id: payload.id }
+  }
+
+  try {
+    if (hasDirectDb()) {
+      try {
+        const { updateCustomInvoiceDirect } = await import('@/lib/document-db')
+        await updateCustomInvoiceDirect(row)
+        await syncBookingFromInvoice(payload.id, invoiceFields, existing)
+        PATHS.forEach(p => revalidatePath(p))
+        return { success: true as const, invoice_number: payload.invoice_number, id: payload.id }
+      } catch (error) {
+        if (!isDirectDbRecoverableError(error)) throw error
+        markDirectDbAuthFailed()
+      }
+    }
+
+    const { updateCustomInvoiceSupabase } = await import('@/lib/supabase-document-db')
+    await updateCustomInvoiceSupabase(row)
+    await syncBookingFromInvoice(payload.id, invoiceFields, existing)
+    PATHS.forEach(p => revalidatePath(p))
+    return { success: true as const, invoice_number: payload.invoice_number, id: payload.id }
+  } catch (e) {
+    return { error: friendlyDbError(e instanceof Error ? e.message : 'Update failed') }
   }
 }
 

@@ -38,8 +38,12 @@ export interface VoucherData {
   accommodations: Accommodation[]
   makkahHotelContact: string
   madinaHotelContact: string
+  makkahTransportContact: string
+  madinaTransportContact: string
+  jeddahTransportContact: string
   checkInTime: string
   checkOutTime: string
+  showVisaNumber: boolean
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -231,7 +235,8 @@ function SectionHeader({ children }: { children: React.ReactNode }) {
           fontSize: `${SECTION_HDR_FONT}px`,
           lineHeight: `${SECTION_HDR_FONT}px`,
           fontWeight: 500,
-          letterSpacing: '1px',
+          letterSpacing: 'normal',
+          wordSpacing: 'normal',
           color: '#ffffff',
           fontFamily: 'Arial, Helvetica, sans-serif',
           margin: 0,
@@ -285,6 +290,30 @@ const URDU_TEXT: React.CSSProperties = {
 // ─── PAGE 1 ───────────────────────────────────────────────────────────────────
 export const VoucherPage1 = forwardRef<HTMLDivElement, { data: VoucherData; branding?: VoucherBranding }>(
   function VoucherPage1({ data, branding }, ref) {
+    const showVisa = data.showVisaNumber !== false
+    const pilgrimColumns = [
+      { label: 'Mutamer Name' },
+      { label: 'Passport No' },
+      { label: 'Pax', width: '40px', align: 'center' as const },
+      { label: 'Beds', width: '40px', align: 'center' as const },
+      ...(showVisa ? [{ label: 'Visa Number' }] : []),
+      { label: 'PNR' },
+    ]
+    const pilgrimRows = data.pilgrims.map(p => ({
+      id: p.id,
+      cells: showVisa
+        ? [p.name, p.passportNo, p.pax, p.beds, p.visaNumber, p.pnr]
+        : [p.name, p.passportNo, p.pax, p.beds, p.pnr],
+    }))
+    const hasContactNotes =
+      data.makkahHotelContact ||
+      data.madinaHotelContact ||
+      data.makkahTransportContact ||
+      data.madinaTransportContact ||
+      data.jeddahTransportContact ||
+      data.checkInTime ||
+      data.checkOutTime
+
     return (
       <div
         ref={ref}
@@ -294,8 +323,9 @@ export const VoucherPage1 = forwardRef<HTMLDivElement, { data: VoucherData; bran
           width: '794px',
           height: '1123px',
           overflow: 'hidden',
-          fontFamily: "'Poppins', 'Segoe UI Web', Tahoma, sans-serif",
-          letterSpacing: '0.2px',
+          fontFamily: "Arial, Helvetica, sans-serif",
+          letterSpacing: 'normal',
+          wordSpacing: 'normal',
           backgroundColor: '#ffffff',
           WebkitPrintColorAdjust: 'exact',
           printColorAdjust: 'exact',
@@ -317,8 +347,8 @@ export const VoucherPage1 = forwardRef<HTMLDivElement, { data: VoucherData; bran
         <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', zIndex: 10 }}>
           {branding?.logoUrl && <VoucherBrandingLogo branding={branding} />}
 
-          {/* A ── Header (top-right) */}
-          <div style={{ position: 'absolute', top: '40px', right: '40px', textAlign: 'right' }}>
+          {/* A ── Header (centered) */}
+          <div style={{ position: 'absolute', top: '40px', left: 0, right: 0, textAlign: 'center' }}>
             <div style={{ fontSize: '34px', fontWeight: 700, color: '#ffffff' }}>
               Amere Taiba International
             </div>
@@ -335,7 +365,7 @@ export const VoucherPage1 = forwardRef<HTMLDivElement, { data: VoucherData; bran
             fontWeight: 700,
             textTransform: 'uppercase',
             
-            letterSpacing: '1px',
+            letterSpacing: 'normal',
             color: '#ffffff',
           }}>
             HOTEL VOUCHER
@@ -376,18 +406,8 @@ export const VoucherPage1 = forwardRef<HTMLDivElement, { data: VoucherData; bran
             <div>
               <SectionHeader>Pilgrims Details</SectionHeader>
               <GridTable
-                columns={[
-                  { label: 'Mutamer Name' },
-                  { label: 'Passport No' },
-                  { label: 'Pax', width: '40px', align: 'center' },
-                  { label: 'Beds', width: '40px', align: 'center' },
-                  { label: 'Visa Number' },
-                  { label: 'PNR' },
-                ]}
-                rows={data.pilgrims.map(p => ({
-                  id: p.id,
-                  cells: [p.name, p.passportNo, p.pax, p.beds, p.visaNumber, p.pnr],
-                }))}
+                columns={pilgrimColumns}
+                rows={pilgrimRows}
               />
             </div>
 
@@ -396,14 +416,14 @@ export const VoucherPage1 = forwardRef<HTMLDivElement, { data: VoucherData; bran
               <SectionHeader>Accommodation Details</SectionHeader>
               <GridTable
                 columns={[
-                  { label: 'Hotel Name' },
-                  { label: 'Confirm No' },
-                  { label: 'City', width: '60px' },
-                  { label: 'Room Type' },
-                  { label: 'Meal', width: '50px', align: 'center' },
-                  { label: 'Check In', width: '72px' },
-                  { label: 'Check Out', width: '72px' },
-                  { label: 'Nights', width: '40px', align: 'center' },
+                  { label: 'Hotel Name', width: 'minmax(100px, 2.4fr)' },
+                  { label: 'Confirm No', width: '100px' },
+                  { label: 'City', width: '56px' },
+                  { label: 'Room Type', width: '75px' },
+                  { label: 'Meal', width: '44px', align: 'center' },
+                  { label: 'Check In', width: '75px' },
+                  { label: 'Check Out', width: '75px' },
+                  { label: 'Nights', width: '45px', align: 'center' },
                 ]}
                 rows={data.accommodations.map(a => ({
                   id: a.id,
@@ -416,7 +436,7 @@ export const VoucherPage1 = forwardRef<HTMLDivElement, { data: VoucherData; bran
             </div>
 
             {/* E ── Contact & Timing Notes */}
-            {(data.makkahHotelContact || data.madinaHotelContact || data.checkInTime || data.checkOutTime) && (
+            {hasContactNotes && (
               <div style={{ marginTop: '30px', fontSize: '12px', lineHeight: 1.7, fontWeight: 400, color: '#ffffff' }}>
                 {data.makkahHotelContact && (
                   <div>
@@ -428,6 +448,24 @@ export const VoucherPage1 = forwardRef<HTMLDivElement, { data: VoucherData; bran
                   <div>
                     <span style={{ fontWeight: 500 }}>Madina Hotel Contact: </span>
                     {data.madinaHotelContact}
+                  </div>
+                )}
+                {data.makkahTransportContact && (
+                  <div>
+                    <span style={{ fontWeight: 500 }}>Makkah Transport Contact: </span>
+                    {data.makkahTransportContact}
+                  </div>
+                )}
+                {data.madinaTransportContact && (
+                  <div>
+                    <span style={{ fontWeight: 500 }}>Madina Transport Contact: </span>
+                    {data.madinaTransportContact}
+                  </div>
+                )}
+                {data.jeddahTransportContact && (
+                  <div>
+                    <span style={{ fontWeight: 500 }}>Jeddah Transport Contact: </span>
+                    {data.jeddahTransportContact}
                   </div>
                 )}
                 {(data.checkInTime || data.checkOutTime) && (
@@ -455,7 +493,8 @@ export const VoucherPage1 = forwardRef<HTMLDivElement, { data: VoucherData; bran
               fontSize: '14px',
               fontWeight: 600,
               color: '#ffffff',
-              letterSpacing: '0.5px',
+              letterSpacing: 'normal',
+              wordSpacing: 'normal',
             }}>
               NOTE: THIS BOOKING WILL NOT REFUND, NOT CHANGE
             </div>

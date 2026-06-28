@@ -1,4 +1,5 @@
-import { getBookings, getPayments } from '@/lib/db'
+import { getBookings, getPayments, getCustomInvoices } from '@/lib/db'
+import { isPackageInvoice } from '@/lib/package-invoice'
 import { pkr } from '@/lib/formatters'
 import KpiCard from '@/components/shared/KpiCard'
 import KpiGrid, { PageContainer } from '@/components/shared/KpiGrid'
@@ -22,15 +23,29 @@ function monthLabel(key: string) {
 }
 
 export default async function DashboardPage() {
-  const [bookings, payments] = await Promise.all([getBookings(), getPayments()])
+  const [bookings, payments, allCustomInvoices] = await Promise.all([
+    getBookings(),
+    getPayments(),
+    getCustomInvoices(),
+  ])
+
+  const customInvoices = allCustomInvoices.filter(inv => !isPackageInvoice(inv))
 
   // ── KPIs ──────────────────────────────────────────────────────────────────
   const totalBookings   = bookings.length
-  const uniqueCustomers = new Set(bookings.map(b => b.customer_name)).size
-  const totalRevenue    = bookings.reduce((s, b) => s + b.total_pkr, 0)
+  const customerNames   = new Set(bookings.map(b => b.customer_name))
+  for (const inv of customInvoices) {
+    if (inv.billed_to_name) customerNames.add(inv.billed_to_name)
+  }
+  const uniqueCustomers = customerNames.size
+  const bookingRevenue  = bookings.reduce((s, b) => s + b.total_pkr, 0)
+  const customRevenue   = customInvoices.reduce((s, inv) => s + inv.total, 0)
+  const totalRevenue    = bookingRevenue + customRevenue
   const totalCost       = bookings.reduce((s, b) => s + b.cost_pkr, 0)
   const totalProfit     = bookings.reduce((s, b) => s + b.profit_pkr, 0)
-  const totalDue        = bookings.reduce((s, b) => s + b.remaining_pkr, 0)
+  const bookingDue      = bookings.reduce((s, b) => s + b.remaining_pkr, 0)
+  const customDue       = customInvoices.reduce((s, inv) => s + inv.remaining, 0)
+  const totalDue        = bookingDue + customDue
   const recent          = bookings.slice(0, 5)
 
   // ── Monthly revenue data — always 6 months grid ──────────────────────────
@@ -67,7 +82,7 @@ export default async function DashboardPage() {
   const dueCount  = bookings.filter(b => b.remaining_pkr > 0).length
   const statusData = [
     { name: 'Fully Paid', value: paidCount },
-    { name: 'Outstanding', value: dueCount },
+    { name: 'Remaining', value: dueCount },
   ]
 
   // ── Payment method data ───────────────────────────────────────────────────

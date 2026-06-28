@@ -3,12 +3,13 @@
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
-import { deleteBooking } from '@/app/actions/bookings'
+import { deleteBooking, deleteBookings } from '@/app/actions/bookings'
 import { pkr, formatDate, bookingInvoiceId } from '@/lib/formatters'
 import type { Booking } from '@/lib/types'
 import BookingDialog from '@/components/bookings/BookingDialog'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
@@ -22,6 +23,8 @@ export default function BookingsTable({ bookings }: Props) {
   const router = useRouter()
   const [search, setSearch] = useState('')
   const [deleteId, setDeleteId] = useState<string | null>(null)
+  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false)
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [dialogBooking, setDialogBooking] = useState<Booking | null>(null)
   const [dialogMode, setDialogMode] = useState<'view' | 'edit' | null>(null)
   const [isPending, startTransition] = useTransition()
@@ -30,6 +33,25 @@ export default function BookingsTable({ bookings }: Props) {
     b.customer_name.toLowerCase().includes(search.toLowerCase()) ||
     b.airline_name.toLowerCase().includes(search.toLowerCase())
   )
+
+  const allFilteredSelected = filtered.length > 0 && filtered.every(b => selectedIds.has(b.id))
+
+  function toggleSelectAll(checked: boolean) {
+    if (checked) {
+      setSelectedIds(new Set(filtered.map(b => b.id)))
+    } else {
+      setSelectedIds(new Set())
+    }
+  }
+
+  function toggleSelect(id: string, checked: boolean) {
+    setSelectedIds(prev => {
+      const next = new Set(prev)
+      if (checked) next.add(id)
+      else next.delete(id)
+      return next
+    })
+  }
 
   function openDialog(booking: Booking, mode: 'view' | 'edit') {
     setDialogBooking(booking)
@@ -55,9 +77,26 @@ export default function BookingsTable({ bookings }: Props) {
     })
   }
 
+  function handleBulkDelete() {
+    const ids = [...selectedIds]
+    startTransition(async () => {
+      const result = await deleteBookings(ids)
+      if ('error' in result && result.error && !('success' in result)) {
+        toast.error(result.error)
+      } else if ('success' in result && result.success) {
+        const count = 'deleted' in result ? result.deleted : ids.length
+        toast.success(`${count} booking${count !== 1 ? 's' : ''} deleted`)
+        if ('error' in result && result.error) toast.warning(result.error)
+        setSelectedIds(new Set())
+        router.refresh()
+      }
+      setBulkDeleteOpen(false)
+    })
+  }
+
   return (
     <>
-      <div className="flex items-center gap-3 mb-4">
+      <div className="flex flex-wrap items-center gap-3 mb-4">
         <div className="relative flex-1 max-w-sm">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <Input
@@ -67,6 +106,17 @@ export default function BookingsTable({ bookings }: Props) {
             onChange={e => setSearch(e.target.value)}
           />
         </div>
+        {selectedIds.size > 0 && (
+          <Button
+            variant="destructive"
+            size="sm"
+            onClick={() => setBulkDeleteOpen(true)}
+            className="gap-1.5"
+          >
+            <Trash2 className="w-4 h-4" />
+            Delete Selected ({selectedIds.size})
+          </Button>
+        )}
         <p className="text-sm text-muted-foreground">{filtered.length} booking{filtered.length !== 1 ? 's' : ''}</p>
       </div>
 
@@ -75,6 +125,13 @@ export default function BookingsTable({ bookings }: Props) {
         <Table className="min-w-[900px]">
           <TableHeader>
             <TableRow className="bg-muted/40">
+              <TableHead className="w-10">
+                <Checkbox
+                  checked={allFilteredSelected}
+                  onCheckedChange={checked => toggleSelectAll(checked === true)}
+                  aria-label="Select all bookings"
+                />
+              </TableHead>
               <TableHead className="text-xs">Invoice</TableHead>
               <TableHead className="text-xs">Customer</TableHead>
               <TableHead className="text-xs">Airline</TableHead>
@@ -90,13 +147,20 @@ export default function BookingsTable({ bookings }: Props) {
           <TableBody>
             {filtered.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={10} className="text-center text-muted-foreground py-12 text-sm">
+                <TableCell colSpan={11} className="text-center text-muted-foreground py-12 text-sm">
                   {search ? 'No bookings match your search' : 'No bookings yet. Create your first package!'}
                 </TableCell>
               </TableRow>
             ) : (
               filtered.map((b) => (
                 <TableRow key={b.id} className="hover:bg-muted/20">
+                  <TableCell>
+                    <Checkbox
+                      checked={selectedIds.has(b.id)}
+                      onCheckedChange={checked => toggleSelect(b.id, checked === true)}
+                      aria-label={`Select booking ${bookingInvoiceId(b.id)}`}
+                    />
+                  </TableCell>
                   <TableCell className="text-xs font-mono text-muted-foreground">{bookingInvoiceId(b.id)}</TableCell>
                   <TableCell className="font-medium text-sm">{b.customer_name}</TableCell>
                   <TableCell className="text-sm text-muted-foreground">{b.airline_name}</TableCell>
@@ -178,6 +242,24 @@ export default function BookingsTable({ bookings }: Props) {
             <Button variant="destructive" onClick={handleDelete} disabled={isPending}>
               {isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
               Delete
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={bulkDeleteOpen} onOpenChange={open => !open && setBulkDeleteOpen(false)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete Selected Bookings</DialogTitle>
+            <DialogDescription>
+              This will permanently delete {selectedIds.size} booking{selectedIds.size !== 1 ? 's' : ''} and all associated payments. This cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setBulkDeleteOpen(false)}>Cancel</Button>
+            <Button variant="destructive" onClick={handleBulkDelete} disabled={isPending}>
+              {isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+              Delete {selectedIds.size} Booking{selectedIds.size !== 1 ? 's' : ''}
             </Button>
           </DialogFooter>
         </DialogContent>

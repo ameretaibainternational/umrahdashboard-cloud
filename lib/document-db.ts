@@ -123,6 +123,8 @@ type PackageInvoiceRow = {
   invoice_number: string
   invoice_date: string
   billed_to_name: string
+  billed_to_address?: string
+  billed_to_client_number?: string
   total: number
   received: number
   remaining: number
@@ -166,6 +168,8 @@ export async function insertPackageInvoiceDirect(row: PackageInvoiceRow, options
     invoice_number: row.invoice_number,
     invoice_date: row.invoice_date,
     billed_to_name: row.billed_to_name,
+    billed_to_address: row.billed_to_address ?? '',
+    billed_to_client_number: row.billed_to_client_number ?? '',
     total: row.total,
     received: row.received,
     remaining: row.remaining,
@@ -180,14 +184,14 @@ export async function insertPackageInvoiceDirect(row: PackageInvoiceRow, options
   try {
     const [created] = await sql<{ id: string; invoice_number: string }[]>`
       INSERT INTO custom_invoices (
-        id, invoice_number, invoice_date, billed_to_name,
+        id, invoice_number, invoice_date, billed_to_name, billed_to_address, billed_to_client_number,
         payment_bank_name, payment_account_number, terms_text,
         contact_phone, contact_email, contact_location,
         line_items, total, received, remaining,
         storage_key, file_size_bytes, created_by,
         invoice_kind, package_data
       ) VALUES (
-        ${baseValues.id}, ${baseValues.invoice_number}, ${baseValues.invoice_date}, ${baseValues.billed_to_name},
+        ${baseValues.id}, ${baseValues.invoice_number}, ${baseValues.invoice_date}, ${baseValues.billed_to_name}, ${baseValues.billed_to_address}, ${baseValues.billed_to_client_number},
         '', '', '',
         ${baseValues.contact_phone}, ${baseValues.contact_email}, ${baseValues.contact_location},
         '[]', ${baseValues.total}, ${baseValues.received}, ${baseValues.remaining},
@@ -203,13 +207,13 @@ export async function insertPackageInvoiceDirect(row: PackageInvoiceRow, options
       const termsBackup = encodePackageDataInTerms(row.package_data)
       const [created] = await sql<{ id: string; invoice_number: string }[]>`
         INSERT INTO custom_invoices (
-          id, invoice_number, invoice_date, billed_to_name,
+          id, invoice_number, invoice_date, billed_to_name, billed_to_address, billed_to_client_number,
           payment_bank_name, payment_account_number, terms_text,
           contact_phone, contact_email, contact_location,
           line_items, total, received, remaining,
           storage_key, file_size_bytes, created_by
         ) VALUES (
-          ${baseValues.id}, ${baseValues.invoice_number}, ${baseValues.invoice_date}, ${baseValues.billed_to_name},
+          ${baseValues.id}, ${baseValues.invoice_number}, ${baseValues.invoice_date}, ${baseValues.billed_to_name}, ${baseValues.billed_to_address}, ${baseValues.billed_to_client_number},
           '', '', ${termsBackup},
           ${baseValues.contact_phone}, ${baseValues.contact_email}, ${baseValues.contact_location},
           '[]', ${baseValues.total}, ${baseValues.received}, ${baseValues.remaining},
@@ -222,14 +226,14 @@ export async function insertPackageInvoiceDirect(row: PackageInvoiceRow, options
     if (!message.includes('created_by')) throw error
     const [created] = await sql<{ id: string; invoice_number: string }[]>`
       INSERT INTO custom_invoices (
-        id, invoice_number, invoice_date, billed_to_name,
+        id, invoice_number, invoice_date, billed_to_name, billed_to_address, billed_to_client_number,
         payment_bank_name, payment_account_number, terms_text,
         contact_phone, contact_email, contact_location,
         line_items, total, received, remaining,
         storage_key, file_size_bytes,
         invoice_kind, package_data
       ) VALUES (
-        ${baseValues.id}, ${baseValues.invoice_number}, ${baseValues.invoice_date}, ${baseValues.billed_to_name},
+        ${baseValues.id}, ${baseValues.invoice_number}, ${baseValues.invoice_date}, ${baseValues.billed_to_name}, ${baseValues.billed_to_address}, ${baseValues.billed_to_client_number},
         '', '', '',
         ${baseValues.contact_phone}, ${baseValues.contact_email}, ${baseValues.contact_location},
         '[]', ${baseValues.total}, ${baseValues.received}, ${baseValues.remaining},
@@ -250,6 +254,8 @@ export async function updatePackageInvoiceDirect(row: PackageInvoiceRow, options
       UPDATE custom_invoices SET
         invoice_date = ${row.invoice_date},
         billed_to_name = ${row.billed_to_name},
+        billed_to_address = ${row.billed_to_address ?? ''},
+        billed_to_client_number = ${row.billed_to_client_number ?? ''},
         contact_phone = ${row.contact_phone ?? ''},
         contact_email = ${row.contact_email ?? ''},
         contact_location = ${row.contact_location ?? ''},
@@ -270,6 +276,8 @@ export async function updatePackageInvoiceDirect(row: PackageInvoiceRow, options
         UPDATE custom_invoices SET
           invoice_date = ${row.invoice_date},
           billed_to_name = ${row.billed_to_name},
+          billed_to_address = ${row.billed_to_address ?? ''},
+          billed_to_client_number = ${row.billed_to_client_number ?? ''},
           contact_phone = ${row.contact_phone ?? ''},
           contact_email = ${row.contact_email ?? ''},
           contact_location = ${row.contact_location ?? ''},
@@ -304,6 +312,70 @@ export async function fetchPackageInvoiceById(id: string, createdBy?: string | n
   const mapped = mapCustomInvoiceRow(row)
   const { isPackageInvoice } = await import('@/lib/package-invoice')
   return isPackageInvoice(mapped) ? mapped : null
+}
+
+export async function fetchCustomInvoiceById(id: string, createdBy?: string | null): Promise<CustomInvoice | null> {
+  const sql = requireSql()
+  const rows = createdBy
+    ? await sql<Record<string, unknown>[]>`
+        SELECT * FROM custom_invoices
+        WHERE id = ${id} AND created_by = ${createdBy}
+        LIMIT 1
+      `
+    : await sql<Record<string, unknown>[]>`
+        SELECT * FROM custom_invoices WHERE id = ${id} LIMIT 1
+      `
+  const row = rows[0]
+  if (!row) return null
+  const mapped = mapCustomInvoiceRow(row)
+  const { isPackageInvoice } = await import('@/lib/package-invoice')
+  return isPackageInvoice(mapped) ? null : mapped
+}
+
+type CustomInvoiceUpdateRow = {
+  id: string
+  invoice_number: string
+  invoice_date: string
+  billed_to_name: string
+  billed_to_address: string
+  billed_to_client_number: string
+  payment_bank_name: string
+  payment_account_number: string
+  terms_text: string
+  contact_phone: string
+  contact_email: string
+  contact_location: string
+  line_items: CustomInvoiceLineItem[]
+  total: number
+  received: number
+  remaining: number
+  storage_key: string
+  file_size_bytes: number
+}
+
+export async function updateCustomInvoiceDirect(row: CustomInvoiceUpdateRow, options?: { force?: boolean }) {
+  const sql = requireWriteSql(options)
+  await sql`
+    UPDATE custom_invoices SET
+      invoice_date = ${row.invoice_date},
+      billed_to_name = ${row.billed_to_name},
+      billed_to_address = ${row.billed_to_address},
+      billed_to_client_number = ${row.billed_to_client_number},
+      payment_bank_name = ${row.payment_bank_name},
+      payment_account_number = ${row.payment_account_number},
+      terms_text = ${row.terms_text},
+      contact_phone = ${row.contact_phone},
+      contact_email = ${row.contact_email},
+      contact_location = ${row.contact_location},
+      line_items = ${sql.json(row.line_items as unknown as postgres.JSONValue)},
+      total = ${row.total},
+      received = ${row.received},
+      remaining = ${row.remaining},
+      storage_key = ${row.storage_key},
+      file_size_bytes = ${row.file_size_bytes}
+    WHERE id = ${row.id}
+  `
+  return { id: row.id, invoice_number: row.invoice_number }
 }
 
 export async function insertPackageInvoice(row: PackageInvoiceRow) {

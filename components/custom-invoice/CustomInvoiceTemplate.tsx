@@ -14,7 +14,7 @@ import {
   scaleRect,
 } from '@/lib/custom-invoice-branding-layout'
 
-// ─── Canvas constants ─────────────────────────────────────────────────────────
+const PDF_FONT = 'Arial, Helvetica, sans-serif'
 const W = 595.5
 const ROW_H = 41.4
 
@@ -40,7 +40,7 @@ function fmtDate(iso: string) {
 
 function fmtNum(n: number, unit?: string) {
   const s = new Intl.NumberFormat('en-US').format(n)
-  return unit ? `${s} ${unit}` : s
+  return unit ? `${s}\u00A0${unit}` : s
 }
 
 // ─── Absolutely-positioned text node ─────────────────────────────────────────
@@ -65,7 +65,10 @@ function T({
     lineHeight: invoiceRow || invoiceHdr ? `${size}px` : `${size * 1.2}px`,
     whiteSpace: nowrap ? 'nowrap' : undefined,
     maxWidth: maxW ? `${maxW}px` : undefined,
-    ...(invoiceRow || invoiceHdr ? { fontFamily: 'Arial, Helvetica, sans-serif', margin: 0, padding: 0 } : {}),
+    fontFamily: PDF_FONT,
+    letterSpacing: 'normal',
+    wordSpacing: 'normal',
+    ...(invoiceRow || invoiceHdr ? { margin: 0, padding: 0 } : {}),
   }
   const dataProps = invoiceRow
     ? { 'data-invoice-row-text': '1' as const }
@@ -90,20 +93,22 @@ function HR({ x1, x2, y }: { x1: number; x2: number; y: number }) {
 
 // ─── Shared page background style ────────────────────────────────────────────
 // Height is 842px (not 842.25) to prevent a 0.3px overflow that causes a blank extra page.
-const PAGE_BG: React.CSSProperties = {
-  position: 'relative',
-  width: `${W}px`,
-  height: '842px',
-  backgroundImage: 'url(/invoice-empty.jpg)',
-  backgroundSize: 'cover',
-  backgroundPosition: 'center top',
-  backgroundColor: '#121117',
-  fontFamily: "'Poppins', 'Segoe UI', sans-serif",
-  overflow: 'hidden',
-  WebkitPrintColorAdjust: 'exact',
-  printColorAdjust: 'exact',
-  colorAdjust: 'exact',
-} as React.CSSProperties
+function pageBgStyle(backgroundImage = '/invoice-empty.jpg'): React.CSSProperties {
+  return {
+    position: 'relative',
+    width: `${W}px`,
+    height: '842px',
+    backgroundImage: `url(${backgroundImage})`,
+    backgroundSize: 'cover',
+    backgroundPosition: 'center top',
+    backgroundColor: '#121117',
+    fontFamily: PDF_FONT,
+    overflow: 'hidden',
+    WebkitPrintColorAdjust: 'exact',
+    printColorAdjust: 'exact',
+    colorAdjust: 'exact',
+  } as React.CSSProperties
+}
 
 // ─── Shared table header row ──────────────────────────────────────────────────
 function TableHeader({
@@ -174,9 +179,9 @@ function TermsSection({ invoice, invoiceCurrency }: { invoice: CustomInvoice; in
     <>
       <HR x1={26} x2={547} y={530.3} />
       <T x={35.9} y={547.0} bold color="#ffffff">Terms and Condition</T>
-      <T x={35.9} y={562.4} size={7.7} color="#a7a7a7" maxW={268}>
+      <div data-invoice-terms style={{ position: 'absolute', left: '35.9px', top: '562.4px', maxWidth: '268px', fontSize: '7.7px', color: '#a7a7a7', fontFamily: PDF_FONT, letterSpacing: 'normal', wordSpacing: 'normal' }}>
         <span style={{ lineHeight: '10.5px', display: 'block' }}>{invoice.terms_text}</span>
-      </T>
+      </div>
       <T x={35.9} y={614.3} size={7.7} color="#a7a7a7" maxW={268}>
         <span style={{ lineHeight: '10.5px' }}>Note: </span>
         <span style={{ fontWeight: 700, lineHeight: '10.5px' }}>
@@ -265,7 +270,7 @@ function BrandingSignature({ branding }: { branding: InvoiceBranding }) {
             fontSize: `${nameSize}px`,
             color: '#ffffff',
             lineHeight: 1.2,
-            fontFamily: "'Poppins', 'Segoe UI', sans-serif",
+            fontFamily: PDF_FONT,
             whiteSpace: 'nowrap',
           }}
         >
@@ -280,10 +285,28 @@ function BrandingSignature({ branding }: { branding: InvoiceBranding }) {
 interface Props {
   invoice: CustomInvoice
   branding?: InvoiceBranding
+  titleText?: string
+  /** Override title position/size (e.g. package invoice uses smaller "CUSTOM INVOICE") */
+  titleFontSize?: number
+  titleTop?: number
+  invoiceIdY?: number
+  dateY?: number
+  centerInvoiceId?: boolean
+  backgroundImage?: string
 }
 
 const CustomInvoiceTemplate = forwardRef<HTMLDivElement, Props>(
-  function CustomInvoiceTemplate({ invoice, branding }, ref) {
+  function CustomInvoiceTemplate({
+    invoice,
+    branding,
+    titleText = 'INVOICE',
+    titleFontSize = 54,
+    titleTop = 36,
+    invoiceIdY = 132,
+    dateY = 122.3,
+    centerInvoiceId = false,
+    backgroundImage = '/invoice-empty.jpg',
+  }, ref) {
     const items = invoice.line_items
     const hasPaxPrice   = items.some(i => i.pax_price   != null && i.pax_price   > 0)
     const hasNightPrice = items.some(i => i.night_price != null && i.night_price > 0)
@@ -320,24 +343,45 @@ const CustomInvoiceTemplate = forwardRef<HTMLDivElement, Props>(
       <div ref={ref} data-invoice-wrapper style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
 
         {/* ── PAGE 1 ─────────────────────────────────────────────────── */}
-        <div data-invoice-root style={PAGE_BG}>
+        <div data-invoice-root style={pageBgStyle(backgroundImage)}>
 
           {branding?.logoUrl && <BrandingLogo branding={branding} />}
 
           {/* INVOICE title */}
           <div style={{
-            position: 'absolute', top: '58.5px', left: 0, width: '100%',
-            textAlign: 'center', fontWeight: 700, fontSize: '54px',
-            color: '#ffffff', lineHeight: 1, fontFamily: "'Poppins', 'Segoe UI', sans-serif",
+            position: 'absolute', top: `${titleTop}px`, left: 0, width: '100%',
+            textAlign: 'center', fontWeight: 700, fontSize: `${titleFontSize}px`,
+            color: '#ffffff', lineHeight: 1, fontFamily: PDF_FONT,
+            letterSpacing: 'normal', wordSpacing: 'normal',
           }}>
-            INVOICE
+            {titleText}
           </div>
 
-          <T x={253.3} y={124.9} nowrap>
+          {centerInvoiceId ? (
+            <div style={{
+              position: 'absolute',
+              top: `${invoiceIdY}px`,
+              left: 0,
+              width: '100%',
+              textAlign: 'center',
+              fontSize: '12px',
+              color: '#fefefe',
+              lineHeight: 1.2,
+              fontFamily: PDF_FONT,
+              letterSpacing: 'normal',
+              wordSpacing: 'normal',
+              whiteSpace: 'nowrap',
+            }}>
             <span style={{ fontWeight: 700 }}>Invoice ID: </span>
-            <span style={{ fontWeight: 400 }}>{invoice.invoice_number}</span>
-          </T>
-          <T x={424.9} y={122.3} nowrap>
+              <span style={{ fontWeight: 400 }}>{invoice.invoice_number}</span>
+            </div>
+          ) : (
+            <T x={253.3} y={invoiceIdY} nowrap>
+              <span style={{ fontWeight: 700 }}>Invoice ID: </span>
+              <span style={{ fontWeight: 400 }}>{invoice.invoice_number}</span>
+            </T>
+          )}
+          <T x={424.9} y={dateY} nowrap>
             <span style={{ fontWeight: 700 }}>Date: </span>
             <span style={{ fontWeight: 400 }}>{fmtDate(invoice.invoice_date)}</span>
           </T>
@@ -388,7 +432,7 @@ const CustomInvoiceTemplate = forwardRef<HTMLDivElement, Props>(
           const rowOffset = ROWS_P1 + pi * ROWS_PC
 
           return (
-            <div key={pi} data-invoice-root style={PAGE_BG}>
+            <div key={pi} data-invoice-root style={pageBgStyle(backgroundImage)}>
 
               {/* Compact page indicator */}
               

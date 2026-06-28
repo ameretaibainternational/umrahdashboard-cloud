@@ -16,6 +16,8 @@ type PackageInvoiceRow = {
   invoice_number: string
   invoice_date: string
   billed_to_name: string
+  billed_to_address?: string
+  billed_to_client_number?: string
   total: number
   received: number
   remaining: number
@@ -86,8 +88,8 @@ export async function insertPackageInvoiceSupabase(row: PackageInvoiceRow): Prom
     invoice_number: row.invoice_number,
     invoice_date: row.invoice_date,
     billed_to_name: row.billed_to_name,
-    billed_to_address: '',
-    billed_to_client_number: '',
+    billed_to_address: row.billed_to_address ?? '',
+    billed_to_client_number: row.billed_to_client_number ?? '',
     payment_bank_name: '',
     payment_account_number: '',
     contact_phone: row.contact_phone ?? '',
@@ -124,6 +126,8 @@ export async function updatePackageInvoiceSupabase(row: PackageInvoiceRow): Prom
   const base = {
     invoice_date: row.invoice_date,
     billed_to_name: row.billed_to_name,
+    billed_to_address: row.billed_to_address ?? '',
+    billed_to_client_number: row.billed_to_client_number ?? '',
     contact_phone: row.contact_phone ?? '',
     contact_email: row.contact_email ?? '',
     contact_location: row.contact_location ?? '',
@@ -148,6 +152,69 @@ export async function updatePackageInvoiceSupabase(row: PackageInvoiceRow): Prom
     if (!isPackageColumnError(lastError)) break
   }
   throw new Error(lastError)
+}
+
+export async function updateCustomInvoiceSupabase(row: {
+  id: string
+  invoice_number: string
+  invoice_date: string
+  billed_to_name: string
+  billed_to_address: string
+  billed_to_client_number: string
+  payment_bank_name: string
+  payment_account_number: string
+  terms_text: string
+  contact_phone: string
+  contact_email: string
+  contact_location: string
+  line_items: CustomInvoiceLineItem[]
+  total: number
+  received: number
+  remaining: number
+  storage_key: string
+  file_size_bytes: number
+}): Promise<{ id: string; invoice_number: string }> {
+  const supabase = await createClient()
+  const payload = {
+    invoice_date: row.invoice_date,
+    billed_to_name: row.billed_to_name,
+    billed_to_address: row.billed_to_address,
+    billed_to_client_number: row.billed_to_client_number,
+    payment_bank_name: row.payment_bank_name,
+    payment_account_number: row.payment_account_number,
+    terms_text: row.terms_text,
+    contact_phone: row.contact_phone,
+    contact_email: row.contact_email,
+    contact_location: row.contact_location,
+    line_items: row.line_items,
+    total: row.total,
+    received: row.received,
+    remaining: row.remaining,
+    storage_key: row.storage_key,
+    file_size_bytes: row.file_size_bytes,
+  }
+  const { error } = await supabase.from('custom_invoices').update(payload).eq('id', row.id)
+  if (error) throw new Error(error.message)
+  return { id: row.id, invoice_number: row.invoice_number }
+}
+
+export async function fetchCustomInvoiceByIdSupabase(id: string, createdBy?: string | null): Promise<CustomInvoice | null> {
+  const supabase = await createClient()
+  const { isPackageInvoice } = await import('@/lib/package-invoice')
+  const { mapCustomInvoiceRow } = await import('@/lib/document-db')
+
+  let query = supabase.from('custom_invoices').select('*').eq('id', id)
+  if (createdBy) query = query.eq('created_by', createdBy)
+
+  let { data, error } = await query.maybeSingle()
+  if (error && createdBy && isCreatedBySchemaError(error.message)) {
+    ({ data, error } = await supabase.from('custom_invoices').select('*').eq('id', id).maybeSingle())
+  }
+  if (error || !data) return null
+  if (createdBy && 'created_by' in data && data.created_by && data.created_by !== createdBy) return null
+
+  const mapped = mapCustomInvoiceRow(data as Record<string, unknown>)
+  return isPackageInvoice(mapped) ? null : mapped
 }
 
 export async function insertHotelVoucherSupabase(row: {

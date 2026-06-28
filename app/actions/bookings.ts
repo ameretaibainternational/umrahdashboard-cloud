@@ -20,8 +20,9 @@ type BookingPayload = {
   makkah_hotel_name: string | null; makkah_hotel_location: string | null
   makkah_hotel_distance: string | null; makkah_room_type: string | null; makkah_nights: number | null
   madinah_hotel_name: string | null; madinah_hotel_location: string | null
-  madinah_hotel_distance: string | null; madinah_room_type: string | null; madinah_nights: number | null
+  madinah_hotel_distance: string | null;   madinah_room_type: string | null; madinah_nights: number | null
   booking_date?: string
+  source_invoice_id?: string | null
 }
 
 const REVALIDATE_PATHS = ['/bookings', '/dashboard', '/accounts', '/reports', '/customers', '/invoices']
@@ -41,13 +42,15 @@ export async function createBooking(payload: BookingPayload) {
   }
 
   const bookingDate = payload.booking_date ?? new Date().toISOString().split('T')[0]
-  const row = { ...payload, booking_date: bookingDate }
+  const { source_invoice_id, ...bookingFields } = payload
+  const row: Record<string, unknown> = { ...bookingFields, booking_date: bookingDate }
+  if (source_invoice_id) row.source_invoice_id = source_invoice_id
 
   try {
     if (hasDirectDb()) {
       try {
         const { insertBooking } = await import('@/lib/crm-db')
-        await insertBooking({ ...row, created_by: ctx.userId })
+        await insertBooking({ ...row, created_by: ctx.userId } as Parameters<typeof insertBooking>[0])
         REVALIDATE_PATHS.forEach(p => revalidatePath(p))
         return { success: true }
       } catch (error) {
@@ -56,7 +59,11 @@ export async function createBooking(payload: BookingPayload) {
       }
     }
 
-    const { error } = await supabaseInsertRow('bookings', row, ctx.userId)
+    let { error } = await supabaseInsertRow('bookings', row, ctx.userId)
+    if (error && source_invoice_id && (error.includes('source_invoice_id') || error.includes('schema cache'))) {
+      const { source_invoice_id: _, ...withoutLink } = row
+      ;({ error } = await supabaseInsertRow('bookings', withoutLink, ctx.userId))
+    }
     if (error) return { error: friendlyDbError(error) }
   } catch (e) {
     return { error: friendlyDbError(e instanceof Error ? e.message : 'Save failed') }
@@ -117,6 +124,36 @@ export async function deleteBooking(id: string) {
 
   REVALIDATE_PATHS.forEach(p => revalidatePath(p))
   return { success: true }
+}
+
+export async function deleteBookings(ids: string[]) {
+  if (ids.length === 0) return { error: 'No bookings selected.' }
+
+  const ctx = await requireModeratorFeature('bookings')
+  if ('error' in ctx) return ctx
+
+  const uniqueIds = [...new Set(ids)]
+  let deleted = 0
+  const errors: string[] = []
+
+  for (const id of uniqueIds) {
+    const result = await deleteBooking(id)
+    if ('error' in result && result.error) {
+      errors.push(result.error)
+    } else {
+      deleted++
+    }
+  }
+
+  if (deleted === 0) {
+    return { error: errors[0] ?? 'Delete failed.' }
+  }
+
+  if (errors.length > 0) {
+    return { success: true, deleted, error: `${deleted} deleted, ${errors.length} failed.` }
+  }
+
+  return { success: true, deleted }
 }
 
 export async function updateBooking(id: string, payload: BookingPayload) {

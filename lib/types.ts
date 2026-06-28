@@ -10,6 +10,8 @@ export interface VisaSettings {
   transport_mode: 'included' | 'separate'
   makkah_ziarat_rate: number   // flat group rate (SAR)
   madina_ziarat_rate: number   // flat group rate (SAR)
+  badr_ziarat_rate: number     // Badr with Makkah ziarats (SAR)
+  taif_ziarat_rate: number     // Taif with Madinah ziarats (SAR)
 }
 
 export interface CurrencySettings {
@@ -32,6 +34,8 @@ export interface Company {
   website: string
   address: string
   logo_url: string
+  pk_flight_cities?: string[]
+  sa_flight_cities?: string[]
 }
 
 export interface Airline {
@@ -48,13 +52,29 @@ export interface Hotel {
   name: string
   location: string
   distance: string
+  contact_number?: string
   sharing_sar: number
   quad_sar: number
   triple_sar: number
   double_sar: number
+  room_sar: number
 }
 
-export type RoomType = 'sharing' | 'quad' | 'triple' | 'double'
+export type RoomType = 'room' | 'sharing' | 'quad' | 'triple' | 'double'
+
+export interface InvoicePaymentMethod {
+  id: string
+  label: string
+  bank_name: string
+  account_number: string
+  created_at?: string
+}
+
+export interface InvoiceService {
+  id: string
+  name: string
+  created_at?: string
+}
 
 export interface Booking {
   id: string
@@ -82,6 +102,7 @@ export interface Booking {
   madinah_room_type: string | null
   madinah_nights: number | null
   created_by?: string | null
+  source_invoice_id?: string | null
 }
 
 export interface Payment {
@@ -191,6 +212,11 @@ export interface PackageInvoiceData {
   customerName: string
   makkahZiarat: boolean
   madinahZiarat: boolean
+  badrZiarat: boolean
+  taifZiarat: boolean
+  walkingZiarat: boolean
+  includeMakkahHotel: boolean
+  includeMadinahHotel: boolean
   customTicket: boolean
   customTicketLabel: string
   customTicketAmount: number
@@ -198,6 +224,7 @@ export interface PackageInvoiceData {
   travelDate: string
   departureCity: string
   arrivalCity: string
+  saDepartureCity: string
   returnCity: string
 }
 
@@ -286,6 +313,11 @@ export interface CalcInput {
   customerName: string
   makkahZiarat: boolean
   madinahZiarat: boolean
+  badrZiarat: boolean
+  taifZiarat: boolean
+  walkingZiarat: boolean
+  includeMakkahHotel: boolean
+  includeMadinahHotel: boolean
   customTicket: boolean
   customTicketLabel: string   // airline name + route entered by user
   customTicketPkr: number     // total ticket cost already converted to PKR
@@ -300,6 +332,8 @@ export interface CalcResult {
   madinahCost: number
   makkahZiaratCost: number
   madinahZiaratCost: number
+  badrZiaratCost: number
+  taifZiaratCost: number
   totalCost: number
   selling: number
   profit: number

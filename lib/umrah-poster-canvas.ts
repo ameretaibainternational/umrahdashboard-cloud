@@ -62,6 +62,13 @@ export function cm(value: number): number {
   return value * CM_TO_PX
 }
 
+function getCityNameY(): number {
+  if (typeof navigator !== 'undefined' && /iPhone|iPad|iPod/i.test(navigator.userAgent)) {
+    return cm(10.0)
+  }
+  return cm(10.15)
+}
+
 /** Load Poppins weights used on the poster. */
 export async function loadPosterFonts(): Promise<void> {
   const poppinsLoads = [
@@ -298,7 +305,7 @@ export function renderUmrahPoster(
       ctx,
       data.cityName.trim().toUpperCase(),
       posterCenterX,
-      cm(10.57),
+      getCityNameY(),
       '800 150px Poppins, sans-serif',
       GOLD,
       posterCenterX,

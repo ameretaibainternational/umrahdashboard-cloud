@@ -1,13 +1,15 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
-import { Download } from 'lucide-react'
+import { Download, ChevronDown, ChevronUp } from 'lucide-react'
 import { toast } from 'sonner'
+import { getCalc } from '@/lib/calculations'
+import type { Airline, Hotel, VisaSettings, CurrencySettings, TransportRate, RoomType, CalcInput } from '@/lib/types'
 import {
   BOOK_BEFORE_PREFIX,
   DEFAULT_POSTER_DATA,
@@ -42,13 +44,31 @@ function readFileAsDataUrl(file: File): Promise<string> {
   })
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+function formatPosterPrice(n: number): string {
+  return Math.round(n).toLocaleString('en-PK')
+}
+
+function Section({ title, children, collapsible, open, onToggle }: {
+  title: string
+  children: React.ReactNode
+  collapsible?: boolean
+  open?: boolean
+  onToggle?: () => void
+}) {
   return (
     <Card className="border shadow-sm">
-      <CardHeader className="pb-2 pt-4 px-4">
-        <CardTitle className="text-sm font-semibold text-navy">{title}</CardTitle>
+      <CardHeader
+        className={`pb-2 pt-4 px-4 ${collapsible ? 'cursor-pointer' : ''}`}
+        onClick={collapsible ? onToggle : undefined}
+      >
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-sm font-semibold text-navy">{title}</CardTitle>
+          {collapsible && (open ? <ChevronUp className="w-4 h-4 text-muted-foreground" /> : <ChevronDown className="w-4 h-4 text-muted-foreground" />)}
+        </div>
       </CardHeader>
-      <CardContent className="px-4 pb-4 space-y-3">{children}</CardContent>
+      {(!collapsible || open) && (
+        <CardContent className="px-4 pb-4 space-y-3">{children}</CardContent>
+      )}
     </Card>
   )
 }
@@ -90,9 +110,39 @@ function ScaledCanvasPreview({ canvasRef }: { canvasRef: React.RefObject<HTMLCan
   )
 }
 
-export default function UmrahPosterForm() {
+interface Props {
+  airlines: Airline[]
+  makkahHotels: Hotel[]
+  madinahHotels: Hotel[]
+  visa: VisaSettings
+  currency: CurrencySettings
+  transportRates: TransportRate[]
+}
+
+export default function UmrahPosterForm({
+  airlines,
+  makkahHotels,
+  madinahHotels,
+  visa,
+  currency,
+  transportRates,
+}: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [data, setData] = useState<UmrahPosterFormData>(DEFAULT_POSTER_DATA)
+  const [showCalc, setShowCalc] = useState(false)
+  const [adult, setAdult] = useState(1)
+  const [child, setChild] = useState(0)
+  const [infant, setInfant] = useState(0)
+  const [airlineId, setAirlineId] = useState(airlines[0]?.id ?? '')
+  const [transportType, setTransportType] = useState<'bus' | 'private'>('bus')
+  const [makkahHotelId, setMakkahHotelId] = useState(makkahHotels[0]?.id ?? '')
+  const [madinahHotelId, setMadinahHotelId] = useState(madinahHotels[0]?.id ?? '')
+  const [makkahNights, setMakkahNights] = useState(10)
+  const [madinahNights, setMadinahNights] = useState(7)
+  const [makkahZiarat, setMakkahZiarat] = useState(true)
+  const [madinahZiarat, setMadinahZiarat] = useState(true)
+  const [badrZiarat, setBadrZiarat] = useState(false)
+  const [taifZiarat, setTaifZiarat] = useState(false)
   const [isRendering, setIsRendering] = useState(false)
   const [isDownloading, setIsDownloading] = useState(false)
   const [logoUrl, setLogoUrl] = useState<string | null>(null)
@@ -140,6 +190,87 @@ export default function UmrahPosterForm() {
 
   const setSpacedField = (key: 'ziyarat', value: string) => {
     setField(key, withLeadingSpace(value) as UmrahPosterFormData[typeof key])
+  }
+
+  const airline = airlines.find(a => a.id === airlineId) ?? null
+  const makkahHotel = makkahHotels.find(h => h.id === makkahHotelId) ?? null
+  const madinahHotel = madinahHotels.find(h => h.id === madinahHotelId) ?? null
+
+  const calcPrices = useMemo(() => {
+    const baseInput = {
+      adult,
+      child,
+      infant,
+      airline,
+      transportType,
+      makkahHotel,
+      makkahNights,
+      madinahHotel,
+      madinahNights,
+      profitType: 'percent' as const,
+      profitValue: 8,
+      sellingOverride: null,
+      advance: 0,
+      customerName: '',
+      makkahZiarat,
+      madinahZiarat,
+      badrZiarat,
+      taifZiarat,
+      walkingZiarat: false,
+      includeMakkahHotel: true,
+      includeMadinahHotel: true,
+      customTicket: false,
+      customTicketLabel: '',
+      customTicketPkr: 0,
+    }
+
+    const rooms: RoomType[] = ['sharing', 'quad', 'triple', 'double']
+    const prices: Record<RoomType, number> = {
+      room: 0,
+      sharing: 0,
+      quad: 0,
+      triple: 0,
+      double: 0,
+    }
+
+    for (const room of rooms) {
+      const input: CalcInput = {
+        ...baseInput,
+        makkahRoom: room,
+        madinahRoom: room,
+      }
+      prices[room] = getCalc(input, transportRates, currency.sar_to_pkr, visa, visa.transport_mode).selling
+    }
+
+    return prices
+  }, [
+    adult, child, infant, airline, transportType, makkahHotel, madinahHotel,
+    makkahNights, madinahNights, makkahZiarat, madinahZiarat, badrZiarat, taifZiarat,
+    transportRates, currency.sar_to_pkr, visa,
+  ])
+
+  useEffect(() => {
+    if (!showCalc) return
+    setData(prev => ({
+      ...prev,
+      price: formatPosterPrice(calcPrices.sharing),
+      sharingPrice: formatPosterPrice(calcPrices.sharing),
+      quadPrice: formatPosterPrice(calcPrices.quad),
+      triplePrice: formatPosterPrice(calcPrices.triple),
+      doublePrice: formatPosterPrice(calcPrices.double),
+    }))
+  }, [calcPrices, showCalc])
+
+  function handleMakkahHotelSelect(id: string) {
+    setMakkahHotelId(id)
+    const hotel = makkahHotels.find(h => h.id === id)
+    if (hotel) setField('makkahHotelName', hotel.name)
+  }
+
+  function handleMadinahHotelSelect(id: string) {
+    setMadinahHotelId(id)
+    const hotel = madinahHotels.find(h => h.id === id)
+    if (hotel) setField('madinaHotelName', hotel.name)
   }
 
   async function handleLogoUpload(e: React.ChangeEvent<HTMLInputElement>) {
@@ -231,15 +362,129 @@ export default function UmrahPosterForm() {
           </div>
         </Section>
 
+        <Section
+          title="Price Calculator (not shown on poster)"
+          collapsible
+          open={showCalc}
+          onToggle={() => setShowCalc(v => !v)}
+        >
+          <p className="text-[10px] text-muted-foreground">
+            Uses the same calculator as the package tool. Calculated prices fill the pricing fields below.
+          </p>
+          <div className="grid grid-cols-3 gap-3">
+            <div className="space-y-1.5">
+              <Label className="text-xs">Adults</Label>
+              <Input type="number" min="0" value={adult} onChange={e => setAdult(Number(e.target.value) || 0)} className="h-9" />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Children</Label>
+              <Input type="number" min="0" value={child} onChange={e => setChild(Number(e.target.value) || 0)} className="h-9" />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Infants</Label>
+              <Input type="number" min="0" value={infant} onChange={e => setInfant(Number(e.target.value) || 0)} className="h-9" />
+            </div>
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs">Airline</Label>
+            <select
+              value={airlineId}
+              onChange={e => setAirlineId(e.target.value)}
+              className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm"
+            >
+              {airlines.map(a => (
+                <option key={a.id} value={a.id}>{a.name}</option>
+              ))}
+            </select>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label className="text-xs">Makkah Hotel</Label>
+              <select
+                value={makkahHotelId}
+                onChange={e => handleMakkahHotelSelect(e.target.value)}
+                className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm"
+              >
+                {makkahHotels.map(h => (
+                  <option key={h.id} value={h.id}>{h.name} · {h.distance}</option>
+                ))}
+              </select>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Madinah Hotel</Label>
+              <select
+                value={madinahHotelId}
+                onChange={e => handleMadinahHotelSelect(e.target.value)}
+                className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm"
+              >
+                {madinahHotels.map(h => (
+                  <option key={h.id} value={h.id}>{h.name} · {h.distance}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+          <div className="grid grid-cols-3 gap-3">
+            <div className="space-y-1.5">
+              <Label className="text-xs">Makkah Nights</Label>
+              <Input type="number" min="1" value={makkahNights} onChange={e => setMakkahNights(Number(e.target.value) || 1)} className="h-9" />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Madinah Nights</Label>
+              <Input type="number" min="1" value={madinahNights} onChange={e => setMadinahNights(Number(e.target.value) || 1)} className="h-9" />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Transport</Label>
+              <select
+                value={transportType}
+                onChange={e => setTransportType(e.target.value as 'bus' | 'private')}
+                className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm"
+              >
+                <option value="bus">Bus</option>
+                <option value="private">Private</option>
+              </select>
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-4 pt-1">
+            <label className="flex items-center gap-2 cursor-pointer">
+              <Checkbox checked={makkahZiarat} onCheckedChange={v => setMakkahZiarat(Boolean(v))} />
+              <span className="text-xs">Makkah Ziarat</span>
+            </label>
+            <label className="flex items-center gap-2 cursor-pointer">
+              <Checkbox checked={madinahZiarat} onCheckedChange={v => setMadinahZiarat(Boolean(v))} />
+              <span className="text-xs">Madinah Ziarat</span>
+            </label>
+            <label className="flex items-center gap-2 cursor-pointer">
+              <Checkbox checked={badrZiarat} onCheckedChange={v => setBadrZiarat(Boolean(v))} />
+              <span className="text-xs">Badr Ziarat</span>
+            </label>
+            <label className="flex items-center gap-2 cursor-pointer">
+              <Checkbox checked={taifZiarat} onCheckedChange={v => setTaifZiarat(Boolean(v))} />
+              <span className="text-xs">Taif Ziarat</span>
+            </label>
+          </div>
+        </Section>
+
         <Section title="Hotels &amp; Ziyarat">
           <div className="space-y-1.5">
             <Label className="text-xs">Makkah Hotel Name</Label>
-            <Input
-              value={data.makkahHotelName}
-              onChange={e => setField('makkahHotelName', e.target.value)}
-              placeholder="Hiba Hijra 6 or Similar"
-              className="h-9"
-            />
+            {makkahHotels.length > 0 ? (
+              <select
+                value={makkahHotels.find(h => h.name === data.makkahHotelName)?.id ?? makkahHotelId}
+                onChange={e => handleMakkahHotelSelect(e.target.value)}
+                className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm"
+              >
+                {makkahHotels.map(h => (
+                  <option key={h.id} value={h.id}>{h.name} · {h.distance}</option>
+                ))}
+              </select>
+            ) : (
+              <Input
+                value={data.makkahHotelName}
+                onChange={e => setField('makkahHotelName', e.target.value)}
+                placeholder="Hiba Hijra 6 or Similar"
+                className="h-9"
+              />
+            )}
           </div>
           <div className="space-y-1.5">
             <Label className="text-xs">Makkah Hotel Details</Label>
@@ -252,12 +497,24 @@ export default function UmrahPosterForm() {
           </div>
           <div className="space-y-1.5">
             <Label className="text-xs">Madina Hotel Name</Label>
-            <Input
-              value={data.madinaHotelName}
-              onChange={e => setField('madinaHotelName', e.target.value)}
-              placeholder="Anwar Al Madinah Mövenpick"
-              className="h-9"
-            />
+            {madinahHotels.length > 0 ? (
+              <select
+                value={madinahHotels.find(h => h.name === data.madinaHotelName)?.id ?? madinahHotelId}
+                onChange={e => handleMadinahHotelSelect(e.target.value)}
+                className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm"
+              >
+                {madinahHotels.map(h => (
+                  <option key={h.id} value={h.id}>{h.name} · {h.distance}</option>
+                ))}
+              </select>
+            ) : (
+              <Input
+                value={data.madinaHotelName}
+                onChange={e => setField('madinaHotelName', e.target.value)}
+                placeholder="Anwar Al Madinah Mövenpick"
+                className="h-9"
+              />
+            )}
           </div>
           <div className="space-y-1.5">
             <Label className="text-xs">Madina Hotel Details</Label>

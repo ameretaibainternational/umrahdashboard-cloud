@@ -1,4 +1,4 @@
-import { getAirlines, getHotels, getVisa, getCurrency, getTransportRates, getCompany, getCurrentStaff, getPackageInvoiceById } from '@/lib/db'
+import { getAirlines, getHotels, getVisa, getCurrency, getTransportRates, getCompany, getCurrentStaff, getPackageInvoiceById, getInvoiceClients, getInvoiceSettings } from '@/lib/db'
 import { isViewerPermission } from '@/lib/permissions'
 import CalculatorForm from '@/components/calculator/CalculatorForm'
 
@@ -8,7 +8,7 @@ export default async function CalculatorPage({
   searchParams: Promise<{ edit?: string }>
 }) {
   const { edit } = await searchParams
-  const [airlines, hotels, visa, currency, transportRates, company, staff, editInvoice] = await Promise.all([
+  const [airlines, hotels, visa, currency, transportRates, company, staff, editInvoice, invoiceClients, invoiceSettings] = await Promise.all([
     getAirlines(),
     getHotels(),
     getVisa(),
@@ -17,6 +17,8 @@ export default async function CalculatorPage({
     getCompany(),
     getCurrentStaff(),
     edit ? getPackageInvoiceById(edit) : Promise.resolve(null),
+    getInvoiceClients(),
+    getInvoiceSettings(),
   ])
 
   const makkahHotels = hotels.filter(h => h.city === 'Makkah')
@@ -31,6 +33,8 @@ export default async function CalculatorPage({
       currency={currency}
       transportRates={transportRates}
       company={company}
+      invoiceClients={invoiceClients}
+      invoiceSettings={invoiceSettings}
       canSaveBooking={!staff || !isViewerPermission(staff.permission)}
       editInvoice={editInvoice}
     />

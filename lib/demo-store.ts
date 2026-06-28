@@ -1,4 +1,4 @@
-import type { Airline, Hotel, Booking, Payment, Expense, StaffUser, VisaSettings, CurrencySettings, TransportRate, Company, InvoiceSettings, InvoiceClient, CustomInvoice, HotelVoucherSettings, HotelVoucherRecord, StorageUsage } from './types'
+import type { Airline, Hotel, Booking, Payment, Expense, StaffUser, VisaSettings, CurrencySettings, TransportRate, Company, InvoiceSettings, InvoiceClient, InvoicePaymentMethod, InvoiceService, CustomInvoice, HotelVoucherSettings, HotelVoucherRecord, StorageUsage } from './types'
 import { DEFAULT_URDU_FOOTER, DEFAULT_URDU_GUIDELINES } from './hotel-voucher-defaults'
 import { DEFAULT_INVOICE_SETTINGS } from './invoice-defaults'
 import { demoFileStore } from './demo-file-store'
@@ -20,28 +20,37 @@ const DEFAULT_AIRLINES: Airline[] = [
 ]
 
 const DEFAULT_HOTELS: Hotel[] = [
-  { id: 'h1', city: 'Makkah', name: 'Hilton Suites Makkah', location: 'Abraj Al-Bait', distance: '50-100 MTR', sharing_sar: 450, quad_sar: 550, triple_sar: 700, double_sar: 950 },
-  { id: 'h2', city: 'Makkah', name: 'Swissotel Makkah', location: 'Abraj Al-Bait', distance: '50-100 MTR', sharing_sar: 420, quad_sar: 520, triple_sar: 670, double_sar: 920 },
-  { id: 'h3', city: 'Makkah', name: 'Pullman ZamZam Makkah', location: 'Abraj Al-Bait', distance: '100-200 MTR', sharing_sar: 350, quad_sar: 450, triple_sar: 600, double_sar: 850 },
-  { id: 'h4', city: 'Makkah', name: 'Anjum Hotel Makkah', location: 'Al Haram', distance: '200-300 MTR', sharing_sar: 300, quad_sar: 400, triple_sar: 550, double_sar: 800 },
-  { id: 'h5', city: 'Makkah', name: 'Al Safwah Royale Orchid', location: 'Al Haram', distance: '300-400 MTR', sharing_sar: 250, quad_sar: 350, triple_sar: 500, double_sar: 750 },
-  { id: 'h6', city: 'Makkah', name: 'Dar Al Taqwa Hotel', location: 'Al Haram', distance: '200 MTR', sharing_sar: 280, quad_sar: 380, triple_sar: 530, double_sar: 780 },
-  { id: 'h7', city: 'Makkah', name: 'Sheraton Makkah Jabal Al Kaaba', location: 'Al Haram', distance: '500 MTR', sharing_sar: 240, quad_sar: 340, triple_sar: 490, double_sar: 740 },
-  { id: 'h8', city: 'Makkah', name: 'Grand Millennium Makkah', location: 'Al Haram', distance: '700-800 MTR', sharing_sar: 180, quad_sar: 280, triple_sar: 430, double_sar: 680 },
-  { id: 'h9', city: 'Makkah', name: 'Al Rayyan Hotel Makkah', location: 'Al Haram', distance: 'Shuttle Service', sharing_sar: 100, quad_sar: 200, triple_sar: 350, double_sar: 600 },
-  { id: 'h10', city: 'Makkah', name: 'Rawaq Hotel Makkah', location: 'Al Haram', distance: 'Shuttle Service', sharing_sar: 90, quad_sar: 190, triple_sar: 340, double_sar: 590 },
-  { id: 'h11', city: 'Madinah', name: 'Anwar Al Madinah Mövenpick', location: 'Al Haram', distance: '50-100 MTR', sharing_sar: 300, quad_sar: 400, triple_sar: 550, double_sar: 800 },
-  { id: 'h12', city: 'Madinah', name: 'Madinah Hilton Hotel', location: 'Al Haram', distance: '100-200 MTR', sharing_sar: 280, quad_sar: 380, triple_sar: 530, double_sar: 780 },
-  { id: 'h13', city: 'Madinah', name: 'Al Shohada Hotel', location: 'Al Haram', distance: '100 MTR', sharing_sar: 260, quad_sar: 360, triple_sar: 510, double_sar: 760 },
-  { id: 'h14', city: 'Madinah', name: 'Pullman Zamzam Madinah', location: 'Al Haram', distance: '300 MTR', sharing_sar: 220, quad_sar: 320, triple_sar: 470, double_sar: 720 },
-  { id: 'h15', city: 'Madinah', name: 'Oberoi Madinah', location: 'Al Haram', distance: '400 MTR', sharing_sar: 350, quad_sar: 450, triple_sar: 600, double_sar: 850 },
-  { id: 'h16', city: 'Madinah', name: 'Al Eiman Royal Hotel', location: 'Al Haram', distance: '600-700 MTR', sharing_sar: 150, quad_sar: 250, triple_sar: 400, double_sar: 650 },
-  { id: 'h17', city: 'Madinah', name: 'Dallah Taibah Hotel', location: 'Al Haram', distance: '1 KM', sharing_sar: 120, quad_sar: 220, triple_sar: 370, double_sar: 620 },
-  { id: 'h18', city: 'Madinah', name: 'Saja Al Madinah Hotel', location: 'Al Haram', distance: 'Shuttle Service', sharing_sar: 100, quad_sar: 200, triple_sar: 350, double_sar: 600 },
+  { id: 'h1', city: 'Makkah', name: 'Hilton Suites Makkah', location: 'Abraj Al-Bait', distance: '50-100 MTR', sharing_sar: 450, quad_sar: 550, triple_sar: 700, double_sar: 950, contact_number: '', room_sar: 0 },
+  { id: 'h2', city: 'Makkah', name: 'Swissotel Makkah', location: 'Abraj Al-Bait', distance: '50-100 MTR', sharing_sar: 420, quad_sar: 520, triple_sar: 670, double_sar: 920, contact_number: '', room_sar: 0 },
+  { id: 'h3', city: 'Makkah', name: 'Pullman ZamZam Makkah', location: 'Abraj Al-Bait', distance: '100-200 MTR', sharing_sar: 350, quad_sar: 450, triple_sar: 600, double_sar: 850, contact_number: '', room_sar: 0 },
+  { id: 'h4', city: 'Makkah', name: 'Anjum Hotel Makkah', location: 'Al Haram', distance: '200-300 MTR', sharing_sar: 300, quad_sar: 400, triple_sar: 550, double_sar: 800, contact_number: '', room_sar: 0 },
+  { id: 'h5', city: 'Makkah', name: 'Al Safwah Royale Orchid', location: 'Al Haram', distance: '300-400 MTR', sharing_sar: 250, quad_sar: 350, triple_sar: 500, double_sar: 750, contact_number: '', room_sar: 0 },
+  { id: 'h6', city: 'Makkah', name: 'Dar Al Taqwa Hotel', location: 'Al Haram', distance: '200 MTR', sharing_sar: 280, quad_sar: 380, triple_sar: 530, double_sar: 780, contact_number: '', room_sar: 0 },
+  { id: 'h7', city: 'Makkah', name: 'Sheraton Makkah Jabal Al Kaaba', location: 'Al Haram', distance: '500 MTR', sharing_sar: 240, quad_sar: 340, triple_sar: 490, double_sar: 740, contact_number: '', room_sar: 0 },
+  { id: 'h8', city: 'Makkah', name: 'Grand Millennium Makkah', location: 'Al Haram', distance: '700-800 MTR', sharing_sar: 180, quad_sar: 280, triple_sar: 430, double_sar: 680, contact_number: '', room_sar: 0 },
+  { id: 'h9', city: 'Makkah', name: 'Al Rayyan Hotel Makkah', location: 'Al Haram', distance: 'Shuttle Service', sharing_sar: 100, quad_sar: 200, triple_sar: 350, double_sar: 600, contact_number: '', room_sar: 0 },
+  { id: 'h10', city: 'Makkah', name: 'Rawaq Hotel Makkah', location: 'Al Haram', distance: 'Shuttle Service', sharing_sar: 90, quad_sar: 190, triple_sar: 340, double_sar: 590, contact_number: '', room_sar: 0 },
+  { id: 'h11', city: 'Madinah', name: 'Anwar Al Madinah Mövenpick', location: 'Al Haram', distance: '50-100 MTR', sharing_sar: 300, quad_sar: 400, triple_sar: 550, double_sar: 800, contact_number: '', room_sar: 0 },
+  { id: 'h12', city: 'Madinah', name: 'Madinah Hilton Hotel', location: 'Al Haram', distance: '100-200 MTR', sharing_sar: 280, quad_sar: 380, triple_sar: 530, double_sar: 780, contact_number: '', room_sar: 0 },
+  { id: 'h13', city: 'Madinah', name: 'Al Shohada Hotel', location: 'Al Haram', distance: '100 MTR', sharing_sar: 260, quad_sar: 360, triple_sar: 510, double_sar: 760, contact_number: '', room_sar: 0 },
+  { id: 'h14', city: 'Madinah', name: 'Pullman Zamzam Madinah', location: 'Al Haram', distance: '300 MTR', sharing_sar: 220, quad_sar: 320, triple_sar: 470, double_sar: 720, contact_number: '', room_sar: 0 },
+  { id: 'h15', city: 'Madinah', name: 'Oberoi Madinah', location: 'Al Haram', distance: '400 MTR', sharing_sar: 350, quad_sar: 450, triple_sar: 600, double_sar: 850, contact_number: '', room_sar: 0 },
+  { id: 'h16', city: 'Madinah', name: 'Al Eiman Royal Hotel', location: 'Al Haram', distance: '600-700 MTR', sharing_sar: 150, quad_sar: 250, triple_sar: 400, double_sar: 650, contact_number: '', room_sar: 0 },
+  { id: 'h17', city: 'Madinah', name: 'Dallah Taibah Hotel', location: 'Al Haram', distance: '1 KM', sharing_sar: 120, quad_sar: 220, triple_sar: 370, double_sar: 620, contact_number: '', room_sar: 0 },
+  { id: 'h18', city: 'Madinah', name: 'Saja Al Madinah Hotel', location: 'Al Haram', distance: 'Shuttle Service', sharing_sar: 100, quad_sar: 200, triple_sar: 350, double_sar: 600, contact_number: '', room_sar: 0 },
 ]
 
 const DEFAULT_INVOICE_CLIENTS: InvoiceClient[] = [
   { id: 'ic1', name: 'ATIQ TRAVEL & TOURS', address: 'DUBAI', client_number: '+971 50 000 0000' },
+]
+
+const DEFAULT_INVOICE_PAYMENT_METHODS: InvoicePaymentMethod[] = [
+  { id: 'pm1', label: 'Meezan Bank', bank_name: 'Meezan Bank', account_number: '01234567890123' },
+]
+
+const DEFAULT_INVOICE_SERVICES: InvoiceService[] = [
+  { id: 'sv1', name: '03 MONTH UMRAH VISA' },
+  { id: 'sv2', name: 'UMRAH PACKAGE' },
 ]
 
 const DEFAULT_TRANSPORT_RATES: TransportRate[] = [
@@ -67,9 +76,21 @@ const DEFAULT_VISA: VisaSettings = {
   transport_mode: 'included',
   makkah_ziarat_rate: 0,
   madina_ziarat_rate: 0,
+  badr_ziarat_rate: 0,
+  taif_ziarat_rate: 0,
 }
 const DEFAULT_CURRENCY: CurrencySettings = { id: 'c1', sar_to_pkr: 75 }
-const DEFAULT_COMPANY: Company = { id: 'co1', name: 'Fast Travels & Tours', license: 'Govt License', phone: '', website: 'fasttravels.pk', address: 'Pakistan', logo_url: '' }
+const DEFAULT_COMPANY: Company = {
+  id: 'co1',
+  name: 'Fast Travels & Tours',
+  license: 'Govt License',
+  phone: '',
+  website: 'fasttravels.pk',
+  address: 'Pakistan',
+  logo_url: '',
+  pk_flight_cities: ['Islamabad', 'Lahore', 'Karachi', 'Peshawar', 'Multan', 'Sialkot', 'Faisalabad', 'Quetta'],
+  sa_flight_cities: ['Jeddah', 'Madinah', 'Riyadh', 'Dammam'],
+}
 
 const DEFAULT_STAFF: StaffUser[] = [
   { id: 'su1', name: 'Admin', username: 'admin', role: 'Admin', permission: 'Full Access', status: 'Active', created_at: new Date().toISOString() },
@@ -123,6 +144,8 @@ class DemoStore {
   staff: StaffUser[] = [...DEFAULT_STAFF]
   invoiceSettings: InvoiceSettings = { ...DEFAULT_INVOICE_SETTINGS, id: 'is1' }
   invoiceClients: InvoiceClient[] = [...DEFAULT_INVOICE_CLIENTS]
+  invoicePaymentMethods: InvoicePaymentMethod[] = [...DEFAULT_INVOICE_PAYMENT_METHODS]
+  invoiceServices: InvoiceService[] = [...DEFAULT_INVOICE_SERVICES]
   hotelVoucherSettings: HotelVoucherSettings = { ...DEFAULT_HOTEL_VOUCHER_SETTINGS, urdu_guidelines: [...DEFAULT_URDU_GUIDELINES] }
   customInvoices: CustomInvoice[] = []
   hotelVouchers: HotelVoucherRecord[] = []
@@ -186,6 +209,47 @@ class DemoStore {
   }
   deleteInvoiceClient(id: string) {
     this.invoiceClients = this.invoiceClients.filter(c => c.id !== id)
+  }
+
+  upsertInvoicePaymentMethod(data: Omit<InvoicePaymentMethod, 'id' | 'created_at'> & { id?: string }) {
+    if (data.id) {
+      this.invoicePaymentMethods = this.invoicePaymentMethods.map(m =>
+        m.id === data.id ? { ...m, ...data } : m,
+      )
+    } else {
+      this.invoicePaymentMethods.push({
+        id: uid(),
+        label: data.label,
+        bank_name: data.bank_name,
+        account_number: data.account_number,
+        created_at: new Date().toISOString(),
+      })
+    }
+  }
+  deleteInvoicePaymentMethod(id: string) {
+    this.invoicePaymentMethods = this.invoicePaymentMethods.filter(m => m.id !== id)
+  }
+
+  upsertInvoiceService(data: Omit<InvoiceService, 'id' | 'created_at'> & { id?: string }) {
+    if (data.id) {
+      this.invoiceServices = this.invoiceServices.map(s =>
+        s.id === data.id ? { ...s, ...data } : s,
+      )
+    } else {
+      const existing = this.invoiceServices.findIndex(s => s.name.toLowerCase() === data.name.toLowerCase())
+      if (existing >= 0) {
+        this.invoiceServices[existing] = { ...this.invoiceServices[existing], name: data.name }
+      } else {
+        this.invoiceServices.push({
+          id: uid(),
+          name: data.name,
+          created_at: new Date().toISOString(),
+        })
+      }
+    }
+  }
+  deleteInvoiceService(id: string) {
+    this.invoiceServices = this.invoiceServices.filter(s => s.id !== id)
   }
 
   // Hotels
@@ -260,6 +324,17 @@ class DemoStore {
     this.reduceStorage(inv.file_size_bytes ?? 0)
     inv.file_deleted_at = new Date().toISOString()
   }
+  updateCustomInvoice(id: string, data: Partial<Omit<CustomInvoice, 'id' | 'created_at' | 'created_by'>>) {
+    const inv = this.customInvoices.find(i => i.id === id)
+    if (!inv) return null
+    const oldSize = inv.file_size_bytes ?? 0
+    Object.assign(inv, data)
+    if (data.file_size_bytes != null && data.file_size_bytes !== oldSize) {
+      this.reduceStorage(oldSize)
+      this.bumpStorage(data.file_size_bytes)
+    }
+    return inv
+  }
   deleteCustomInvoice(id: string) {
     const inv = this.customInvoices.find(i => i.id === id)
     if (inv?.storage_key && !inv.file_deleted_at) {
@@ -327,6 +402,8 @@ class DemoStore {
     this.staff = [...DEFAULT_STAFF]
     this.invoiceSettings = { ...DEFAULT_INVOICE_SETTINGS }
     this.invoiceClients = [...DEFAULT_INVOICE_CLIENTS]
+    this.invoicePaymentMethods = [...DEFAULT_INVOICE_PAYMENT_METHODS]
+    this.invoiceServices = [...DEFAULT_INVOICE_SERVICES]
     this.hotelVoucherSettings = { ...DEFAULT_HOTEL_VOUCHER_SETTINGS, urdu_guidelines: [...DEFAULT_URDU_GUIDELINES] }
     this.customInvoices = []
     this.hotelVouchers = []
@@ -338,7 +415,7 @@ class DemoStore {
 }
 
 // Bump this whenever DemoStore gains new fields, to force recreation in dev hot-reloads
-const STORE_VERSION = 8
+const STORE_VERSION = 9
 
 const globalStore = globalThis as typeof globalThis & {
   __demoStore?: DemoStore

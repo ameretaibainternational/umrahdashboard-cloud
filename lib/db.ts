@@ -8,7 +8,8 @@ import { isDemoMode } from './is-demo'
 import { demoStore } from './demo-store'
 import { isAdminPermission } from './permissions'
 import { hasDirectDb, isDirectDbConnectionError, isDirectDbRecoverableError, markDirectDbAuthFailed } from './sql'
-import type { Airline, Hotel, Booking, Payment, Expense, StaffUser, VisaSettings, CurrencySettings, TransportRate, Company, InvoiceSettings, InvoiceClient, CustomInvoice, HotelVoucherSettings, HotelVoucherRecord, StorageUsage, StoredFileRow, StaffActivityStats } from './types'
+import { parseFlightCities, DEFAULT_PK_FLIGHT_CITIES, DEFAULT_SA_FLIGHT_CITIES } from './flight-cities'
+import type { Airline, Hotel, Booking, Payment, Expense, StaffUser, VisaSettings, CurrencySettings, TransportRate, Company, InvoiceSettings, InvoiceClient, InvoicePaymentMethod, InvoiceService, CustomInvoice, HotelVoucherSettings, HotelVoucherRecord, StorageUsage, StoredFileRow, StaffActivityStats } from './types'
 import { DEFAULT_URDU_FOOTER, DEFAULT_URDU_GUIDELINES } from './hotel-voucher-defaults'
 import { resolveInvoiceSettings } from './invoice-defaults'
 
@@ -102,6 +103,8 @@ export async function getVisa(): Promise<VisaSettings> {
     transport_mode: 'included' as const,
     makkah_ziarat_rate: 0,
     madina_ziarat_rate: 0,
+    badr_ziarat_rate: 0,
+    taif_ziarat_rate: 0,
   }
   // Coerce any columns that may be null if migration hasn't run yet
   return {
@@ -113,6 +116,8 @@ export async function getVisa(): Promise<VisaSettings> {
     visa_rate_group_pax: data.visa_rate_group_pax ?? 600,
     makkah_ziarat_rate:  data.makkah_ziarat_rate  ?? 0,
     madina_ziarat_rate:  data.madina_ziarat_rate  ?? 0,
+    badr_ziarat_rate:    data.badr_ziarat_rate    ?? 0,
+    taif_ziarat_rate:    data.taif_ziarat_rate    ?? 0,
   }
 }
 
@@ -140,7 +145,12 @@ export async function getCompany(): Promise<Company> {
   if (isDemoMode()) return { ...demoStore.company }
   const sb = await getSupabase()
   const { data } = await sb.from('company').select('*').single()
-  return data ?? { id: '', name: 'Fast Travels & Tours', license: 'Govt License', phone: '', website: 'fasttravels.pk', address: 'Pakistan', logo_url: '' }
+  const base = data ?? { id: '', name: 'Fast Travels & Tours', license: 'Govt License', phone: '', website: 'fasttravels.pk', address: 'Pakistan', logo_url: '' }
+  return {
+    ...base,
+    pk_flight_cities: parseFlightCities(base.pk_flight_cities, DEFAULT_PK_FLIGHT_CITIES),
+    sa_flight_cities: parseFlightCities(base.sa_flight_cities, DEFAULT_SA_FLIGHT_CITIES),
+  }
 }
 
 // ── Bookings ──────────────────────────────────────────────────────────────────
@@ -156,6 +166,83 @@ export async function getBookings(): Promise<Booking[]> {
     async () => {
       const rows = await supabaseSelectAll<Booking>('bookings')
       return filterByOwner(rows, ownerId)
+    },
+  )
+}
+
+export async function findBookingForCustomInvoice(
+  invoiceId: string,
+  snapshot: { customer_name: string; booking_date: string; total_pkr: number },
+  ownerId?: string | null,
+): Promise<Booking | null> {
+  if (isDemoMode()) {
+    const linked = demoStore.bookings.find(b => b.source_invoice_id === invoiceId)
+    if (linked) return linked
+    return demoStore.bookings.find(b =>
+      b.customer_name === snapshot.customer_name &&
+      b.booking_date === snapshot.booking_date &&
+      b.total_pkr === snapshot.total_pkr,
+    ) ?? null
+  }
+
+  return withDirectDbFallback(
+    async () => {
+      const { findBookingForCustomInvoiceDirect } = await import('@/lib/crm-db')
+      return findBookingForCustomInvoiceDirect(invoiceId, snapshot, ownerId)
+    },
+    async () => {
+      const sb = await getSupabase()
+      const mapRow = (row: Booking): Booking => ({
+        ...row,
+        total_pkr: Number(row.total_pkr),
+        cost_pkr: Number(row.cost_pkr),
+        profit_pkr: Number(row.profit_pkr),
+        advance_pkr: Number(row.advance_pkr),
+        paid_pkr: Number(row.paid_pkr),
+        remaining_pkr: Number(row.remaining_pkr),
+        adult_count: Number(row.adult_count),
+        child_count: Number(row.child_count),
+        infant_count: Number(row.infant_count),
+        makkah_nights: row.makkah_nights != null ? Number(row.makkah_nights) : null,
+        madinah_nights: row.madinah_nights != null ? Number(row.madinah_nights) : null,
+      })
+
+      let linkedQuery = sb.from('bookings').select('*').eq('source_invoice_id', invoiceId)
+      if (ownerId) linkedQuery = linkedQuery.eq('created_by', ownerId)
+      const linkedResult = await linkedQuery.maybeSingle()
+      if (!linkedResult.error && linkedResult.data) {
+        return mapRow(linkedResult.data as Booking)
+      }
+
+      const { data: rows } = await sb.from('bookings').select('*').order('created_at', { ascending: false })
+      const match = filterByOwner((rows ?? []) as Booking[], ownerId ?? null).find(b =>
+        b.customer_name === snapshot.customer_name &&
+        b.booking_date === snapshot.booking_date &&
+        Number(b.total_pkr) === snapshot.total_pkr,
+      )
+      return match ? mapRow(match) : null
+    },
+  )
+}
+
+export async function linkBookingToInvoice(bookingId: string, invoiceId: string): Promise<void> {
+  if (isDemoMode()) {
+    const booking = demoStore.bookings.find(b => b.id === bookingId)
+    if (booking) booking.source_invoice_id = invoiceId
+    return
+  }
+
+  return withDirectDbFallback(
+    async () => {
+      const { linkBookingToInvoiceDirect } = await import('@/lib/crm-db')
+      await linkBookingToInvoiceDirect(bookingId, invoiceId)
+    },
+    async () => {
+      const sb = await getSupabase()
+      const { error } = await sb.from('bookings').update({ source_invoice_id: invoiceId }).eq('id', bookingId)
+      if (error && !error.message.includes('source_invoice_id') && !error.message.includes('schema cache')) {
+        throw new Error(error.message)
+      }
     },
   )
 }
@@ -212,6 +299,24 @@ export async function getInvoiceClients(): Promise<InvoiceClient[]> {
   return data ?? []
 }
 
+export async function getInvoicePaymentMethods(): Promise<InvoicePaymentMethod[]> {
+  if (isDemoMode()) {
+    return [...demoStore.invoicePaymentMethods].sort((a, b) => a.label.localeCompare(b.label))
+  }
+  const sb = await getSupabase()
+  const { data } = await sb.from('invoice_payment_methods').select('*').order('label')
+  return data ?? []
+}
+
+export async function getInvoiceServices(): Promise<InvoiceService[]> {
+  if (isDemoMode()) {
+    return [...demoStore.invoiceServices].sort((a, b) => a.name.localeCompare(b.name))
+  }
+  const sb = await getSupabase()
+  const { data } = await sb.from('invoice_services').select('*').order('name')
+  return data ?? []
+}
+
 // ── Hotel Voucher Settings ─────────────────────────────────────────────────────
 
 function defaultHotelVoucherSettings(): HotelVoucherSettings {
@@ -264,6 +369,29 @@ export async function getPackageInvoices(): Promise<CustomInvoice[]> {
   const { isPackageInvoice } = await import('@/lib/package-invoice')
   const invoices = await getCustomInvoices()
   return invoices.filter(inv => isPackageInvoice(inv) && !inv.file_deleted_at)
+}
+
+export async function getCustomInvoiceById(id: string): Promise<CustomInvoice | null> {
+  const ownerId = await getOwnerFilter()
+  const { isPackageInvoice } = await import('@/lib/package-invoice')
+
+  if (isDemoMode()) {
+    const inv = demoStore.customInvoices.find(i => i.id === id && !isPackageInvoice(i))
+    if (!inv) return null
+    if (ownerId && inv.created_by !== ownerId) return null
+    return inv
+  }
+
+  return withDirectDbFallback(
+    async () => {
+      const { fetchCustomInvoiceById } = await import('@/lib/document-db')
+      return fetchCustomInvoiceById(id, ownerId)
+    },
+    async () => {
+      const { fetchCustomInvoiceByIdSupabase } = await import('@/lib/supabase-document-db')
+      return fetchCustomInvoiceByIdSupabase(id, ownerId)
+    },
+  )
 }
 
 export async function getPackageInvoiceById(id: string): Promise<CustomInvoice | null> {

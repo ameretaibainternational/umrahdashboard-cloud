@@ -111,7 +111,7 @@ function StatusDonut({ data, total }: { data: StatusPoint[]; total: number }) {
     <Card className="shadow-sm border-0">
       <CardHeader className="pb-2">
         <CardTitle className="text-sm font-semibold">Booking Status</CardTitle>
-        <p className="text-xs text-muted-foreground">Paid vs outstanding</p>
+        <p className="text-xs text-muted-foreground">Paid vs remaining</p>
       </CardHeader>
       <CardContent className="flex items-center gap-4">
         <div className="relative flex-shrink-0">
