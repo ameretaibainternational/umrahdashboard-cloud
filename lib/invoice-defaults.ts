@@ -33,3 +33,16 @@ export function getNextInvoiceNumber(invoices: Pick<CustomInvoice, 'invoice_numb
   }
   return `ATI-${String(max + 1).padStart(3, '0')}`
 }
+
+/** First package invoice number when none exist yet. */
+export const PACKAGE_INVOICE_START = 1501
+
+/** Sequential package invoice numbers: INV-1501, INV-1502, … */
+export function getNextPackageInvoiceNumber(invoices: Pick<CustomInvoice, 'invoice_number'>[]): string {
+  let max = PACKAGE_INVOICE_START - 1
+  for (const inv of invoices) {
+    const match = /^INV-(\d+)$/i.exec(inv.invoice_number.trim())
+    if (match) max = Math.max(max, parseInt(match[1], 10))
+  }
+  return `INV-${max + 1}`
+}

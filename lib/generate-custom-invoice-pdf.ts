@@ -1,6 +1,7 @@
 import type { InvoiceBranding } from '@/lib/custom-invoice-branding-layout'
 import { resolveLogoRect, scaleRect } from '@/lib/custom-invoice-branding-layout'
 import { applyInvoicePdfCloneStyles } from '@/lib/invoice-pdf-onclone'
+import { invoiceBackgroundUrl } from '@/lib/invoice-backgrounds'
 
 function waitForImages(root: HTMLElement): Promise<void> {
   const imgs = Array.from(root.querySelectorAll('img')) as HTMLImageElement[]
@@ -59,7 +60,7 @@ export async function generateCustomInvoicePdfBytes(
   const PAGE_W = 595.5
   const PAGE_H = 842
 
-  const bgImg = await loadImage(`${origin}${backgroundSrc.startsWith('/') ? backgroundSrc : `/${backgroundSrc}`}`)
+  const bgImg = await loadImage(`${origin}${invoiceBackgroundUrl(backgroundSrc)}`)
   const logoImg = branding.logoUrl ? await loadImage(branding.logoUrl) : null
 
   const pdf = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' })

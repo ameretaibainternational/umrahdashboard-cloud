@@ -1,4 +1,5 @@
-import type { CalcInput, CalcResult, TransportRate, VisaSettings } from './types'
+import type { CalcInput, CalcResult, TransportRate, VisaSettings, ZiaratOption } from './types'
+import { normalizeTransportType } from './transport'
 
 function getAdultVisaRate(visa: VisaSettings, pax: number): number {
   if (pax <= 1) return visa.visa_rate_1_pax
@@ -19,33 +20,36 @@ export function getCalc(
   transportRates: TransportRate[],
   sarToPkr: number,
   visa: VisaSettings,
-  transportMode: 'included' | 'separate'
+  transportMode: 'included' | 'separate',
+  ziarats: ZiaratOption[],
 ): CalcResult {
   const { adult, child, infant, airline, transportType,
           makkahHotel, makkahRoom, makkahNights,
           madinahHotel, madinahRoom, madinahNights,
           profitType, profitValue, sellingOverride, advance,
-          makkahZiarat, madinahZiarat, badrZiarat, taifZiarat,
+          selectedZiaratIds,
           includeMakkahHotel, includeMadinahHotel,
+          includeTickets,
           customTicket, customTicketPkr } = input
 
   const pax = Math.max(1, adult + child + infant)
 
-  const ticketCost = customTicket
-    ? customTicketPkr
-    : airline
-      ? adult * airline.adult_pkr + child * airline.child_pkr + infant * airline.infant_pkr
-      : 0
+  const ticketCost = includeTickets
+    ? (customTicket
+      ? customTicketPkr
+      : airline
+        ? adult * airline.adult_pkr + child * airline.child_pkr + infant * airline.infant_pkr
+        : 0)
+    : 0
 
   const visaAdultSar = getAdultVisaRate(visa, pax)
   const visaCost = ((adult + child) * visaAdultSar + infant * visa.infant_sar) * sarToPkr
 
-  let transportCost = 0
-  if (transportMode === 'separate') {
-    const paxKey = Math.min(Math.max(pax, 1), 4)
-    const rate = transportRates.find(r => r.type === transportType && r.pax_count === paxKey)
-    transportCost = (rate?.rate_sar ?? 0) * sarToPkr
-  }
+  const vehicle = normalizeTransportType(transportType)
+  const paxKey = Math.min(Math.max(pax, 1), 4)
+  const rate = transportRates.find(r => r.type === vehicle && r.pax_count === paxKey)
+    ?? transportRates.find(r => normalizeTransportType(r.type) === vehicle && r.pax_count === paxKey)
+  const transportCost = (rate?.rate_sar ?? 0) * sarToPkr
 
   const makkahRateSar = includeMakkahHotel ? hotelRateSar(makkahHotel, makkahRoom) : 0
   const makkahCost = makkahRateSar * sarToPkr * makkahNights * pax
@@ -53,13 +57,17 @@ export function getCalc(
   const madinahRateSar = includeMadinahHotel ? hotelRateSar(madinahHotel, madinahRoom) : 0
   const madinahCost = madinahRateSar * sarToPkr * madinahNights * pax
 
-  const makkahZiaratCost = makkahZiarat ? visa.makkah_ziarat_rate * sarToPkr : 0
-  const madinahZiaratCost = madinahZiarat ? visa.madina_ziarat_rate * sarToPkr : 0
-  const badrZiaratCost = badrZiarat ? (visa.badr_ziarat_rate ?? 0) * sarToPkr : 0
-  const taifZiaratCost = taifZiarat ? (visa.taif_ziarat_rate ?? 0) * sarToPkr : 0
+  const selected = new Set(selectedZiaratIds)
+  const ziaratItems = ziarats
+    .filter(z => selected.has(z.id))
+    .map(z => ({
+      id: z.id,
+      name: z.name,
+      cost: z.rate_sar * sarToPkr,
+    }))
+  const ziaratTotalCost = ziaratItems.reduce((sum, item) => sum + item.cost, 0)
 
-  const totalCost = ticketCost + visaCost + transportCost + makkahCost + madinahCost
-    + makkahZiaratCost + madinahZiaratCost + badrZiaratCost + taifZiaratCost
+  const totalCost = ticketCost + visaCost + transportCost + makkahCost + madinahCost + ziaratTotalCost
 
   let autoSelling: number
   if (profitType === 'fixed') {
@@ -87,10 +95,7 @@ export function getCalc(
     transportCost,
     makkahCost,
     madinahCost,
-    makkahZiaratCost,
-    madinahZiaratCost,
-    badrZiaratCost,
-    taifZiaratCost,
+    ziaratItems,
     totalCost,
     selling,
     profit,

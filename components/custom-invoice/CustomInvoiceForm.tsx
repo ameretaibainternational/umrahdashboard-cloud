@@ -10,11 +10,16 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import CustomInvoiceTemplate from './CustomInvoiceTemplate'
+import InvoiceAppearanceControls from './InvoiceAppearanceControls'
+import { generateCustomInvoicePdfBytes } from '@/lib/generate-custom-invoice-pdf'
+import {
+  DEFAULT_CUSTOM_INVOICE_BACKGROUND,
+  DEFAULT_INVOICE_TEXT_COLOR,
+} from '@/lib/invoice-backgrounds'
 import { createCustomInvoiceWithPdf, updateCustomInvoiceWithPdf } from '@/app/actions/custom-invoices'
 import { upsertInvoiceService } from '@/app/actions/settings'
 import { downloadPdfBytes, downloadStoredPdf } from '@/lib/storage-client'
 import { uint8ToBase64 } from '@/lib/pdf-utils'
-import { applyInvoicePdfCloneStyles } from '@/lib/invoice-pdf-onclone'
 import { getNextInvoiceNumber, resolveInvoiceSettings } from '@/lib/invoice-defaults'
 import { isPackageInvoice } from '@/lib/package-invoice'
 import { BrandingSlider, BrandingResetButton } from '@/components/branding/BrandingSlider'
@@ -29,8 +34,6 @@ import {
   LOGO_MAX_BYTES,
   LOGO_SIZE_MAX,
   LOGO_SIZE_MIN,
-  resolveLogoRect,
-  scaleRect,
   type InvoiceBranding,
 } from '@/lib/custom-invoice-branding-layout'
 import type { InvoiceSettings, CustomInvoice, CustomInvoiceLineItem, InvoiceClient, InvoicePaymentMethod, InvoiceService } from '@/lib/types'
@@ -160,41 +163,6 @@ function buildInvoice(
   }
 }
 
-function waitForImages(root: HTMLElement): Promise<void> {
-  const imgs = Array.from(root.querySelectorAll('img')) as HTMLImageElement[]
-  if (imgs.length === 0) return Promise.resolve()
-  return Promise.all(imgs.map(img => {
-    if (img.complete && img.naturalWidth > 0) return Promise.resolve()
-    return new Promise<void>((resolve, reject) => {
-      img.onload = () => resolve()
-      img.onerror = () => reject(new Error('Failed to load invoice image'))
-    })
-  })).then(() => undefined)
-}
-
-function loadImage(src: string): Promise<HTMLImageElement> {
-  return new Promise((resolve, reject) => {
-    const img = new Image()
-    img.onload = () => resolve(img)
-    img.onerror = () => reject(new Error('Failed to load image'))
-    img.src = src
-  })
-}
-
-function drawImageContain(
-  ctx: CanvasRenderingContext2D,
-  img: HTMLImageElement,
-  x: number,
-  y: number,
-  w: number,
-  h: number,
-) {
-  const scale = Math.min(w / img.naturalWidth, h / img.naturalHeight)
-  const dw = img.naturalWidth * scale
-  const dh = img.naturalHeight * scale
-  ctx.drawImage(img, x, y, dw, dh)
-}
-
 function readFileAsDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
@@ -320,11 +288,13 @@ export default function CustomInvoiceForm({
     setRows([newRow(`${formId}-0`)])
     setDate(new Date().toISOString().split('T')[0])
     setInvoiceNumber(getNextInvoiceNumber(invoices))
+    setInvoiceTitleText('INVOICE')
   }, [applyDefaultFields, formId])
 
   // Form state
   const [editingId, setEditingId] = useState(editInvoice?.id ?? '')
   const [invoiceNumber, setInvoiceNumber] = useState(() => editInvoice?.invoice_number ?? getNextInvoiceNumber(existingInvoices))
+  const [invoiceTitleText, setInvoiceTitleText] = useState(() => editInvoice?.invoice_title_text?.trim() || 'INVOICE')
   const [date, setDate]             = useState(editInvoice?.invoice_date ?? today)
   const [selectedClientId, setSelectedClientId] = useState(initialClient?.id ?? '')
   const [isNewCustomer, setIsNewCustomer] = useState(editInvoice ? !editClientMatch : !hasSavedClients)
@@ -357,6 +327,8 @@ export default function CustomInvoiceForm({
   const [logoY, setLogoY]           = useState(DEFAULT_LOGO_Y)
   const [signatureUrl, setSignatureUrl] = useState<string | null>(null)
   const [signaturePersonName, setSignaturePersonName] = useState('')
+  const [invoiceBackground, setInvoiceBackground] = useState(DEFAULT_CUSTOM_INVOICE_BACKGROUND)
+  const [invoiceTextColor, setInvoiceTextColor] = useState(DEFAULT_INVOICE_TEXT_COLOR)
   const logoInputRef = useRef<HTMLInputElement>(null)
   const signatureInputRef = useRef<HTMLInputElement>(null)
 
@@ -572,77 +544,12 @@ export default function CustomInvoiceForm({
     try {
       const wrapper = printRef.current
       if (!wrapper) throw new Error('Template ref not ready')
-
       await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))
-
-      const pages = Array.from(wrapper.querySelectorAll('[data-invoice-root]')) as HTMLElement[]
-      if (pages.length === 0) throw new Error('No invoice pages found')
-
-      await waitForImages(wrapper)
-
-      const [{ default: html2canvas }, { jsPDF }] = await Promise.all([
-        import('html2canvas'),
-        import('jspdf'),
-      ])
-
-      const origin = window.location.origin
-      const SCALE = 2
-      const PAGE_W = 595.5
-      const PAGE_H = 842
-
-      const bgImg = await loadImage(`${origin}/invoice-empty.jpg`)
-      const logoImg = branding.logoUrl ? await loadImage(branding.logoUrl) : null
-
-      const pdf = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' })
-
-      for (let i = 0; i < pages.length; i++) {
-        if (i > 0) pdf.addPage()
-
-        const contentCanvas = await html2canvas(pages[i], {
-          scale: SCALE,
-          useCORS: true,
-          allowTaint: true,
-          backgroundColor: null,
-          logging: false,
-          imageTimeout: 30000,
-          scrollX: 0,
-          scrollY: 0,
-          onclone: (clonedDoc: Document) => {
-            applyInvoicePdfCloneStyles(clonedDoc)
-          },
-        })
-
-        const composite = document.createElement('canvas')
-        composite.width  = Math.round(PAGE_W * SCALE)
-        composite.height = Math.round(PAGE_H * SCALE)
-        const ctx = composite.getContext('2d')!
-        ctx.imageSmoothingEnabled = true
-        ctx.imageSmoothingQuality = 'high'
-        ctx.drawImage(bgImg, 0, 0, composite.width, composite.height)
-        ctx.drawImage(contentCanvas, 0, 0)
-
-        if (i === 0 && logoImg) {
-          const { x, y, w, h } = resolveLogoRect(branding)
-          const rect = scaleRect(x, y, w, h)
-          drawImageContain(
-            ctx,
-            logoImg,
-            rect.left * SCALE,
-            rect.top * SCALE,
-            rect.width * SCALE,
-            rect.height * SCALE,
-          )
-        }
-
-        pdf.addImage(composite.toDataURL('image/jpeg', 0.93), 'JPEG', 0, 0, 210, 297)
-      }
-
-      const buf = pdf.output('arraybuffer') as ArrayBuffer
-      return new Uint8Array(buf)
+      return generateCustomInvoicePdfBytes(wrapper, branding, invoiceBackground)
     } finally {
       if (isSaved) setCaptureInvoice(null)
     }
-  }, [branding.logoUrl, branding.logoX, branding.logoY, branding.logoSize])
+  }, [branding, invoiceBackground])
 
   const handleSaveAndDownload = useCallback(async () => {
     if (!billedName.trim()) {
@@ -683,6 +590,8 @@ export default function CustomInvoiceForm({
         received: inv.received,
         remaining: inv.remaining,
         pdf_base64: uint8ToBase64(bytes),
+        invoice_number: invoiceNumber || inv.invoice_number,
+        invoice_title_text: invoiceTitleText.trim() || 'INVOICE',
       }
 
       const updateId = editInvoice?.id ?? editingId
@@ -715,7 +624,7 @@ export default function CustomInvoiceForm({
       setIsDownloading(false)
     }
   }, [
-    billedName, invoiceNumber, date, billedAddr, billedPhone, bankName, accountNo,
+    billedName, invoiceNumber, invoiceTitleText, date, billedAddr, billedPhone, bankName, accountNo,
     terms, phone, email, location, rows, lockedCurrency, generateInvoicePdfBytes, router,
     existingInvoices, settings, resetForNewInvoice, savedClients, editInvoice, editingId,
   ])
@@ -774,6 +683,15 @@ export default function CustomInvoiceForm({
                       value={invoiceNumber}
                       onChange={e => setInvoiceNumber(e.target.value)}
                       className="h-9 w-36"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Invoice Title</Label>
+                    <Input
+                      placeholder="INVOICE"
+                      value={invoiceTitleText}
+                      onChange={e => setInvoiceTitleText(e.target.value)}
+                      className="h-9 w-48"
                     />
                   </div>
                   <div className="space-y-1.5">
@@ -893,14 +811,14 @@ export default function CustomInvoiceForm({
                           {/* Service */}
                           <div className="space-y-1.5">
                             <Label className="text-xs">Service</Label>
-                            <div className="flex gap-2">
+                            <div className="flex flex-col sm:flex-row sm:items-center gap-2">
                               {services.length > 0 && (
                                 <select
                                   value={services.some(s => s.name === row.service) ? row.service : ''}
                                   onChange={e => {
                                     if (e.target.value) updateRow(row.id, { service: e.target.value })
                                   }}
-                                  className="flex h-9 min-w-[140px] rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                                  className="h-9 w-full sm:w-auto sm:min-w-[140px] sm:max-w-[11rem] rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                                 >
                                   <option value="">Select service…</option>
                                   {services.map(s => (
@@ -912,13 +830,13 @@ export default function CustomInvoiceForm({
                                 placeholder="e.g. 03 MONTH UMRAH VISA"
                                 value={row.service}
                                 onChange={e => updateRow(row.id, { service: e.target.value })}
-                                className="h-9 flex-1"
+                                className="h-9 w-full sm:flex-1 min-w-0"
                               />
                               <Button
                                 type="button"
                                 size="sm"
                                 variant="outline"
-                                className="h-9 text-xs shrink-0"
+                                className="h-9 text-xs w-full sm:w-auto shrink-0"
                                 onClick={() => {
                                   setNewServiceRowId(row.id)
                                   setNewServiceName(row.service)
@@ -1021,7 +939,7 @@ export default function CustomInvoiceForm({
                             </div>
 
                             {/* Total Pax / Total Nights — label changes with active mode */}
-                            <div className="space-y-1.5 w-[80px] shrink-0">
+                            <div className="space-y-1.5 w-full sm:w-[80px] shrink-0">
                               <Label className="text-xs">
                                 {row.use_night_price ? 'Total Nights' : 'Total Pax'}
                               </Label>
@@ -1044,7 +962,7 @@ export default function CustomInvoiceForm({
                             </div>
 
                             {/* Total — no currency field when pax price is active (inherited automatically) */}
-                            <div className="space-y-1.5 w-[150px] shrink-0">
+                            <div className="space-y-1.5 w-full sm:w-[150px] shrink-0">
                               <Label className="text-xs">Total</Label>
                               <div className="flex gap-1 items-center">
                                 <Input
@@ -1077,13 +995,25 @@ export default function CustomInvoiceForm({
                               type="number" min="0"
                               value={row.received}
                               onChange={e => updateRow(row.id, { received: e.target.value })}
-                              className="h-8 text-sm w-40"
+                              className="h-8 text-sm w-full sm:w-40"
                             />
                           </div>
                         </div>
                       )
                     })}
                   </div>
+                </div>
+
+                {/* Invoice appearance (client-side only — not saved to server) */}
+                <div>
+                  <p className="text-xs font-semibold text-navy mb-2 uppercase tracking-wide">Invoice Appearance</p>
+                  <InvoiceAppearanceControls
+                    backgroundSrc={invoiceBackground}
+                    onBackgroundChange={setInvoiceBackground}
+                    textColor={invoiceTextColor}
+                    onTextColorChange={setInvoiceTextColor}
+                    defaultBackground={DEFAULT_CUSTOM_INVOICE_BACKGROUND}
+                  />
                 </div>
 
                 {/* Branding (client-side only — not saved to server) */}
@@ -1219,7 +1149,13 @@ export default function CustomInvoiceForm({
                   Live Preview {previewTotalPages > 1 && <span className="text-muted-foreground/60">({previewTotalPages} pages)</span>}
                 </p>
                 <ScaledPreview totalPages={previewTotalPages}>
-                  <CustomInvoiceTemplate invoice={previewInvoice} branding={branding} />
+                  <CustomInvoiceTemplate
+                    invoice={previewInvoice}
+                    branding={branding}
+                    titleText={invoiceTitleText.trim() || 'INVOICE'}
+                    backgroundImage={invoiceBackground}
+                    textColor={invoiceTextColor}
+                  />
                 </ScaledPreview>
               </div>
             </div>
@@ -1303,7 +1239,14 @@ export default function CustomInvoiceForm({
         tricks because html2canvas honours those and produces a blank canvas.
       */}
       <div style={{ position: 'fixed', top: 0, left: 0, zIndex: -9999, pointerEvents: 'none' }}>
-        <CustomInvoiceTemplate ref={printRef} invoice={hiddenInvoice} branding={branding} />
+        <CustomInvoiceTemplate
+          ref={printRef}
+          invoice={hiddenInvoice}
+          branding={branding}
+          titleText={invoiceTitleText.trim() || 'INVOICE'}
+          backgroundImage={invoiceBackground}
+          textColor={invoiceTextColor}
+        />
       </div>
     </div>
   )

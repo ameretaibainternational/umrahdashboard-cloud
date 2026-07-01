@@ -4,6 +4,7 @@ import { useTransition } from 'react'
 import { toast } from 'sonner'
 import { updateTransport } from '@/app/actions/settings'
 import type { TransportRate } from '@/lib/types'
+import { TRANSPORT_VEHICLES } from '@/lib/transport'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -18,7 +19,7 @@ export default function TransportForm({ rates }: { rates: TransportRate[] }) {
   const [isPending, startTransition] = useTransition()
 
   return (
-    <Card className="shadow-sm border-0 max-w-lg">
+    <Card className="shadow-sm border-0 max-w-3xl">
       <CardHeader className="pb-3">
         <CardTitle className="text-base">Transport Rates (SAR)</CardTitle>
       </CardHeader>
@@ -32,15 +33,15 @@ export default function TransportForm({ rates }: { rates: TransportRate[] }) {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead className="text-xs">Type</TableHead>
-                {[1,2,3,4].map(n => <TableHead key={n} className="text-xs text-center">{n} Pax</TableHead>)}
+                <TableHead className="text-xs">Vehicle</TableHead>
+                {[1, 2, 3, 4].map(n => <TableHead key={n} className="text-xs text-center">{n} Pax</TableHead>)}
               </TableRow>
             </TableHeader>
             <TableBody>
-              {(['bus', 'private'] as const).map(type => (
+              {TRANSPORT_VEHICLES.map(type => (
                 <TableRow key={type}>
-                  <TableCell className="font-medium capitalize text-sm">{type}</TableCell>
-                  {[1,2,3,4].map(pax => (
+                  <TableCell className="font-medium text-sm">{type}</TableCell>
+                  {[1, 2, 3, 4].map(pax => (
                     <TableCell key={pax} className="p-1">
                       <Input
                         type="number"

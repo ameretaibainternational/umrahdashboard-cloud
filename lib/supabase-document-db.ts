@@ -28,6 +28,7 @@ type PackageInvoiceRow = {
   contact_email?: string
   contact_location?: string
   created_by?: string | null
+  invoice_title_text?: string
 }
 
 export async function insertCustomInvoiceSupabase(row: {
@@ -49,10 +50,13 @@ export async function insertCustomInvoiceSupabase(row: {
   storage_key: string
   file_size_bytes: number
   created_by?: string | null
+  invoice_number?: string
+  invoice_title_text?: string
 }): Promise<{ id: string; invoice_number: string }> {
   const supabase = await createClient()
   const payload = {
     id: row.id,
+    invoice_number: row.invoice_number,
     invoice_date: row.invoice_date,
     billed_to_name: row.billed_to_name,
     billed_to_address: row.billed_to_address,
@@ -69,6 +73,7 @@ export async function insertCustomInvoiceSupabase(row: {
     remaining: row.remaining,
     storage_key: row.storage_key,
     file_size_bytes: row.file_size_bytes,
+    invoice_title_text: row.invoice_title_text ?? 'INVOICE',
     created_by: row.created_by ?? null,
   }
 
@@ -101,6 +106,7 @@ export async function insertPackageInvoiceSupabase(row: PackageInvoiceRow): Prom
     remaining: row.remaining,
     storage_key: row.storage_key,
     file_size_bytes: row.file_size_bytes,
+    invoice_title_text: row.invoice_title_text ?? 'INVOICE',
     created_by: row.created_by ?? null,
   }
 
@@ -136,6 +142,8 @@ export async function updatePackageInvoiceSupabase(row: PackageInvoiceRow): Prom
     remaining: row.remaining,
     storage_key: row.storage_key,
     file_size_bytes: row.file_size_bytes,
+    invoice_number: row.invoice_number,
+    invoice_title_text: row.invoice_title_text ?? 'INVOICE',
   }
 
   const attempts: Record<string, unknown>[] = [
@@ -173,9 +181,11 @@ export async function updateCustomInvoiceSupabase(row: {
   remaining: number
   storage_key: string
   file_size_bytes: number
+  invoice_title_text?: string
 }): Promise<{ id: string; invoice_number: string }> {
   const supabase = await createClient()
   const payload = {
+    invoice_number: row.invoice_number,
     invoice_date: row.invoice_date,
     billed_to_name: row.billed_to_name,
     billed_to_address: row.billed_to_address,
@@ -192,6 +202,7 @@ export async function updateCustomInvoiceSupabase(row: {
     remaining: row.remaining,
     storage_key: row.storage_key,
     file_size_bytes: row.file_size_bytes,
+    invoice_title_text: row.invoice_title_text ?? 'INVOICE',
   }
   const { error } = await supabase.from('custom_invoices').update(payload).eq('id', row.id)
   if (error) throw new Error(error.message)

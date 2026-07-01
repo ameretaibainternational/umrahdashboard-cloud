@@ -1,3 +1,5 @@
+import type { TransportVehicle } from './transport'
+
 export interface VisaSettings {
   id: string
   visa_rate_1_pax: number      // 1 PAX
@@ -14,6 +16,15 @@ export interface VisaSettings {
   taif_ziarat_rate: number     // Taif with Madinah ziarats (SAR)
 }
 
+export interface ZiaratOption {
+  id: string
+  name: string
+  slug: string | null
+  rate_sar: number
+  sort_order: number
+  created_at?: string
+}
+
 export interface CurrencySettings {
   id: string
   sar_to_pkr: number
@@ -21,7 +32,7 @@ export interface CurrencySettings {
 
 export interface TransportRate {
   id: string
-  type: 'bus' | 'private'
+  type: TransportVehicle
   pax_count: number
   rate_sar: number
 }
@@ -58,6 +69,14 @@ export interface Hotel {
   triple_sar: number
   double_sar: number
   room_sar: number
+}
+
+export interface HotelContact {
+  id: string
+  name: string
+  city: string
+  contact_number: string
+  created_at?: string
 }
 
 export type RoomType = 'room' | 'sharing' | 'quad' | 'triple' | 'double'
@@ -103,6 +122,8 @@ export interface Booking {
   madinah_nights: number | null
   created_by?: string | null
   source_invoice_id?: string | null
+  /** Resolved from linked custom/package invoice when available */
+  invoice_number?: string | null
 }
 
 export interface Payment {
@@ -133,6 +154,7 @@ export interface Expense {
   amount_pkr: number
   method: 'Cash' | 'Bank' | 'JazzCash' | 'EasyPaisa'
   note: string
+  booking_id?: string | null
   created_by?: string | null
 }
 
@@ -198,7 +220,7 @@ export interface PackageInvoiceData {
   child: number
   infant: number
   airlineId: string
-  transportType: 'bus' | 'private'
+  transportType: TransportVehicle
   makkahHotelId: string
   makkahRoom: RoomType
   makkahNights: number
@@ -210,13 +232,15 @@ export interface PackageInvoiceData {
   sellingOverride: number | null
   advance: number
   customerName: string
-  makkahZiarat: boolean
-  madinahZiarat: boolean
-  badrZiarat: boolean
-  taifZiarat: boolean
-  walkingZiarat: boolean
+  selectedZiaratIds?: string[]
+  makkahZiarat?: boolean
+  madinahZiarat?: boolean
+  badrZiarat?: boolean
+  taifZiarat?: boolean
+  walkingZiarat?: boolean
   includeMakkahHotel: boolean
   includeMadinahHotel: boolean
+  includeTickets: boolean
   customTicket: boolean
   customTicketLabel: string
   customTicketAmount: number
@@ -252,6 +276,7 @@ export interface CustomInvoice {
   created_by?: string | null
   invoice_kind?: 'custom' | 'package'
   package_data?: PackageInvoiceData | null
+  invoice_title_text?: string | null
 }
 
 export interface HotelVoucherRecord {
@@ -299,7 +324,7 @@ export interface CalcInput {
   child: number
   infant: number
   airline: Airline | null
-  transportType: 'bus' | 'private'
+  transportType: TransportVehicle
   makkahHotel: Hotel | null
   makkahRoom: RoomType
   makkahNights: number
@@ -311,16 +336,19 @@ export interface CalcInput {
   sellingOverride: number | null
   advance: number
   customerName: string
-  makkahZiarat: boolean
-  madinahZiarat: boolean
-  badrZiarat: boolean
-  taifZiarat: boolean
-  walkingZiarat: boolean
+  selectedZiaratIds: string[]
   includeMakkahHotel: boolean
   includeMadinahHotel: boolean
+  includeTickets: boolean
   customTicket: boolean
   customTicketLabel: string   // airline name + route entered by user
   customTicketPkr: number     // total ticket cost already converted to PKR
+}
+
+export interface ZiaratCalcItem {
+  id: string
+  name: string
+  cost: number
 }
 
 export interface CalcResult {
@@ -330,10 +358,7 @@ export interface CalcResult {
   transportCost: number
   makkahCost: number
   madinahCost: number
-  makkahZiaratCost: number
-  madinahZiaratCost: number
-  badrZiaratCost: number
-  taifZiaratCost: number
+  ziaratItems: ZiaratCalcItem[]
   totalCost: number
   selling: number
   profit: number

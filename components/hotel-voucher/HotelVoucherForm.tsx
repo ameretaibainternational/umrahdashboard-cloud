@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useEffect, useCallback, useTransition } from 'react'
+import { useState, useRef, useEffect, useCallback, useTransition, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { VoucherPage1, VoucherPage2 } from './HotelVoucherTemplate'
 import type { VoucherData, Pilgrim, Accommodation } from './HotelVoucherTemplate'
@@ -26,7 +26,12 @@ import { upsertHotel } from '@/app/actions/settings'
 import { downloadPdfBytes, downloadStoredPdf } from '@/lib/storage-client'
 import { uint8ToBase64 } from '@/lib/pdf-utils'
 import { applyVoucherPdfCloneStyles } from '@/lib/invoice-pdf-onclone'
-import type { Hotel, HotelVoucherSettings, HotelVoucherRecord } from '@/lib/types'
+import type { Hotel, HotelVoucherSettings, HotelVoucherRecord, HotelContact } from '@/lib/types'
+import {
+  filterHotelContactsByCity,
+  findHotelContactByNumber,
+  hotelContactLabel,
+} from '@/lib/hotel-contacts'
 import { BrandingSlider, BrandingResetButton } from '@/components/branding/BrandingSlider'
 import {
   clampVoucherLogoPosition,
@@ -182,14 +187,14 @@ async function captureUrduPage(
 function uid() { return `${Date.now()}-${Math.random().toString(36).slice(2, 7)}` }
 
 function emptyPilgrim(): Pilgrim {
-  return { id: uid(), name: '', passportNo: '', pax: '1', beds: '1', visaNumber: '', pnr: '' }
+  return { id: uid(), name: '', passportNo: '', pax: '1', beds: '1', visaNumber: '' }
 }
 
 function emptyAccommodation(): Accommodation {
   return { id: uid(), hotelName: '', confirmNo: '', city: 'Makkah', roomType: 'Room', mealPlan: 'BB', checkIn: '', checkOut: '', nights: '' }
 }
 
-const VOUCHER_ROOM_TYPES = ['Room', 'Double', 'Triple', 'Quad'] as const
+const VOUCHER_ROOM_TYPES = ['Room', 'Sharing', 'Quad', 'Triple', 'Double'] as const
 
 function calcCheckOut(checkIn: string, nights: string): string {
   if (!checkIn || !nights) return ''
@@ -225,6 +230,7 @@ const DEFAULT_DATA: VoucherData = {
   date: new Date().toISOString().slice(0, 10),
   packageInfo: '',
   familyHead: '',
+  companyName: 'Amere Taiba International',
   pilgrims: [emptyPilgrim()],
   accommodations: [emptyAccommodation(), { ...emptyAccommodation(), id: uid(), city: 'Madina' }],
   makkahHotelContact: '',
@@ -292,6 +298,7 @@ interface HotelVoucherFormProps {
   initialSettings: Pick<HotelVoucherSettings, 'urdu_guidelines' | 'urdu_footer'>
   makkahHotels: Hotel[]
   madinahHotels: Hotel[]
+  hotelContacts: HotelContact[]
   existingVouchers?: HotelVoucherRecord[]
   canEditGuidelines?: boolean
 }
@@ -300,6 +307,7 @@ export default function HotelVoucherForm({
   initialSettings,
   makkahHotels,
   madinahHotels,
+  hotelContacts,
   existingVouchers = [],
   canEditGuidelines = false,
 }: HotelVoucherFormProps) {
@@ -362,6 +370,45 @@ export default function HotelVoucherForm({
   const page1Ref = useRef<HTMLDivElement>(null)
   const page2Ref = useRef<HTMLDivElement>(null)
 
+  const makkahContactOptions = useMemo(
+    () => filterHotelContactsByCity(hotelContacts, 'makkah'),
+    [hotelContacts],
+  )
+  const madinahContactOptions = useMemo(
+    () => filterHotelContactsByCity(hotelContacts, 'madinah'),
+    [hotelContacts],
+  )
+
+  function selectMakkahHotelContact(contactId: string) {
+    const contact = makkahContactOptions.find(c => c.id === contactId)
+    setData(prev => ({
+      ...prev,
+      makkahHotelContactId: contactId,
+      makkahHotelContact: contact?.contact_number ?? '',
+    }))
+  }
+
+  function selectMadinaHotelContact(contactId: string) {
+    const contact = madinahContactOptions.find(c => c.id === contactId)
+    setData(prev => ({
+      ...prev,
+      madinaHotelContactId: contactId,
+      madinaHotelContact: contact?.contact_number ?? '',
+    }))
+  }
+
+  const resolvedMakkahContactId =
+    data.makkahHotelContactId
+    ?? findHotelContactByNumber(makkahContactOptions, data.makkahHotelContact)?.id
+    ?? ''
+  const resolvedMadinaContactId =
+    data.madinaHotelContactId
+    ?? findHotelContactByNumber(madinahContactOptions, data.madinaHotelContact)?.id
+    ?? ''
+
+  const selectedMakkahContact = makkahContactOptions.find(c => c.id === resolvedMakkahContactId)
+  const selectedMadinaContact = madinahContactOptions.find(c => c.id === resolvedMadinaContactId)
+
   // ── State helpers ────────────────────────────────────────────────────────────
   function setField<K extends keyof VoucherData>(key: K, value: VoucherData[K]) {
     setData(prev => ({ ...prev, [key]: value }))
@@ -398,12 +445,6 @@ export default function HotelVoucherForm({
     if (!hotel) return
     setHotelSelections(prev => ({ ...prev, [accommodationId]: hotelId }))
     updateAccommodation(accommodationId, { hotelName: hotelLabel(hotel) })
-    if (city === 'Makkah' && hotel.contact_number) {
-      setField('makkahHotelContact', hotel.contact_number)
-    }
-    if (city === 'Madina' && hotel.contact_number) {
-      setField('madinaHotelContact', hotel.contact_number)
-    }
   }
 
   function handleAccommodationCityChange(accommodationId: string, city: string) {
@@ -430,10 +471,7 @@ export default function HotelVoucherForm({
         const city = formData.get('city') as string
         const name = (formData.get('name') as string).trim()
         const distance = (formData.get('distance') as string) || ''
-        const contact = (formData.get('contact_number') as string) || ''
         updateAccommodation(accommodationId, { hotelName: `${name} · ${distance}` })
-        if (city === 'Makkah' && contact) setField('makkahHotelContact', contact)
-        if (city === 'Madinah' && contact) setField('madinaHotelContact', contact)
       }
     })
   }
@@ -752,12 +790,6 @@ export default function HotelVoucherForm({
                         className="h-7 text-xs" />
                     )}
                   </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs">PNR</Label>
-                    <Input placeholder="PNR" value={p.pnr}
-                      onChange={e => updatePilgrim(p.id, { pnr: e.target.value })}
-                      className="h-7 text-xs" />
-                  </div>
                   <div className="grid grid-cols-2 gap-2">
                     <div className="space-y-1">
                       <Label className="text-xs">Pax</Label>
@@ -910,13 +942,65 @@ export default function HotelVoucherForm({
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1 col-span-2">
               <Label className="text-xs">Makkah Hotel Contact</Label>
-              <Input placeholder="+966 12 000 0000" value={data.makkahHotelContact}
-                onChange={e => setField('makkahHotelContact', e.target.value)} className="h-8 text-sm" />
+              {makkahContactOptions.length === 0 ? (
+                <p className="text-xs text-muted-foreground py-2">
+                  Add contacts in Settings → Hotel Contacts.
+                </p>
+              ) : (
+                <>
+                  <Select
+                    value={resolvedMakkahContactId || undefined}
+                    onValueChange={v => v && selectMakkahHotelContact(v)}
+                  >
+                    <SelectTrigger className="h-8 text-sm w-full">
+                      <SelectValue placeholder="Select hotel (name · city)">
+                        {selectedMakkahContact ? hotelContactLabel(selectedMakkahContact) : null}
+                      </SelectValue>
+                    </SelectTrigger>
+                    <SelectContent>
+                      {makkahContactOptions.map(c => (
+                        <SelectItem key={c.id} value={c.id} label={hotelContactLabel(c)}>
+                          {hotelContactLabel(c)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {data.makkahHotelContact && (
+                    <p className="text-[10px] text-muted-foreground">Voucher shows: {data.makkahHotelContact}</p>
+                  )}
+                </>
+              )}
             </div>
             <div className="space-y-1 col-span-2">
               <Label className="text-xs">Madina Hotel Contact</Label>
-              <Input placeholder="+966 14 000 0000" value={data.madinaHotelContact}
-                onChange={e => setField('madinaHotelContact', e.target.value)} className="h-8 text-sm" />
+              {madinahContactOptions.length === 0 ? (
+                <p className="text-xs text-muted-foreground py-2">
+                  Add contacts in Settings → Hotel Contacts.
+                </p>
+              ) : (
+                <>
+                  <Select
+                    value={resolvedMadinaContactId || undefined}
+                    onValueChange={v => v && selectMadinaHotelContact(v)}
+                  >
+                    <SelectTrigger className="h-8 text-sm w-full">
+                      <SelectValue placeholder="Select hotel (name · city)">
+                        {selectedMadinaContact ? hotelContactLabel(selectedMadinaContact) : null}
+                      </SelectValue>
+                    </SelectTrigger>
+                    <SelectContent>
+                      {madinahContactOptions.map(c => (
+                        <SelectItem key={c.id} value={c.id} label={hotelContactLabel(c)}>
+                          {hotelContactLabel(c)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {data.madinaHotelContact && (
+                    <p className="text-[10px] text-muted-foreground">Voucher shows: {data.madinaHotelContact}</p>
+                  )}
+                </>
+              )}
             </div>
             <div className="space-y-1 col-span-2">
               <Label className="text-xs">Makkah Transport Contact</Label>
@@ -950,6 +1034,15 @@ export default function HotelVoucherForm({
           <p className="text-[10px] text-muted-foreground mb-2">
             Logo stays in your browser only until download — not uploaded or stored on the server. Shown on both voucher pages.
           </p>
+          <div className="space-y-1.5">
+            <Label className="text-xs">Company Name (header on voucher)</Label>
+            <Input
+              placeholder="Amere Taiba International"
+              value={data.companyName}
+              onChange={e => setField('companyName', e.target.value)}
+              className="h-9 text-sm"
+            />
+          </div>
           <div className="space-y-1.5">
             <Label className="text-xs">Logo Upload (max 150 KB)</Label>
             <div className="flex items-center gap-2 flex-wrap">

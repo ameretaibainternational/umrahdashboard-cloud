@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { isDemoMode } from '@/lib/is-demo'
 import { demoStore } from '@/lib/demo-store'
 import { friendlyDbError } from '@/lib/friendly-db-error'
+import { TRANSPORT_VEHICLES } from '@/lib/transport'
 
 async function getSupabase() {
   const { createClient } = await import('@/lib/supabase/server')
@@ -48,31 +49,52 @@ export async function updateVisa(formData: FormData) {
   return { success: true }
 }
 
-export async function updateZiarats(formData: FormData) {
+export async function upsertZiarat(formData: FormData) {
   const guard = await requireSettingsAccess(); if (guard) return guard
-  const payload = {
-    makkah_ziarat_rate: Number(formData.get('makkah_ziarat_rate')) || 0,
-    madina_ziarat_rate: Number(formData.get('madina_ziarat_rate')) || 0,
-    badr_ziarat_rate: Number(formData.get('badr_ziarat_rate')) || 0,
-    taif_ziarat_rate: Number(formData.get('taif_ziarat_rate')) || 0,
-  }
+  const id = formData.get('id') as string | null
+  const name = (formData.get('name') as string).trim()
+  const rate_sar = Number(formData.get('rate_sar')) || 0
+  const sort_order = Number(formData.get('sort_order')) || 0
+  if (!name) return { error: 'Ziarat name is required.' }
+
   if (isDemoMode()) {
-    Object.assign(demoStore.visa, payload)
+    demoStore.upsertZiarat(id ? { id, name, slug: null, rate_sar, sort_order } : { name, slug: null, rate_sar, sort_order })
   } else {
     const sb = await getSupabase()
-    const { data: existing } = await sb.from('visa_settings').select('id').single()
-    const { error } = existing?.id
-      ? await sb.from('visa_settings').update(payload).eq('id', existing.id)
-      : await sb.from('visa_settings').insert(payload)
-    if (error) {
-      const msg = error.message ?? 'Save failed'
-      if (msg.includes('badr_ziarat_rate') || msg.includes('taif_ziarat_rate') || error.code === 'PGRST204') {
-        return {
-          error: 'Badr/Taif columns missing in database. Run supabase/fix-011-ziarat-columns.sql in Supabase SQL Editor, then try again.',
+    if (id) {
+      const { error } = await sb.from('ziarats').update({ name, rate_sar, sort_order }).eq('id', id)
+      if (error) {
+        if (error.message.includes('ziarats') || error.code === 'PGRST204') {
+          return { error: 'Ziarats table missing. Run supabase/migrations/015_ziarats_table.sql in Supabase SQL Editor, then try again.' }
         }
+        return { error: friendlyDbError(error.message) }
       }
-      return { error: msg }
+    } else {
+      const { data: rows } = await sb.from('ziarats').select('sort_order').order('sort_order', { ascending: false }).limit(1)
+      const nextOrder = (rows?.[0]?.sort_order ?? 0) + 1
+      const { error } = await sb.from('ziarats').insert({ name, rate_sar, sort_order: sort_order || nextOrder })
+      if (error) {
+        if (error.message.includes('ziarats') || error.code === 'PGRST204') {
+          return { error: 'Ziarats table missing. Run supabase/migrations/015_ziarats_table.sql in Supabase SQL Editor, then try again.' }
+        }
+        return { error: friendlyDbError(error.message) }
+      }
     }
+  }
+  revalidatePath('/settings/ziarats')
+  revalidatePath('/calculator')
+  revalidatePath('/umrah-poster')
+  return { success: true as const }
+}
+
+export async function deleteZiarat(id: string) {
+  const guard = await requireSettingsAccess(); if (guard) return guard
+  if (isDemoMode()) {
+    demoStore.deleteZiarat(id)
+  } else {
+    const sb = await getSupabase()
+    const { error } = await sb.from('ziarats').delete().eq('id', id)
+    if (error) return { error: friendlyDbError(error.message) }
   }
   revalidatePath('/settings/ziarats')
   revalidatePath('/calculator')
@@ -98,7 +120,7 @@ export async function updateCurrency(formData: FormData) {
 export async function updateTransport(formData: FormData) {
   const guard = await requireSettingsAccess(); if (guard) return guard
   if (isDemoMode()) {
-    for (const type of ['bus', 'private'] as const) {
+    for (const type of TRANSPORT_VEHICLES) {
       for (let pax = 1; pax <= 4; pax++) {
         const rate = demoStore.transportRates.find(r => r.type === type && r.pax_count === pax)
         if (rate) rate.rate_sar = Number(formData.get(`${type}_${pax}`))
@@ -106,7 +128,7 @@ export async function updateTransport(formData: FormData) {
     }
   } else {
     const sb = await getSupabase()
-    for (const type of ['bus', 'private']) {
+    for (const type of TRANSPORT_VEHICLES) {
       for (let pax = 1; pax <= 4; pax++) {
         await sb.from('transport_rates').upsert(
           { type, pax_count: pax, rate_sar: Number(formData.get(`${type}_${pax}`)) },
@@ -230,7 +252,28 @@ export async function deleteHotel(id: string) {
     await sb.from('hotels').delete().eq('id', id)
   }
   revalidatePath('/settings/hotels')
+  revalidatePath('/calculator')
+  revalidatePath('/hotel-voucher')
+  revalidatePath('/umrah-poster')
   return { success: true }
+}
+
+export async function deleteHotels(ids: string[]) {
+  const guard = await requireSettingsAccess(); if (guard) return guard
+  if (ids.length === 0) return { error: 'No hotels selected.' }
+
+  if (isDemoMode()) {
+    for (const id of ids) demoStore.deleteHotel(id)
+  } else {
+    const sb = await getSupabase()
+    const { error } = await sb.from('hotels').delete().in('id', ids)
+    if (error) return { error: friendlyDbError(error.message) }
+  }
+  revalidatePath('/settings/hotels')
+  revalidatePath('/calculator')
+  revalidatePath('/hotel-voucher')
+  revalidatePath('/umrah-poster')
+  return { success: true as const, deleted: ids.length }
 }
 
 export async function updateCompany(formData: FormData) {
@@ -370,4 +413,55 @@ export async function deleteInvoiceService(id: string) {
   revalidatePath('/settings/invoices')
   revalidatePath('/custom-invoices')
   return { success: true }
+}
+
+export async function upsertHotelContact(formData: FormData) {
+  const guard = await requireSettingsAccess(); if (guard) return guard
+  const id = formData.get('id') as string | null
+  const name = (formData.get('name') as string).trim()
+  const city = (formData.get('city') as string).trim()
+  const contact_number = String(formData.get('contact_number') ?? '').trim()
+  if (!name) return { error: 'Hotel name is required.' }
+  if (!city) return { error: 'City is required.' }
+
+  if (isDemoMode()) {
+    demoStore.upsertHotelContact(id ? { id, name, city, contact_number } : { name, city, contact_number })
+  } else {
+    const sb = await getSupabase()
+    const payload = { name, city, contact_number }
+    if (id) {
+      const { error } = await sb.from('hotel_contacts').update(payload).eq('id', id)
+      if (error) {
+        if (error.message.includes('hotel_contacts') || error.code === 'PGRST204') {
+          return { error: 'Hotel contacts table missing. Run supabase/migrations/016_hotel_contacts.sql in Supabase SQL Editor, then try again.' }
+        }
+        return { error: friendlyDbError(error.message) }
+      }
+    } else {
+      const { error } = await sb.from('hotel_contacts').upsert(payload, { onConflict: 'name,city' })
+      if (error) {
+        if (error.message.includes('hotel_contacts') || error.code === 'PGRST204') {
+          return { error: 'Hotel contacts table missing. Run supabase/migrations/016_hotel_contacts.sql in Supabase SQL Editor, then try again.' }
+        }
+        return { error: friendlyDbError(error.message) }
+      }
+    }
+  }
+  revalidatePath('/settings/hotel-contacts')
+  revalidatePath('/hotel-voucher')
+  return { success: true as const }
+}
+
+export async function deleteHotelContact(id: string) {
+  const guard = await requireSettingsAccess(); if (guard) return guard
+  if (isDemoMode()) {
+    demoStore.deleteHotelContact(id)
+  } else {
+    const sb = await getSupabase()
+    const { error } = await sb.from('hotel_contacts').delete().eq('id', id)
+    if (error) return { error: friendlyDbError(error.message) }
+  }
+  revalidatePath('/settings/hotel-contacts')
+  revalidatePath('/hotel-voucher')
+  return { success: true as const }
 }

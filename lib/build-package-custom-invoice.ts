@@ -1,4 +1,6 @@
-import type { CalcResult, CustomInvoice, CustomInvoiceLineItem, Company, InvoiceSettings, Airline, Hotel, RoomType } from './types'
+import type { CalcResult, CustomInvoice, CustomInvoiceLineItem, Company, InvoiceSettings, Hotel, RoomType } from './types'
+import type { TransportVehicle } from './transport'
+import { transportServiceName } from './transport'
 import { pkr } from './formatters'
 
 interface BuildPackageInvoiceInput {
@@ -19,14 +21,11 @@ interface BuildPackageInvoiceInput {
   madinahHotel: Hotel | null
   madinahRoom: RoomType
   madinahNights: number
-  makkahZiarat: boolean
-  madinahZiarat: boolean
-  badrZiarat: boolean
-  taifZiarat: boolean
-  walkingZiarat: boolean
   includeMakkahHotel: boolean
   includeMadinahHotel: boolean
+  includeTickets: boolean
   travelDate: string
+  transportType: TransportVehicle
   company: Company
   invoiceSettings: InvoiceSettings
 }
@@ -41,16 +40,16 @@ export function buildPackageCustomInvoice(input: BuildPackageInvoiceInput): Cust
     adult, child, infant, airlineName,
     makkahHotel, makkahRoom, makkahNights,
     madinahHotel, madinahRoom, madinahNights,
-    makkahZiarat, madinahZiarat, badrZiarat, taifZiarat, walkingZiarat,
-    includeMakkahHotel, includeMadinahHotel,
+    includeMakkahHotel, includeMadinahHotel, includeTickets,
+    transportType,
     company, invoiceSettings,
   } = input
 
   const pax = Math.max(1, adult + child + infant)
   const items: CustomInvoiceLineItem[] = []
 
-  const push = (service: string, total: number) => {
-    if (total <= 0) return
+  const push = (service: string, total: number, allowZero = false) => {
+    if (total <= 0 && !allowZero) return
     items.push({
       service,
       pax_price: null,
@@ -64,20 +63,18 @@ export function buildPackageCustomInvoice(input: BuildPackageInvoiceInput): Cust
     })
   }
 
-  push(`Air Tickets — ${airlineName || 'Standard'}`, calc.ticketCost)
+  if (includeTickets) push(`Air Tickets — ${airlineName || 'Standard'}`, calc.ticketCost)
   push('Visa Processing', calc.visaCost)
-  if (calc.transportCost > 0) push('Transport', calc.transportCost)
+  if (calc.transportCost > 0) push(transportServiceName(transportType), calc.transportCost)
   if (includeMakkahHotel && calc.makkahCost > 0) {
     push(`Makkah Hotel — ${makkahHotel?.name ?? 'Hotel'} (${cap(makkahRoom)}, ${makkahNights}N)`, calc.makkahCost)
   }
   if (includeMadinahHotel && calc.madinahCost > 0) {
     push(`Madinah Hotel — ${madinahHotel?.name ?? 'Hotel'} (${cap(madinahRoom)}, ${madinahNights}N)`, calc.madinahCost)
   }
-  if (makkahZiarat && calc.makkahZiaratCost > 0) push('Makkah Ziarats', calc.makkahZiaratCost)
-  if (madinahZiarat && calc.madinahZiaratCost > 0) push('Madinah Ziarats', calc.madinahZiaratCost)
-  if (badrZiarat && calc.badrZiaratCost > 0) push('Badr Ziarat', calc.badrZiaratCost)
-  if (taifZiarat && calc.taifZiaratCost > 0) push('Taif Ziarat', calc.taifZiaratCost)
-  if (walkingZiarat) push('Walking Ziarats', 0)
+  for (const item of calc.ziaratItems) {
+    push(item.name, item.cost, item.cost === 0)
+  }
 
   if (items.length === 0) {
     items.push({

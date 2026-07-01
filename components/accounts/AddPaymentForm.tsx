@@ -24,10 +24,32 @@ export default function AddPaymentForm({ bookings }: Props) {
   const [isPending, startTransition] = useTransition()
 
   const selectedBooking = bookings.find(b => b.id === bookingId)
+  const dueAmount = selectedBooking?.remaining_pkr ?? 0
+
+  function handleBookingChange(id: string) {
+    setBookingId(id)
+    const booking = bookings.find(b => b.id === id)
+    if (booking && amount && Number(amount) > booking.remaining_pkr) {
+      setAmount('')
+    }
+  }
+
+  function handleFillFull() {
+    if (!selectedBooking || selectedBooking.remaining_pkr <= 0) return
+    setAmount(String(selectedBooking.remaining_pkr))
+  }
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    if (!amount || parseFloat(amount) <= 0) return
+    const parsed = Number(amount)
+    if (!amount || !Number.isFinite(parsed) || parsed <= 0) {
+      toast.error('Enter a valid payment amount.')
+      return
+    }
+    if (selectedBooking && parsed > selectedBooking.remaining_pkr) {
+      toast.error(`Payment cannot exceed the due amount of ${pkr(selectedBooking.remaining_pkr)}.`)
+      return
+    }
 
     const formData = new FormData()
     formData.set('booking_id', bookingId)
@@ -59,7 +81,7 @@ export default function AddPaymentForm({ bookings }: Props) {
         <form onSubmit={handleSubmit} className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <div className="col-span-2 space-y-1.5">
             <Label className="text-xs">Booking / Customer</Label>
-            <Select value={bookingId} onValueChange={v => v && setBookingId(v)}>
+            <Select value={bookingId} onValueChange={v => v && handleBookingChange(v)}>
               <SelectTrigger className="w-full">
                 <SelectValue>
                   {bookings.find(b => b.id === bookingId)?.customer_name ?? 'Select booking'}
@@ -82,12 +104,34 @@ export default function AddPaymentForm({ bookings }: Props) {
 
           <div className="space-y-1.5">
             <Label className="text-xs">Amount (PKR)</Label>
-            <Input
-              type="number" min={1} placeholder="0"
-              value={amount}
-              onChange={e => setAmount(e.target.value)}
-              required
-            />
+            <div className="flex gap-2">
+              <Input
+                type="number"
+                min={1}
+                max={dueAmount > 0 ? dueAmount : undefined}
+                step={1}
+                placeholder="0"
+                value={amount}
+                onChange={e => setAmount(e.target.value)}
+                required
+                className="min-w-0"
+              />
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="shrink-0 px-3"
+                disabled={!selectedBooking || dueAmount <= 0}
+                onClick={handleFillFull}
+              >
+                Full
+              </Button>
+            </div>
+            {selectedBooking && dueAmount > 0 && (
+              <p className="text-[11px] text-muted-foreground">
+                Max: {pkr(dueAmount)}
+              </p>
+            )}
           </div>
 
           <div className="space-y-1.5">
@@ -114,7 +158,7 @@ export default function AddPaymentForm({ bookings }: Props) {
           <div className="flex items-end">
             <Button
               type="submit"
-              disabled={isPending || !amount}
+              disabled={isPending || !amount || dueAmount <= 0}
               className="w-full bg-navy hover:bg-navy-2 text-white"
             >
               {isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Add Payment'}

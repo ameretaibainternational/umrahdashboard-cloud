@@ -9,6 +9,7 @@ const tabs = [
   { href: '/settings/tickets',   label: 'Airlines' },
   { href: '/settings/transport', label: 'Transport' },
   { href: '/settings/hotels',    label: 'Hotels' },
+  { href: '/settings/hotel-contacts', label: 'Hotel Contacts' },
   { href: '/settings/ziarats',   label: 'Ziarats' },
   { href: '/settings/flight-cities', label: 'Flight Cities' },
   { href: '/settings/currency',  label: 'Currency' },

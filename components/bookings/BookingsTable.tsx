@@ -158,10 +158,10 @@ export default function BookingsTable({ bookings }: Props) {
                     <Checkbox
                       checked={selectedIds.has(b.id)}
                       onCheckedChange={checked => toggleSelect(b.id, checked === true)}
-                      aria-label={`Select booking ${bookingInvoiceId(b.id)}`}
+                      aria-label={`Select booking ${bookingInvoiceId(b)}`}
                     />
                   </TableCell>
-                  <TableCell className="text-xs font-mono text-muted-foreground">{bookingInvoiceId(b.id)}</TableCell>
+                  <TableCell className="text-xs font-mono text-muted-foreground">{bookingInvoiceId(b)}</TableCell>
                   <TableCell className="font-medium text-sm">{b.customer_name}</TableCell>
                   <TableCell className="text-sm text-muted-foreground">{b.airline_name}</TableCell>
                   <TableCell className="text-sm">{b.adult_count + b.child_count + b.infant_count}</TableCell>

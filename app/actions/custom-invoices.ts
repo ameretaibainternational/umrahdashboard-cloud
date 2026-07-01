@@ -32,6 +32,8 @@ type CustomInvoicePayload = {
   received: number
   remaining: number
   pdf_base64: string
+  invoice_number?: string
+  invoice_title_text?: string
 }
 
 async function buildBookingPayloadFromInvoice(
@@ -254,6 +256,33 @@ export async function deleteCustomInvoice(id: string) {
   }
   PATHS.forEach(p => revalidatePath(p))
   return { success: true }
+}
+
+export async function deleteCustomInvoices(ids: string[]) {
+  if (ids.length === 0) return { error: 'No invoices selected.' }
+
+  const uniqueIds = [...new Set(ids)]
+  let deleted = 0
+  const errors: string[] = []
+
+  for (const id of uniqueIds) {
+    const result = await deleteCustomInvoice(id)
+    if ('error' in result && result.error) {
+      errors.push(result.error)
+    } else {
+      deleted++
+    }
+  }
+
+  if (deleted === 0) {
+    return { error: errors[0] ?? 'Delete failed.' }
+  }
+
+  if (errors.length > 0) {
+    return { success: true, deleted, error: `${deleted} deleted, ${errors.length} failed.` }
+  }
+
+  return { success: true, deleted }
 }
 
 export async function saveInvoiceSettings(payload: {

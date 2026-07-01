@@ -169,7 +169,7 @@ export default function BookingDialog({ booking, mode, onClose, onEdit }: Props)
       <DialogContent className="w-full max-w-[calc(100%-2rem)] sm:max-w-2xl md:max-w-3xl lg:max-w-4xl max-h-[90vh] overflow-y-auto p-6">
         <DialogHeader>
           <DialogTitle>{mode === 'view' ? 'View Booking' : 'Edit Booking'}</DialogTitle>
-          <p className="text-xs text-muted-foreground font-mono">{bookingInvoiceId(booking.id)}</p>
+          <p className="text-xs text-muted-foreground font-mono">{bookingInvoiceId(booking)}</p>
         </DialogHeader>
 
         {mode === 'view' ? (

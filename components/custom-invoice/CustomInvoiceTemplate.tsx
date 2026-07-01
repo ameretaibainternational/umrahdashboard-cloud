@@ -13,10 +13,21 @@ import {
   scaleFontSize,
   scaleRect,
 } from '@/lib/custom-invoice-branding-layout'
+import { DEFAULT_INVOICE_TEXT_COLOR, invoiceBackgroundUrl, invoiceTextColorWithAlpha } from '@/lib/invoice-backgrounds'
 
 const PDF_FONT = 'Arial, Helvetica, sans-serif'
 const W = 595.5
-const ROW_H = 41.4
+const ROW_H = 36
+
+const SERVICE_COL_X = 69.7
+const UNIT_PRICE_COL_X = 214.5
+const QTY_COL_X = 324.6
+const SERVICE_COL_PAD = 10
+
+function serviceColumnMaxWidth(unitPriceLabel: string | null): number {
+  const endX = unitPriceLabel ? UNIT_PRICE_COL_X : QTY_COL_X
+  return Math.floor(endX - SERVICE_COL_X - SERVICE_COL_PAD)
+}
 
 // Max rows that fit per page (≤9 rows always end before y=530 where terms begin)
 const ROWS_P1 = 5   // page 1 (has full header, so less vertical room)
@@ -80,13 +91,13 @@ function T({
 }
 
 // ─── Horizontal rule ─────────────────────────────────────────────────────────
-function HR({ x1, x2, y }: { x1: number; x2: number; y: number }) {
+function HR({ x1, x2, y, color = '#ffffff' }: { x1: number; x2: number; y: number; color?: string }) {
   return (
     <div style={{
       position: 'absolute',
       left: `${x1}px`, top: `${y}px`,
       width: `${x2 - x1}px`, height: '0.75px',
-      backgroundColor: '#ffffff',
+      backgroundColor: color,
     }} />
   )
 }
@@ -98,7 +109,7 @@ function pageBgStyle(backgroundImage = '/invoice-empty.jpg'): React.CSSPropertie
     position: 'relative',
     width: `${W}px`,
     height: '842px',
-    backgroundImage: `url(${backgroundImage})`,
+    backgroundImage: `url("${invoiceBackgroundUrl(backgroundImage)}")`,
     backgroundSize: 'cover',
     backgroundPosition: 'center top',
     backgroundColor: '#121117',
@@ -112,35 +123,40 @@ function pageBgStyle(backgroundImage = '/invoice-empty.jpg'): React.CSSPropertie
 
 // ─── Shared table header row ──────────────────────────────────────────────────
 function TableHeader({
-  unitPriceLabel, qtyLabel, hdrY, hrY,
+  unitPriceLabel, qtyLabel, hdrY, hrY, ink, ruleColor,
 }: {
-  unitPriceLabel: string | null  // null = column hidden
-  qtyLabel: string               // 'Total Pax' | 'Total Nights' | 'Total Pax'
+  unitPriceLabel: string | null
+  qtyLabel: string
   hdrY: number
   hrY: number
+  ink: string
+  ruleColor: string
 }) {
   return (
     <>
-      <T x={35.9}  y={hdrY} bold invoiceHdr>No</T>
-      <T x={76.5}  y={hdrY} bold invoiceHdr>Service</T>
-      {unitPriceLabel && <T x={215.7} y={hdrY} bold invoiceHdr>{unitPriceLabel}</T>}
-      <T x={318.6} y={hdrY} bold invoiceHdr>{qtyLabel}</T>
-      <T x={439.7} y={hdrY} bold invoiceHdr>Total</T>
-      <T x={493.3} y={hdrY} bold invoiceHdr>Recieved</T>
-      <HR x1={26} x2={547} y={hrY} />
+      <T x={35.9}  y={hdrY} bold invoiceHdr color={ink}>No</T>
+      <T x={76.5}  y={hdrY} bold invoiceHdr color={ink}>Service</T>
+      {unitPriceLabel && <T x={215.7} y={hdrY} bold invoiceHdr color={ink}>{unitPriceLabel}</T>}
+      <T x={318.6} y={hdrY} bold invoiceHdr color={ink}>{qtyLabel}</T>
+      <T x={439.7} y={hdrY} bold invoiceHdr color={ink}>Total</T>
+      <T x={493.3} y={hdrY} bold invoiceHdr color={ink}>Recieved</T>
+      <HR x1={26} x2={547} y={hrY} color={ruleColor} />
     </>
   )
 }
 
 // ─── Table rows ───────────────────────────────────────────────────────────────
 function TableRows({
-  items, rowOffset, unitPriceLabel, rowY0,
+  items, rowOffset, unitPriceLabel, rowY0, ink,
 }: {
   items: CustomInvoiceLineItem[]
   rowOffset: number
   unitPriceLabel: string | null
   rowY0: number
+  ink: string
 }) {
+  const serviceMaxW = serviceColumnMaxWidth(unitPriceLabel)
+
   return (
     <>
       {items.map((item, i) => {
@@ -153,18 +169,18 @@ function TableRows({
             : null
         return (
           <div key={i}>
-            <T x={30.6} y={y} invoiceRow>{rowOffset + i + 1}</T>
-            <T x={69.7} y={y} maxW={140} invoiceRow>
-              <span style={{ lineHeight: '12px', display: 'block' }}>{item.service}</span>
+            <T x={30.6} y={y} invoiceRow color={ink}>{rowOffset + i + 1}</T>
+            <T x={SERVICE_COL_X} y={y} maxW={serviceMaxW} invoiceRow color={ink}>
+              <span style={{ lineHeight: '16px', display: 'block' }}>{item.service}</span>
             </T>
             {unitPriceLabel && unitVal && (
-              <T x={214.5} y={y} nowrap invoiceRow>{unitVal}</T>
+              <T x={214.5} y={y} nowrap invoiceRow color={ink}>{unitVal}</T>
             )}
-            <T x={324.6} y={y} invoiceRow>{item.total_pax}</T>
-            <T right={479.6} y={y} nowrap invoiceRow>
+            <T x={324.6} y={y} invoiceRow color={ink}>{item.total_pax}</T>
+            <T right={479.6} y={y} nowrap invoiceRow color={ink}>
               {fmtNum(item.total, item.total_unit || undefined)}
             </T>
-            <T right={557.0} y={y} nowrap invoiceRow>{fmtNum(item.received)}</T>
+            <T right={557.0} y={y} nowrap invoiceRow color={ink}>{fmtNum(item.received)}</T>
           </div>
         )
       })}
@@ -174,35 +190,47 @@ function TableRows({
 
 // ─── Terms + Totals + Footer section ─────────────────────────────────────────
 // Always rendered at fixed Y positions (all ≤9 rows end before y=530).
-function TermsSection({ invoice, invoiceCurrency }: { invoice: CustomInvoice; invoiceCurrency: string }) {
+function TermsSection({
+  invoice,
+  invoiceCurrency,
+  ink,
+  inkMuted,
+  ruleColor,
+}: {
+  invoice: CustomInvoice
+  invoiceCurrency: string
+  ink: string
+  inkMuted: string
+  ruleColor: string
+}) {
   return (
     <>
-      <HR x1={26} x2={547} y={530.3} />
-      <T x={35.9} y={547.0} bold color="#ffffff">Terms and Condition</T>
-      <div data-invoice-terms style={{ position: 'absolute', left: '35.9px', top: '562.4px', maxWidth: '268px', fontSize: '7.7px', color: '#a7a7a7', fontFamily: PDF_FONT, letterSpacing: 'normal', wordSpacing: 'normal' }}>
+      <HR x1={26} x2={547} y={530.3} color={ruleColor} />
+      <T x={35.9} y={547.0} bold color={ink}>Terms and Condition</T>
+      <div data-invoice-terms style={{ position: 'absolute', left: '35.9px', top: '562.4px', maxWidth: '268px', fontSize: '7.7px', color: inkMuted, fontFamily: PDF_FONT, letterSpacing: 'normal', wordSpacing: 'normal' }}>
         <span style={{ lineHeight: '10.5px', display: 'block' }}>{invoice.terms_text}</span>
       </div>
-      <T x={35.9} y={614.3} size={7.7} color="#a7a7a7" maxW={268}>
+      <T x={35.9} y={614.3} size={7.7} color={inkMuted} maxW={268}>
         <span style={{ lineHeight: '10.5px' }}>Note: </span>
         <span style={{ fontWeight: 700, lineHeight: '10.5px' }}>
           All bookings are non-changeable and non refundable.
         </span>
       </T>
 
-      <T x={376.1} y={547.0} bold>Total</T>
-      <T x={463.9} y={547.0}>{fmtNum(invoice.total, invoiceCurrency || undefined)}</T>
-      <T x={376.1} y={572.8}>Recieved</T>
-      <T x={463.9} y={572.8}>{fmtNum(invoice.received, invoiceCurrency || undefined)}</T>
-      <T x={376.1} y={599.7} bold>Remaining</T>
-      <T x={463.9} y={599.7}>{fmtNum(invoice.remaining, invoiceCurrency || undefined)}</T>
+      <T x={376.1} y={547.0} bold color={ink}>Total</T>
+      <T x={463.9} y={547.0} color={ink}>{fmtNum(invoice.total, invoiceCurrency || undefined)}</T>
+      <T x={376.1} y={572.8} color={ink}>Recieved</T>
+      <T x={463.9} y={572.8} color={ink}>{fmtNum(invoice.received, invoiceCurrency || undefined)}</T>
+      <T x={376.1} y={599.7} bold color={ink}>Remaining</T>
+      <T x={463.9} y={599.7} color={ink}>{fmtNum(invoice.remaining, invoiceCurrency || undefined)}</T>
 
-      <HR x1={48.5} x2={547} y={638.6} />
-      <T x={35.9} y={695.4} bold color="#ffffff">Contact Us:</T>
-      <T x={35.9} y={714.8} size={10} color="#ffffff">{invoice.contact_phone}</T>
-      <T x={35.9} y={733.3} size={10} color="#ffffff" href={`mailto:${invoice.contact_email}`}>
+      <HR x1={48.5} x2={547} y={638.6} color={ruleColor} />
+      <T x={35.9} y={695.4} bold color={ink}>Contact Us:</T>
+      <T x={35.9} y={714.8} size={10} color={ink}>{invoice.contact_phone}</T>
+      <T x={35.9} y={733.3} size={10} color={ink} href={`mailto:${invoice.contact_email}`}>
         {invoice.contact_email}
       </T>
-      <T x={35.9} y={751.6} size={10} color="#ffffff">{invoice.contact_location}</T>
+      <T x={35.9} y={751.6} size={10} color={ink}>{invoice.contact_location}</T>
     </>
   )
 }
@@ -231,7 +259,7 @@ function BrandingLogo({ branding }: { branding: InvoiceBranding }) {
   )
 }
 
-function BrandingSignature({ branding }: { branding: InvoiceBranding }) {
+function BrandingSignature({ branding, ink }: { branding: InvoiceBranding; ink: string }) {
   const signatureRect = scaleRect(
     SIGNATURE_IMAGE_X,
     SIGNATURE_IMAGE_Y,
@@ -268,7 +296,7 @@ function BrandingSignature({ branding }: { branding: InvoiceBranding }) {
             top: `${nameTop}px`,
             fontWeight: 700,
             fontSize: `${nameSize}px`,
-            color: '#ffffff',
+            color: ink,
             lineHeight: 1.2,
             fontFamily: PDF_FONT,
             whiteSpace: 'nowrap',
@@ -293,6 +321,7 @@ interface Props {
   dateY?: number
   centerInvoiceId?: boolean
   backgroundImage?: string
+  textColor?: string
 }
 
 const CustomInvoiceTemplate = forwardRef<HTMLDivElement, Props>(
@@ -306,7 +335,11 @@ const CustomInvoiceTemplate = forwardRef<HTMLDivElement, Props>(
     dateY = 122.3,
     centerInvoiceId = false,
     backgroundImage = '/invoice-empty.jpg',
+    textColor = DEFAULT_INVOICE_TEXT_COLOR,
   }, ref) {
+    const ink = textColor
+    const inkMuted = invoiceTextColorWithAlpha(ink, 0.65)
+    const ruleColor = invoiceTextColorWithAlpha(ink, 0.45)
     const items = invoice.line_items
     const hasPaxPrice   = items.some(i => i.pax_price   != null && i.pax_price   > 0)
     const hasNightPrice = items.some(i => i.night_price != null && i.night_price > 0)
@@ -351,7 +384,7 @@ const CustomInvoiceTemplate = forwardRef<HTMLDivElement, Props>(
           <div style={{
             position: 'absolute', top: `${titleTop}px`, left: 0, width: '100%',
             textAlign: 'center', fontWeight: 700, fontSize: `${titleFontSize}px`,
-            color: '#ffffff', lineHeight: 1, fontFamily: PDF_FONT,
+            color: ink, lineHeight: 1, fontFamily: PDF_FONT,
             letterSpacing: 'normal', wordSpacing: 'normal',
           }}>
             {titleText}
@@ -365,7 +398,7 @@ const CustomInvoiceTemplate = forwardRef<HTMLDivElement, Props>(
               width: '100%',
               textAlign: 'center',
               fontSize: '12px',
-              color: '#fefefe',
+              color: ink,
               lineHeight: 1.2,
               fontFamily: PDF_FONT,
               letterSpacing: 'normal',
@@ -376,50 +409,51 @@ const CustomInvoiceTemplate = forwardRef<HTMLDivElement, Props>(
               <span style={{ fontWeight: 400 }}>{invoice.invoice_number}</span>
             </div>
           ) : (
-            <T x={253.3} y={invoiceIdY} nowrap>
+            <T x={253.3} y={invoiceIdY} nowrap color={ink}>
               <span style={{ fontWeight: 700 }}>Invoice ID: </span>
               <span style={{ fontWeight: 400 }}>{invoice.invoice_number}</span>
             </T>
           )}
-          <T x={424.9} y={dateY} nowrap>
+          <T x={424.9} y={dateY} nowrap color={ink}>
             <span style={{ fontWeight: 700 }}>Date: </span>
             <span style={{ fontWeight: 400 }}>{fmtDate(invoice.invoice_date)}</span>
           </T>
 
           {/* Billed To */}
-          <T x={59.5} y={176.0} bold>Billed To</T>
-          <T x={59.5} y={195.3}><span style={{ fontWeight: 500 }}>Name: </span>{invoice.billed_to_name}</T>
-          <T x={59.8} y={214.9}><span style={{ fontWeight: 500 }}>Address: </span>{invoice.billed_to_address}</T>
-          <T x={59.8} y={237.7}><span style={{ fontWeight: 500 }}>Client Number: </span>{invoice.billed_to_client_number}</T>
+          <T x={59.5} y={176.0} bold color={ink}>Billed To</T>
+          <T x={59.5} y={195.3} color={ink}><span style={{ fontWeight: 500 }}>Name: </span>{invoice.billed_to_name}</T>
+          <T x={59.8} y={214.9} color={ink}><span style={{ fontWeight: 500 }}>Address: </span>{invoice.billed_to_address}</T>
+          <T x={59.8} y={237.7} color={ink}><span style={{ fontWeight: 500 }}>Client Number: </span>{invoice.billed_to_client_number}</T>
 
           {/* Payment Method */}
-          <T x={439.9} y={178.6} bold>Payment Method</T>
-          <T right={547} y={199.5} nowrap>{invoice.payment_bank_name}:</T>
-          <T right={547} y={220.1} nowrap>{invoice.payment_account_number}</T>
+          <T x={439.9} y={178.6} bold color={ink}>Payment Method</T>
+          <T right={547} y={199.5} nowrap color={ink}>{invoice.payment_bank_name}:</T>
+          <T right={547} y={220.1} nowrap color={ink}>{invoice.payment_account_number}</T>
 
           {/* Table */}
-          <TableHeader unitPriceLabel={unitPriceLabel} qtyLabel={qtyLabel} hdrY={294.1} hrY={322.8} />
+          <TableHeader unitPriceLabel={unitPriceLabel} qtyLabel={qtyLabel} hdrY={294.1} hrY={322.8} ink={ink} ruleColor={ruleColor} />
           <TableRows
             items={page1Items}
             rowOffset={0}
             unitPriceLabel={unitPriceLabel}
             rowY0={P1_ROW_Y0}
+            ink={ink}
           />
 
           {/* "Continued" note on page 1 when there are more pages */}
           {isMultiPage && (
             <>
-              <T x={35.9}  y={557} size={9} color="#a7a7a7">— Continued on next page —</T>
-              <T right={559} y={557} size={9} color="#a7a7a7" nowrap>Page 1 of {totalPages}</T>
+              <T x={35.9}  y={557} size={9} color={inkMuted}>— Continued on next page —</T>
+              <T right={559} y={557} size={9} color={inkMuted} nowrap>Page 1 of {totalPages}</T>
             </>
           )}
 
           {/* Terms section only on page 1 if this IS the last page */}
           {page1IsLast && (
             <>
-              <TermsSection invoice={invoice} invoiceCurrency={invoiceCurrency} />
+              <TermsSection invoice={invoice} invoiceCurrency={invoiceCurrency} ink={ink} inkMuted={inkMuted} ruleColor={ruleColor} />
               {branding && (branding.signatureUrl || branding.signaturePersonName) && (
-                <BrandingSignature branding={branding} />
+                <BrandingSignature branding={branding} ink={ink} />
               )}
             </>
           )}
@@ -436,12 +470,12 @@ const CustomInvoiceTemplate = forwardRef<HTMLDivElement, Props>(
 
               {/* Compact page indicator */}
               
-              <T right={559} y={28} size={9} color="#a7a7a7" nowrap>
+              <T right={559} y={28} size={9} color={inkMuted} nowrap>
                 Page {pageNum} of {totalPages}
               </T>
 
               {/* Table header repeated for context */}
-              <TableHeader unitPriceLabel={unitPriceLabel} qtyLabel={qtyLabel} hdrY={C_HDR_Y} hrY={C_HR_Y} />
+              <TableHeader unitPriceLabel={unitPriceLabel} qtyLabel={qtyLabel} hdrY={C_HDR_Y} hrY={C_HR_Y} ink={ink} ruleColor={ruleColor} />
 
               {/* Rows for this page */}
               <TableRows
@@ -449,14 +483,15 @@ const CustomInvoiceTemplate = forwardRef<HTMLDivElement, Props>(
                 rowOffset={rowOffset}
                 unitPriceLabel={unitPriceLabel}
                 rowY0={C_ROW_Y0}
+                ink={ink}
               />
 
               {/* Terms + totals + footer only on the last page */}
               {isLast && (
                 <>
-                  <TermsSection invoice={invoice} invoiceCurrency={invoiceCurrency} />
+                  <TermsSection invoice={invoice} invoiceCurrency={invoiceCurrency} ink={ink} inkMuted={inkMuted} ruleColor={ruleColor} />
                   {branding && (branding.signatureUrl || branding.signaturePersonName) && (
-                    <BrandingSignature branding={branding} />
+                    <BrandingSignature branding={branding} ink={ink} />
                   )}
                 </>
               )}

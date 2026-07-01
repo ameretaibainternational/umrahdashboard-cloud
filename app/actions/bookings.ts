@@ -4,8 +4,9 @@ import { revalidatePath } from 'next/cache'
 import { isDemoMode } from '@/lib/is-demo'
 import { demoStore } from '@/lib/demo-store'
 import { friendlyDbError } from '@/lib/friendly-db-error'
+import { recordPackageExpense } from '@/lib/package-expense'
+import { recordInitialBookingPayment } from '@/lib/booking-payment'
 import { requireModeratorFeature } from '@/lib/permissions-server'
-import { supabaseInsertRow } from '@/lib/supabase-fallback-insert'
 import {
   hasDirectDb,
   isDirectDbRecoverableError,
@@ -23,48 +24,100 @@ type BookingPayload = {
   madinah_hotel_distance: string | null;   madinah_room_type: string | null; madinah_nights: number | null
   booking_date?: string
   source_invoice_id?: string | null
+  auto_record_expense?: boolean
 }
 
 const REVALIDATE_PATHS = ['/bookings', '/dashboard', '/accounts', '/reports', '/customers', '/invoices']
+
+async function insertBookingWithExpense(
+  payload: BookingPayload,
+  userId: string,
+): Promise<{ error?: string }> {
+  const bookingDate = payload.booking_date ?? new Date().toISOString().split('T')[0]
+  const shouldRecordExpense = payload.auto_record_expense === true
+  const expenseInput = {
+    customer_name: payload.customer_name,
+    cost_pkr: payload.cost_pkr,
+    total_pkr: payload.total_pkr,
+    profit_pkr: payload.profit_pkr,
+    booking_date: bookingDate,
+    created_by: userId,
+  }
+
+  if (isDemoMode()) {
+    const { auto_record_expense: __, source_invoice_id, ...bookingPayload } = payload
+    const booking = demoStore.addBooking({
+      ...bookingPayload,
+      booking_date: bookingDate,
+      created_by: userId,
+      source_invoice_id: source_invoice_id ?? null,
+    })
+    if (shouldRecordExpense) {
+      await recordPackageExpense({ ...expenseInput, booking_id: booking.id })
+    }
+    await recordInitialBookingPayment(booking.id, {
+      customer_name: payload.customer_name,
+      advance_pkr: payload.advance_pkr,
+      booking_date: bookingDate,
+    }, userId)
+    return {}
+  }
+
+  const { source_invoice_id, auto_record_expense: _, ...bookingFields } = payload
+  const row: Record<string, unknown> = { ...bookingFields, booking_date: bookingDate }
+  if (source_invoice_id) row.source_invoice_id = source_invoice_id
+
+  let bookingId: string | null = null
+
+  if (hasDirectDb()) {
+    try {
+      const { insertBooking } = await import('@/lib/crm-db')
+      bookingId = await insertBooking({ ...row, created_by: userId } as Parameters<typeof insertBooking>[0])
+    } catch (error) {
+      if (!isDirectDbRecoverableError(error)) throw error
+      markDirectDbAuthFailed()
+    }
+  }
+
+  if (!bookingId) {
+    const { createClient } = await import('@/lib/supabase/server')
+    const supabase = await createClient()
+    const withOwner: Record<string, unknown> = { ...row, created_by: userId }
+    let { data, error } = await supabase.from('bookings').insert(withOwner).select('id').single()
+
+    if (error && source_invoice_id && (error.message.includes('source_invoice_id') || error.message.includes('schema cache'))) {
+      const withoutLink = { ...withOwner }
+      delete withoutLink.source_invoice_id
+      ;({ data, error } = await supabase.from('bookings').insert(withoutLink).select('id').single())
+    }
+
+    if (error || !data?.id) {
+      return { error: friendlyDbError(error?.message ?? 'Save failed') }
+    }
+
+    bookingId = data.id
+  }
+
+  if (shouldRecordExpense) {
+    await recordPackageExpense({ ...expenseInput, booking_id: bookingId })
+  }
+  if (bookingId) {
+    await recordInitialBookingPayment(bookingId, {
+      customer_name: payload.customer_name,
+      advance_pkr: payload.advance_pkr,
+      booking_date: bookingDate,
+    }, userId)
+  }
+  return {}
+}
 
 export async function createBooking(payload: BookingPayload) {
   const ctx = await requireModeratorFeature('bookings')
   if ('error' in ctx) return ctx
 
-  if (isDemoMode()) {
-    demoStore.addBooking({
-      ...payload,
-      booking_date: payload.booking_date ?? new Date().toISOString().split('T')[0],
-      created_by: ctx.userId,
-    })
-    REVALIDATE_PATHS.forEach(p => revalidatePath(p))
-    return { success: true }
-  }
-
-  const bookingDate = payload.booking_date ?? new Date().toISOString().split('T')[0]
-  const { source_invoice_id, ...bookingFields } = payload
-  const row: Record<string, unknown> = { ...bookingFields, booking_date: bookingDate }
-  if (source_invoice_id) row.source_invoice_id = source_invoice_id
-
   try {
-    if (hasDirectDb()) {
-      try {
-        const { insertBooking } = await import('@/lib/crm-db')
-        await insertBooking({ ...row, created_by: ctx.userId } as Parameters<typeof insertBooking>[0])
-        REVALIDATE_PATHS.forEach(p => revalidatePath(p))
-        return { success: true }
-      } catch (error) {
-        if (!isDirectDbRecoverableError(error)) throw error
-        markDirectDbAuthFailed()
-      }
-    }
-
-    let { error } = await supabaseInsertRow('bookings', row, ctx.userId)
-    if (error && source_invoice_id && (error.includes('source_invoice_id') || error.includes('schema cache'))) {
-      const { source_invoice_id: _, ...withoutLink } = row
-      ;({ error } = await supabaseInsertRow('bookings', withoutLink, ctx.userId))
-    }
-    if (error) return { error: friendlyDbError(error) }
+    const result = await insertBookingWithExpense(payload, ctx.userId)
+    if (result.error) return { error: result.error }
   } catch (e) {
     return { error: friendlyDbError(e instanceof Error ? e.message : 'Save failed') }
   }

@@ -3,7 +3,7 @@
 import { useState, useMemo, useRef, useTransition, useEffect, useId, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
-import { getCalc, generateInvoiceNumber } from '@/lib/calculations'
+import { getCalc } from '@/lib/calculations'
 import { pkr as fmtPkr } from '@/lib/formatters'
 import { createBooking } from '@/app/actions/bookings'
 import { upsertInvoiceClient } from '@/app/actions/settings'
@@ -14,17 +14,27 @@ import { preloadCompanyLogo } from '@/lib/company-logo'
 import { getPackageDataFromInvoice } from '@/lib/package-invoice'
 import { buildPackageCustomInvoice, formatHotelForWhatsApp, formatRoute } from '@/lib/build-package-custom-invoice'
 import { generateCustomInvoicePdfBytes } from '@/lib/generate-custom-invoice-pdf'
-import { resolveInvoiceSettings } from '@/lib/invoice-defaults'
+import { getNextPackageInvoiceNumber, resolveInvoiceSettings } from '@/lib/invoice-defaults'
 import {
+  clampInvoiceLogoPosition,
   DEFAULT_LOGO_SIZE,
   DEFAULT_LOGO_X,
   DEFAULT_LOGO_Y,
+  getLogoBoxSize,
+  INTRINSIC_BG_H,
+  INTRINSIC_BG_W,
+  LOGO_MAX_BYTES,
+  LOGO_SIZE_MAX,
+  LOGO_SIZE_MIN,
   type InvoiceBranding,
 } from '@/lib/custom-invoice-branding-layout'
+import { BrandingSlider, BrandingResetButton } from '@/components/branding/BrandingSlider'
 import { DEFAULT_PK_FLIGHT_CITIES, DEFAULT_SA_FLIGHT_CITIES } from '@/lib/flight-cities'
+import { DEFAULT_TRANSPORT_VEHICLE, TRANSPORT_VEHICLES, type TransportVehicle } from '@/lib/transport'
+import { resolveSelectedZiaratIds, ziaratLegacyFlags } from '@/lib/ziarats'
 import type {
   Airline, Hotel, VisaSettings, CurrencySettings, TransportRate, RoomType, CalcInput,
-  CustomInvoice, PackageInvoiceData, Company, InvoiceSettings, InvoiceClient,
+  CustomInvoice, PackageInvoiceData, Company, InvoiceSettings, InvoiceClient, ZiaratOption,
 } from '@/lib/types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -35,8 +45,11 @@ import { Separator } from '@/components/ui/separator'
 import { BookmarkPlus, Copy, Download, Loader2, CheckCircle, Plus } from 'lucide-react'
 import { Checkbox } from '@/components/ui/checkbox'
 import CustomInvoiceTemplate from '@/components/custom-invoice/CustomInvoiceTemplate'
-
-const PACKAGE_INVOICE_BG = '/invoice-empty-package-calculator.jpg'
+import InvoiceAppearanceControls from '@/components/custom-invoice/InvoiceAppearanceControls'
+import {
+  DEFAULT_INVOICE_TEXT_COLOR,
+  DEFAULT_PACKAGE_INVOICE_BACKGROUND,
+} from '@/lib/invoice-backgrounds'
 import {
   Dialog,
   DialogContent,
@@ -52,16 +65,18 @@ interface Props {
   visa: VisaSettings
   currency: CurrencySettings
   transportRates: TransportRate[]
+  ziarats: ZiaratOption[]
   company: Company
   invoiceClients: InvoiceClient[]
   invoiceSettings: InvoiceSettings
+  existingPackageInvoices?: CustomInvoice[]
   canSaveBooking?: boolean
   editInvoice?: CustomInvoice | null
 }
 
-function initialFromEdit(editInvoice?: CustomInvoice | null): PackageInvoiceData | null {
+function initialFromEdit(editInvoice?: CustomInvoice | null, ziarats: ZiaratOption[] = []): PackageInvoiceData | null {
   if (!editInvoice) return null
-  return getPackageDataFromInvoice(editInvoice)
+  return getPackageDataFromInvoice(editInvoice, ziarats)
 }
 
 function applyClientToBilled(client: InvoiceClient) {
@@ -74,17 +89,63 @@ function applyClientToBilled(client: InvoiceClient) {
 
 const ROOM_TYPES: RoomType[] = ['room', 'sharing', 'quad', 'triple', 'double']
 
+function readFileAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(String(reader.result))
+    reader.onerror = () => reject(new Error('Failed to read logo file'))
+    reader.readAsDataURL(file)
+  })
+}
+
+const PREVIEW_PAGE_H = 842
+
+function ScaledPreview({ children, totalPages }: { children: React.ReactNode; totalPages: number }) {
+  const CANVAS_W = 595.5
+  const MAX_W = 340
+  const GAP = 8
+  const totalCanvasH = PREVIEW_PAGE_H * totalPages + GAP * (totalPages - 1)
+
+  const outerRef = useRef<HTMLDivElement>(null)
+  const [containerW, setContainerW] = useState(MAX_W)
+
+  useEffect(() => {
+    const el = outerRef.current
+    if (!el) return
+    const update = (w: number) => setContainerW(Math.min(MAX_W, Math.max(160, w)))
+    update(el.clientWidth)
+    const obs = new ResizeObserver(entries => update(entries[0].contentRect.width))
+    obs.observe(el)
+    return () => obs.disconnect()
+  }, [])
+
+  const scale = containerW / CANVAS_W
+  const scaledH = Math.round(totalCanvasH * scale)
+
+  return (
+    <div ref={outerRef} style={{ width: '100%' }}>
+      <div style={{ width: containerW, height: scaledH, overflow: 'hidden', borderRadius: 8, boxShadow: '0 4px 24px rgba(0,0,0,0.18)' }}>
+        <div style={{ transform: `scale(${scale})`, transformOrigin: 'top left', width: CANVAS_W, height: totalCanvasH }}>
+          {children}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function CalculatorForm({
-  airlines, makkahHotels, madinahHotels, visa, currency, transportRates, company,
+  airlines, makkahHotels, madinahHotels, visa, currency, transportRates, ziarats, company,
   invoiceClients,
   invoiceSettings,
+  existingPackageInvoices = [],
   canSaveBooking = true,
   editInvoice = null,
 }: Props) {
   const router = useRouter()
   const formId = useId()
   const printRef = useRef<HTMLDivElement>(null)
-  const initial = initialFromEdit(editInvoice)
+  const logoInputRef = useRef<HTMLInputElement>(null)
+  const initial = initialFromEdit(editInvoice, ziarats)
   const resolvedSettings = resolveInvoiceSettings(invoiceSettings)
   const hasSavedClients = invoiceClients.length > 0
   const initialCustomerName = initial?.customerName ?? editInvoice?.billed_to_name ?? ''
@@ -99,10 +160,25 @@ export default function CalculatorForm({
       ? applyClientToBilled(matchedClient)
       : { name: initialCustomerName, address: '', phone: '' }
 
-  const [invoiceNo, setInvoiceNo] = useState(() => editInvoice?.invoice_number ?? '')
+  const isExplicitEdit = Boolean(editInvoice?.id)
+
+  const [invoiceNo, setInvoiceNo] = useState(() =>
+    editInvoice?.invoice_number ?? getNextPackageInvoiceNumber(existingPackageInvoices),
+  )
+  const [invoiceTitleText, setInvoiceTitleText] = useState(() =>
+    editInvoice?.invoice_title_text?.trim() || 'INVOICE',
+  )
   const [pdfReady, setPdfReady] = useState(false)
-  const [logoDataUrl, setLogoDataUrl] = useState<string | null>(null)
+  const [logoUrl, setLogoUrl] = useState<string | null>(null)
+  const [logoSize, setLogoSize] = useState(DEFAULT_LOGO_SIZE)
+  const [logoX, setLogoX] = useState(DEFAULT_LOGO_X)
+  const [logoY, setLogoY] = useState(DEFAULT_LOGO_Y)
+  const [invoiceBackground, setInvoiceBackground] = useState(DEFAULT_PACKAGE_INVOICE_BACKGROUND)
+  const [invoiceTextColor, setInvoiceTextColor] = useState(DEFAULT_INVOICE_TEXT_COLOR)
   const [savedInvoiceId, setSavedInvoiceId] = useState<string | null>(editInvoice?.id ?? null)
+  const [localSavedInvoices, setLocalSavedInvoices] = useState(existingPackageInvoices)
+  const [lastSavedSnapshot, setLastSavedSnapshot] = useState<string | null>(null)
+  const [advancedAfterEdit, setAdvancedAfterEdit] = useState(false)
   const [isPending, startTransition] = useTransition()
   const [saved, setSaved] = useState(false)
   const [isDownloading, setIsDownloading] = useState(false)
@@ -111,7 +187,7 @@ export default function CalculatorForm({
   const [child, setChild] = useState(initial?.child ?? 0)
   const [infant, setInfant] = useState(initial?.infant ?? 0)
   const [airlineId, setAirlineId] = useState(initial?.airlineId || airlines[0]?.id || '')
-  const [transportType, setTransportType] = useState<'bus' | 'private'>(initial?.transportType ?? 'bus')
+  const [transportType, setTransportType] = useState<TransportVehicle>(initial?.transportType ?? DEFAULT_TRANSPORT_VEHICLE)
   const [makkahHotelId, setMakkahHotelId] = useState(initial?.makkahHotelId || makkahHotels[0]?.id || '')
   const [makkahRoom, setMakkahRoom] = useState<RoomType>(initial?.makkahRoom ?? 'sharing')
   const [makkahNights, setMakkahNights] = useState(initial?.makkahNights ?? 10)
@@ -120,6 +196,7 @@ export default function CalculatorForm({
   const [madinahNights, setMadinahNights] = useState(initial?.madinahNights ?? 10)
   const [includeMakkahHotel, setIncludeMakkahHotel] = useState(initial?.includeMakkahHotel ?? true)
   const [includeMadinahHotel, setIncludeMadinahHotel] = useState(initial?.includeMadinahHotel ?? true)
+  const [includeTickets, setIncludeTickets] = useState(initial?.includeTickets ?? true)
   const [profitType, setProfitType] = useState<'percent' | 'fixed'>(initial?.profitType ?? 'percent')
   const [profitValue, setProfitValue] = useState(initial?.profitValue ?? 8)
   const [sellingOverride, setSellingOverride] = useState<number | null>(initial?.sellingOverride ?? null)
@@ -131,11 +208,9 @@ export default function CalculatorForm({
   const [isNewCustomer, setIsNewCustomer] = useState(!hasSavedClients || !matchedClient)
   const [newCustomerOpen, setNewCustomerOpen] = useState(false)
   const [newCustomerSaving, setNewCustomerSaving] = useState(false)
-  const [makkahZiarat, setMakkahZiarat] = useState(initial?.makkahZiarat ?? false)
-  const [madinahZiarat, setMadinahZiarat] = useState(initial?.madinahZiarat ?? false)
-  const [badrZiarat, setBadrZiarat] = useState(initial?.badrZiarat ?? false)
-  const [taifZiarat, setTaifZiarat] = useState(initial?.taifZiarat ?? false)
-  const [walkingZiarat, setWalkingZiarat] = useState(initial?.walkingZiarat ?? false)
+  const [selectedZiaratIds, setSelectedZiaratIds] = useState<string[]>(() =>
+    resolveSelectedZiaratIds(initial, ziarats),
+  )
   const [customTicket, setCustomTicket] = useState(initial?.customTicket ?? false)
   const [customTicketLabel, setCustomTicketLabel] = useState(initial?.customTicketLabel ?? '')
   const [customTicketAmount, setCustomTicketAmount] = useState(initial?.customTicketAmount ?? 0)
@@ -149,16 +224,106 @@ export default function CalculatorForm({
   const pkCities = company.pk_flight_cities?.length ? company.pk_flight_cities : DEFAULT_PK_FLIGHT_CITIES
   const saCities = company.sa_flight_cities?.length ? company.sa_flight_cities : DEFAULT_SA_FLIGHT_CITIES
 
+  const buildFormSnapshot = useCallback(() => JSON.stringify({
+    invoiceTitleText,
+    adult, child, infant, airlineId, transportType,
+    makkahHotelId, makkahRoom, makkahNights,
+    madinahHotelId, madinahRoom, madinahNights,
+    includeMakkahHotel, includeMadinahHotel, includeTickets,
+    profitType, profitValue, sellingOverride, advance,
+    customerName, billedAddr, billedPhone,
+    selectedZiaratIds,
+    customTicket, customTicketLabel, customTicketAmount, customTicketCurrency,
+    travelDate, departureCity, arrivalCity, saDepartureCity, returnCity,
+  }), [
+    invoiceTitleText, adult, child, infant, airlineId, transportType,
+    makkahHotelId, makkahRoom, makkahNights, madinahHotelId, madinahRoom, madinahNights,
+    includeMakkahHotel, includeMadinahHotel, includeTickets, profitType, profitValue, sellingOverride, advance,
+    customerName, billedAddr, billedPhone,
+    selectedZiaratIds,
+    customTicket, customTicketLabel, customTicketAmount, customTicketCurrency,
+    travelDate, departureCity, arrivalCity, saDepartureCity, returnCity,
+  ])
+
+  // After a save, any form change bumps to the next invoice number (new invoice on next save).
   useEffect(() => {
-    setInvoiceNo(prev => prev || generateInvoiceNumber())
+    if (isExplicitEdit || !lastSavedSnapshot || advancedAfterEdit) return
+    if (buildFormSnapshot() === lastSavedSnapshot) return
+
+    setSavedInvoiceId(null)
+    setInvoiceNo(prev => getNextPackageInvoiceNumber([
+      ...localSavedInvoices,
+      { invoice_number: prev } as CustomInvoice,
+    ]))
+    setAdvancedAfterEdit(true)
+  }, [
+    buildFormSnapshot, lastSavedSnapshot, advancedAfterEdit, isExplicitEdit, localSavedInvoices,
+  ])
+
+  useEffect(() => {
+    if (!editInvoice) {
+      setInvoiceNo(prev => prev || getNextPackageInvoiceNumber(existingPackageInvoices))
+    }
     let cancelled = false
     preloadCompanyLogo(company.logo_url).then(dataUrl => {
       if (cancelled) return
-      setLogoDataUrl(dataUrl)
+      setLogoUrl(dataUrl)
       setPdfReady(true)
     })
     return () => { cancelled = true }
-  }, [company.logo_url])
+  }, [company.logo_url, editInvoice, existingPackageInvoices])
+
+  const logoBox = getLogoBoxSize(logoSize)
+  const logoMaxX = Math.max(0, INTRINSIC_BG_W - logoBox.w)
+  const logoMaxY = Math.max(0, INTRINSIC_BG_H - logoBox.h)
+
+  function updateLogoSize(nextSize: number) {
+    const size = Math.min(LOGO_SIZE_MAX, Math.max(LOGO_SIZE_MIN, nextSize))
+    setLogoSize(size)
+    const clamped = clampInvoiceLogoPosition(logoX, logoY, size)
+    setLogoX(clamped.x)
+    setLogoY(clamped.y)
+  }
+
+  function updateLogoX(nextX: number) {
+    setLogoX(clampInvoiceLogoPosition(nextX, logoY, logoSize).x)
+  }
+
+  function updateLogoY(nextY: number) {
+    setLogoY(clampInvoiceLogoPosition(logoX, nextY, logoSize).y)
+  }
+
+  function resetLogoDefaults() {
+    setLogoSize(DEFAULT_LOGO_SIZE)
+    setLogoX(DEFAULT_LOGO_X)
+    setLogoY(DEFAULT_LOGO_Y)
+  }
+
+  const isDefaultLogo =
+    logoSize === DEFAULT_LOGO_SIZE &&
+    logoX === DEFAULT_LOGO_X &&
+    logoY === DEFAULT_LOGO_Y
+
+  async function handleLogoUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    if (file.size > LOGO_MAX_BYTES) {
+      window.alert('Logo file must be 150 KB or smaller.')
+      e.target.value = ''
+      return
+    }
+    try {
+      setLogoUrl(await readFileAsDataUrl(file))
+    } catch {
+      window.alert('Could not read logo file.')
+      e.target.value = ''
+    }
+  }
+
+  function clearLogo() {
+    setLogoUrl(null)
+    if (logoInputRef.current) logoInputRef.current.value = ''
+  }
 
   useEffect(() => {
     if (airlines.length > 0 && !airlines.some(a => a.id === airlineId)) {
@@ -211,33 +376,31 @@ export default function CalculatorForm({
     madinahRoom, madinahNights,
     profitType, profitValue, sellingOverride, advance,
     customerName,
-    makkahZiarat, madinahZiarat, badrZiarat, taifZiarat, walkingZiarat,
-    includeMakkahHotel, includeMadinahHotel,
+    selectedZiaratIds,
+    includeMakkahHotel, includeMadinahHotel, includeTickets,
     customTicket, customTicketLabel, customTicketPkr,
   }
 
   const calc = useMemo(
-    () => getCalc(input, transportRates, currency.sar_to_pkr, visa, visa.transport_mode),
+    () => getCalc(input, transportRates, currency.sar_to_pkr, visa, visa.transport_mode, ziarats),
     [adult, child, infant, airlineId, transportType, makkahHotelId, makkahRoom, makkahNights,
      madinahHotelId, madinahRoom, madinahNights, profitType, profitValue, sellingOverride, advance,
      currency.sar_to_pkr,
      visa.visa_rate_1_pax, visa.visa_rate_2_pax, visa.visa_rate_3_pax,
      visa.visa_rate_4_pax, visa.visa_rate_group_pax,
      visa.infant_sar, visa.transport_mode,
-     visa.makkah_ziarat_rate, visa.madina_ziarat_rate,
-     visa.badr_ziarat_rate, visa.taif_ziarat_rate,
-     makkahZiarat, madinahZiarat, badrZiarat, taifZiarat,
-     includeMakkahHotel, includeMadinahHotel,
+     selectedZiaratIds,
+     includeMakkahHotel, includeMadinahHotel, includeTickets,
      customTicket, customTicketPkr,
-     transportRates]
+     transportRates, ziarats]
   )
 
   const branding: InvoiceBranding = useMemo(() => ({
-    logoUrl: logoDataUrl,
-    logoX: DEFAULT_LOGO_X,
-    logoY: DEFAULT_LOGO_Y,
-    logoSize: DEFAULT_LOGO_SIZE,
-  }), [logoDataUrl])
+    logoUrl,
+    logoX,
+    logoY,
+    logoSize,
+  }), [logoUrl, logoX, logoY, logoSize])
 
   const packageInvoice = useMemo(() => buildPackageCustomInvoice({
     invoiceNo: invoiceNo || 'INV-0000',
@@ -251,9 +414,9 @@ export default function CalculatorForm({
     airlineName,
     makkahHotel, makkahRoom, makkahNights,
     madinahHotel, madinahRoom, madinahNights,
-    makkahZiarat, madinahZiarat, badrZiarat, taifZiarat, walkingZiarat,
-    includeMakkahHotel, includeMadinahHotel,
+    includeMakkahHotel, includeMadinahHotel, includeTickets,
     travelDate,
+    transportType,
     company,
     invoiceSettings: resolvedSettings,
   }), [
@@ -261,16 +424,21 @@ export default function CalculatorForm({
     adult, child, infant, airlineName,
     makkahHotel, makkahRoom, makkahNights,
     madinahHotel, madinahRoom, madinahNights,
-    makkahZiarat, madinahZiarat, badrZiarat, taifZiarat, walkingZiarat,
-    includeMakkahHotel, includeMadinahHotel,
+    includeMakkahHotel, includeMadinahHotel, includeTickets,
+    transportType,
     company, resolvedSettings,
   ])
+
+  const previewTotalPages = useMemo(() => {
+    const count = packageInvoice.line_items.length
+    return count <= 5 ? 1 : 1 + Math.ceil((count - 5) / 9)
+  }, [packageInvoice.line_items.length])
 
   const generatePdfBytes = useCallback(async (): Promise<Uint8Array> => {
     const el = printRef.current
     if (!el) throw new Error('Invoice preview not ready.')
-    return generateCustomInvoicePdfBytes(el, branding, PACKAGE_INVOICE_BG)
-  }, [branding])
+    return generateCustomInvoicePdfBytes(el, branding, invoiceBackground)
+  }, [branding, invoiceBackground])
 
   function buildPackageData(): PackageInvoiceData {
     return {
@@ -279,17 +447,18 @@ export default function CalculatorForm({
       madinahHotelId, madinahRoom, madinahNights,
       profitType, profitValue, sellingOverride, advance,
       customerName,
-      makkahZiarat, madinahZiarat, badrZiarat, taifZiarat, walkingZiarat,
-      includeMakkahHotel, includeMadinahHotel,
+      selectedZiaratIds,
+      ...ziaratLegacyFlags(selectedZiaratIds, ziarats),
+      includeMakkahHotel, includeMadinahHotel, includeTickets,
       customTicket, customTicketLabel, customTicketAmount, customTicketCurrency,
       travelDate, departureCity, arrivalCity, saDepartureCity, returnCity,
     }
   }
 
-  function buildBookingPayload() {
+  function buildBookingPayload(sourceInvoiceId?: string | null) {
     return {
       customer_name: customerName || 'Walk-in Customer',
-      airline_name: customTicket ? customTicketLabel : (airline?.name ?? ''),
+      airline_name: includeTickets ? (customTicket ? customTicketLabel : (airline?.name ?? '')) : '',
       total_pkr: calc.selling,
       cost_pkr: calc.totalCost,
       profit_pkr: calc.profit,
@@ -309,6 +478,9 @@ export default function CalculatorForm({
       madinah_hotel_distance: includeMadinahHotel ? (madinahHotel?.distance ?? null) : null,
       madinah_room_type: includeMadinahHotel ? madinahRoom : null,
       madinah_nights: includeMadinahHotel ? madinahNights : null,
+      booking_date: travelDate || new Date().toISOString().slice(0, 10),
+      auto_record_expense: true,
+      source_invoice_id: sourceInvoiceId ?? savedInvoiceId ?? null,
     }
   }
 
@@ -341,9 +513,12 @@ export default function CalculatorForm({
         contact_phone: resolvedSettings.contact_phone || company.phone,
         contact_email: resolvedSettings.contact_email || company.website,
         contact_location: resolvedSettings.contact_location || company.address,
+        invoice_title_text: invoiceTitleText.trim() || 'INVOICE',
       }
 
-      const isUpdate = Boolean(savedInvoiceId)
+      const isUpdate = isExplicitEdit
+        ? Boolean(savedInvoiceId)
+        : Boolean(savedInvoiceId) && !advancedAfterEdit
       const persist = () => (
         isUpdate
           ? updatePackageInvoiceWithPdf({ id: savedInvoiceId!, ...payload })
@@ -365,10 +540,23 @@ export default function CalculatorForm({
         return
       }
 
-      if (!isUpdate && 'id' in result && result.id) setSavedInvoiceId(result.id)
+      if ('id' in result && result.id && 'invoice_number' in result) {
+        if (isUpdate) {
+          setSavedInvoiceId(result.id)
+        } else {
+          setSavedInvoiceId(result.id)
+          setLocalSavedInvoices(prev => [
+            ...prev,
+            { invoice_number: result.invoice_number } as CustomInvoice,
+          ])
+        }
+        setLastSavedSnapshot(buildFormSnapshot())
+        setAdvancedAfterEdit(false)
+      }
 
       if (canSaveBooking) {
-        const bookingResult = await createBooking(buildBookingPayload())
+        const linkedInvoiceId = ('id' in result && result.id) ? result.id : savedInvoiceId
+        const bookingResult = await createBooking(buildBookingPayload(linkedInvoiceId))
         if ('error' in bookingResult && bookingResult.error) {
           toast.error(`Invoice saved but booking failed: ${bookingResult.error}`)
           return
@@ -467,7 +655,7 @@ export default function CalculatorForm({
       infant > 0 ? `${infant} Infant${infant > 1 ? 's' : ''}`  : '',
     ].filter(Boolean).join(', ')
     const contact = company.phone
-      ? `📞 Contact: ${company.phone}`
+      ? `🟢 Contact: ${company.phone}`
       : company.website
         ? `🌐 Website: ${company.website}`
         : ''
@@ -479,7 +667,7 @@ export default function CalculatorForm({
       ``,
       ...(formattedDate ? [`📅 Travel Date: ${formattedDate}`] : []),
       ...(route !== '—' ? [`✈️ Route: ${route}`] : []),
-      ...(airlineName ? [`🛫 Airline: ${airlineName}`] : []),
+      ...(includeTickets && airlineName ? [`🛫 Airline: ${airlineName}`] : []),
       ``,
       `👤 Passengers: ${paxParts}`,
       ``,
@@ -490,10 +678,8 @@ export default function CalculatorForm({
         `🏨 *Makkah Hotel*`,
         formatHotelForWhatsApp(makkahHotel),
         `🛏️ ${cap(makkahRoom)} Room | 🌙 ${makkahNights} Nights`,
+        ``,
       )
-      if (makkahZiarat) lines.push(`🚌 Makkah Ziarats: Included`)
-      if (badrZiarat) lines.push(`🚌 Badr Ziarat: Included`)
-      lines.push(``)
     }
 
     if (includeMadinahHotel) {
@@ -501,13 +687,15 @@ export default function CalculatorForm({
         `🏨 *Madinah Hotel*`,
         formatHotelForWhatsApp(madinahHotel),
         `🛏️ ${cap(madinahRoom)} Room | 🌙 ${madinahNights} Nights`,
+        ``,
       )
-      if (madinahZiarat) lines.push(`🚌 Madinah Ziarats: Included`)
-      if (taifZiarat) lines.push(`🚌 Taif Ziarat: Included`)
-      lines.push(``)
     }
 
-    if (walkingZiarat) lines.push(`🚶 Walking Ziarats: Included (Free)`, ``)
+    for (const item of calc.ziaratItems) {
+      const suffix = item.cost > 0 ? 'Included' : 'Included (Free)'
+      lines.push(`🚌 ${item.name}: ${suffix}`)
+    }
+    if (calc.ziaratItems.length > 0) lines.push(``)
 
     lines.push(
       `💰 *Package Price: ${fmtPkr(calc.selling)}*`,
@@ -521,15 +709,15 @@ export default function CalculatorForm({
   }
 
   const rows = [
-    { label: 'Tickets', value: fmtPkr(calc.ticketCost) },
+    ...(includeTickets ? [{ label: 'Tickets', value: fmtPkr(calc.ticketCost) }] : []),
     { label: 'Visa', value: fmtPkr(calc.visaCost) },
-    { label: visa.transport_mode === 'included' ? 'Transport (Included)' : 'Transport', value: visa.transport_mode === 'included' ? '—' : fmtPkr(calc.transportCost) },
+    { label: `Transport (${transportType})`, value: fmtPkr(calc.transportCost) },
     ...(includeMakkahHotel ? [{ label: `Makkah Hotel (${makkahNights}N)`, value: fmtPkr(calc.makkahCost) }] : []),
     ...(includeMadinahHotel ? [{ label: `Madinah Hotel (${madinahNights}N)`, value: fmtPkr(calc.madinahCost) }] : []),
-    ...(makkahZiarat ? [{ label: 'Makkah Ziarats', value: fmtPkr(calc.makkahZiaratCost) }] : []),
-    ...(madinahZiarat ? [{ label: 'Madina Ziarats', value: fmtPkr(calc.madinahZiaratCost) }] : []),
-    ...(badrZiarat ? [{ label: 'Badr Ziarat', value: fmtPkr(calc.badrZiaratCost) }] : []),
-    ...(taifZiarat ? [{ label: 'Taif Ziarat', value: fmtPkr(calc.taifZiaratCost) }] : []),
+    ...calc.ziaratItems.map(item => ({
+      label: item.name,
+      value: item.cost > 0 ? fmtPkr(item.cost) : 'Free',
+    })),
   ]
 
   return (
@@ -562,11 +750,22 @@ export default function CalculatorForm({
 
           <Card className="shadow-sm border-0">
             <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
-                Flight & Transport
-              </CardTitle>
+              <div className="flex items-center justify-between gap-3">
+                <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+                  Flight & Transport
+                </CardTitle>
+                <label className="flex items-center gap-2 cursor-pointer select-none">
+                  <Checkbox
+                    checked={includeTickets}
+                    onCheckedChange={v => setIncludeTickets(Boolean(v))}
+                  />
+                  <span className="text-xs font-normal normal-case">Include Flight Tickets</span>
+                </label>
+              </div>
             </CardHeader>
             <CardContent className="grid grid-cols-2 gap-4">
+              {includeTickets && (
+              <>
               <label className="col-span-2 flex items-center gap-2.5 cursor-pointer select-none">
                 <Checkbox
                   checked={customTicket}
@@ -644,6 +843,9 @@ export default function CalculatorForm({
                 </div>
               )}
 
+              </>
+              )}
+
               <div className="space-y-1.5">
                 <Label className="text-xs">Departure (Pakistan)</Label>
                 <Select value={departureCity} onValueChange={v => v && setDepartureCity(v)}>
@@ -684,18 +886,17 @@ export default function CalculatorForm({
                 </Select>
               </div>
 
-              {visa.transport_mode === 'separate' && (
-                <div className="space-y-1.5">
-                  <Label className="text-xs">Transport</Label>
-                  <Select value={transportType} onValueChange={v => v && setTransportType(v as 'bus' | 'private')}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="bus">Bus</SelectItem>
-                      <SelectItem value="private">Private</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              )}
+              <div className="space-y-1.5">
+                <Label className="text-xs">Transport</Label>
+                <Select value={transportType} onValueChange={v => v && setTransportType(v as TransportVehicle)}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {TRANSPORT_VEHICLES.map(vehicle => (
+                      <SelectItem key={vehicle} value={vehicle}>{vehicle}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </CardContent>
           </Card>
 
@@ -781,54 +982,31 @@ export default function CalculatorForm({
               </CardTitle>
             </CardHeader>
             <CardContent className="flex flex-col gap-3">
-              <label className="flex items-center gap-3 cursor-pointer select-none">
-                <Checkbox checked={makkahZiarat} onCheckedChange={v => setMakkahZiarat(Boolean(v))} />
-                <span className="text-sm">
-                  Include Makkah Ziarats
-                  {visa.makkah_ziarat_rate > 0 && (
-                    <span className="ml-1.5 text-xs text-muted-foreground">
-                      ({fmtPkr(visa.makkah_ziarat_rate * currency.sar_to_pkr)})
-                    </span>
-                  )}
-                </span>
-              </label>
-              <label className="flex items-center gap-3 cursor-pointer select-none">
-                <Checkbox checked={madinahZiarat} onCheckedChange={v => setMadinahZiarat(Boolean(v))} />
-                <span className="text-sm">
-                  Include Madinah Ziarats
-                  {visa.madina_ziarat_rate > 0 && (
-                    <span className="ml-1.5 text-xs text-muted-foreground">
-                      ({fmtPkr(visa.madina_ziarat_rate * currency.sar_to_pkr)})
-                    </span>
-                  )}
-                </span>
-              </label>
-              <label className="flex items-center gap-3 cursor-pointer select-none">
-                <Checkbox checked={badrZiarat} onCheckedChange={v => setBadrZiarat(Boolean(v))} />
-                <span className="text-sm">
-                  Badr Ziarat
-                  {visa.badr_ziarat_rate > 0 && (
-                    <span className="ml-1.5 text-xs text-muted-foreground">
-                      ({fmtPkr(visa.badr_ziarat_rate * currency.sar_to_pkr)})
-                    </span>
-                  )}
-                </span>
-              </label>
-              <label className="flex items-center gap-3 cursor-pointer select-none">
-                <Checkbox checked={taifZiarat} onCheckedChange={v => setTaifZiarat(Boolean(v))} />
-                <span className="text-sm">
-                  Taif Ziarat
-                  {visa.taif_ziarat_rate > 0 && (
-                    <span className="ml-1.5 text-xs text-muted-foreground">
-                      ({fmtPkr(visa.taif_ziarat_rate * currency.sar_to_pkr)})
-                    </span>
-                  )}
-                </span>
-              </label>
-              <label className="flex items-center gap-3 cursor-pointer select-none">
-                <Checkbox checked={walkingZiarat} onCheckedChange={v => setWalkingZiarat(Boolean(v))} />
-                <span className="text-sm">Walking Ziarats (Free of cost)</span>
-              </label>
+              {ziarats.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No ziarats configured. Add them in Settings → Ziarats.</p>
+              ) : ziarats.map(z => (
+                <label key={z.id} className="flex items-center gap-3 cursor-pointer select-none">
+                  <Checkbox
+                    checked={selectedZiaratIds.includes(z.id)}
+                    onCheckedChange={v => {
+                      const checked = Boolean(v)
+                      setSelectedZiaratIds(prev =>
+                        checked ? [...new Set([...prev, z.id])] : prev.filter(id => id !== z.id),
+                      )
+                    }}
+                  />
+                  <span className="text-sm">
+                    {z.name}
+                    {z.rate_sar > 0 ? (
+                      <span className="ml-1.5 text-xs text-muted-foreground">
+                        ({fmtPkr(z.rate_sar * currency.sar_to_pkr)})
+                      </span>
+                    ) : (
+                      <span className="ml-1.5 text-xs text-muted-foreground">(Free)</span>
+                    )}
+                  </span>
+                </label>
+              ))}
             </CardContent>
           </Card>
 
@@ -871,6 +1049,108 @@ export default function CalculatorForm({
                   onChange={e => setAdvance(parseFloat(e.target.value) || 0)}
                 />
               </div>
+            </CardContent>
+          </Card>
+
+          <Card className="shadow-sm border-0">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+                Invoice
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <Label className="text-xs">Invoice Number</Label>
+                <Input
+                  placeholder="INV-1501"
+                  value={invoiceNo}
+                  onChange={e => setInvoiceNo(e.target.value)}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs">Invoice Title</Label>
+                <Input
+                  placeholder="INVOICE"
+                  value={invoiceTitleText}
+                  onChange={e => setInvoiceTitleText(e.target.value)}
+                />
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="shadow-sm border-0">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+                Invoice Appearance
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <InvoiceAppearanceControls
+                backgroundSrc={invoiceBackground}
+                onBackgroundChange={setInvoiceBackground}
+                textColor={invoiceTextColor}
+                onTextColorChange={setInvoiceTextColor}
+                defaultBackground={DEFAULT_PACKAGE_INVOICE_BACKGROUND}
+              />
+            </CardContent>
+          </Card>
+
+          <Card className="shadow-sm border-0">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+                Branding
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <p className="text-[10px] text-muted-foreground">
+                Logo stays in your browser only until you download — not stored on the server. Company logo loads by default; upload to replace it.
+              </p>
+              <div className="space-y-1.5">
+                <Label className="text-xs">Logo Upload (max 150 KB)</Label>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <Input
+                    ref={logoInputRef}
+                    type="file"
+                    accept="image/*"
+                    onChange={handleLogoUpload}
+                    className="h-9 text-xs cursor-pointer"
+                  />
+                  {logoUrl && (
+                    <Button type="button" variant="outline" size="sm" className="h-8 text-xs" onClick={clearLogo}>
+                      Remove
+                    </Button>
+                  )}
+                </div>
+              </div>
+              {logoUrl && (
+                <div className="space-y-3 pt-2 border-t border-dashed">
+                  <BrandingSlider
+                    label="Logo Size (width)"
+                    value={logoSize}
+                    min={LOGO_SIZE_MIN}
+                    max={LOGO_SIZE_MAX}
+                    onChange={updateLogoSize}
+                  />
+                  <BrandingSlider
+                    label="Logo X Position"
+                    value={logoX}
+                    min={0}
+                    max={logoMaxX}
+                    onChange={updateLogoX}
+                  />
+                  <BrandingSlider
+                    label="Logo Y Position"
+                    value={logoY}
+                    min={0}
+                    max={logoMaxY}
+                    onChange={updateLogoY}
+                  />
+                  <BrandingResetButton
+                    onReset={resetLogoDefaults}
+                    disabled={isDefaultLogo}
+                  />
+                </div>
+              )}
             </CardContent>
           </Card>
 
@@ -943,8 +1223,8 @@ export default function CalculatorForm({
           </Card>
         </div>
 
-        <div className="space-y-4">
-          <Card className="shadow-sm border-0 bg-navy text-white sticky top-0">
+        <div className="space-y-4 min-w-0 xl:sticky xl:top-6 xl:self-start xl:z-10">
+          <Card className="shadow-sm border-0 bg-navy text-white">
             <CardContent className="p-5 space-y-4">
               <div>
                 <p className="text-white/200 text-xs uppercase tracking-wide mb-1">Package Total</p>
@@ -1006,7 +1286,7 @@ export default function CalculatorForm({
                     <Button
                       variant="outline"
                       onClick={handleDownload}
-                      disabled={isDownloading || !pdfReady || !logoDataUrl || !invoiceNo}
+                      disabled={isDownloading || !pdfReady || !invoiceNo}
                       className="bg-white/10 border-white/20 text-white hover:bg-white/20 hover:text-white text-xs"
                     >
                       <Download className="w-3.5 h-3.5 mr-1.5" />
@@ -1017,6 +1297,40 @@ export default function CalculatorForm({
               </div>
             </CardContent>
           </Card>
+
+          {pdfReady && (
+            <Card className="shadow-sm border-0 relative z-0">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+                  Live Preview
+                  {previewTotalPages > 1 && (
+                    <span className="text-muted-foreground/60 font-normal normal-case tracking-normal ml-1">
+                      ({previewTotalPages} pages)
+                    </span>
+                  )}
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <ScaledPreview totalPages={previewTotalPages}>
+                  <CustomInvoiceTemplate
+                    invoice={packageInvoice}
+                    branding={branding}
+                    titleText={invoiceTitleText.trim() || 'INVOICE'}
+                    titleFontSize={38}
+                    titleTop={22}
+                    invoiceIdY={92}
+                    dateY={109.5}
+                    centerInvoiceId
+                    backgroundImage={invoiceBackground}
+                    textColor={invoiceTextColor}
+                  />
+                </ScaledPreview>
+                <p className="text-[10px] text-muted-foreground mt-3">
+                  Updates as you change package details, customer info, and logo settings.
+                </p>
+              </CardContent>
+            </Card>
+          )}
         </div>
       </div>
 
@@ -1049,19 +1363,20 @@ export default function CalculatorForm({
         </DialogContent>
       </Dialog>
 
-      {pdfReady && logoDataUrl && (
+      {pdfReady && (
         <div style={{ position: 'fixed', top: 0, left: 0, zIndex: -9999, pointerEvents: 'none' }}>
           <CustomInvoiceTemplate
             ref={printRef}
             invoice={packageInvoice}
             branding={branding}
-            titleText="CUSTOM INVOICE"
+            titleText={invoiceTitleText.trim() || 'INVOICE'}
             titleFontSize={38}
             titleTop={22}
             invoiceIdY={92}
             dateY={109.5}
             centerInvoiceId
-            backgroundImage={PACKAGE_INVOICE_BG}
+            backgroundImage={invoiceBackground}
+            textColor={invoiceTextColor}
           />
         </div>
       )}

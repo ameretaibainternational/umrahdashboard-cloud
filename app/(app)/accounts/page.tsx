@@ -3,7 +3,6 @@ import { pkr } from '@/lib/formatters'
 import KpiCard from '@/components/shared/KpiCard'
 import KpiGrid, { PageContainer } from '@/components/shared/KpiGrid'
 import AddPaymentForm from '@/components/accounts/AddPaymentForm'
-import AddExpenseForm from '@/components/accounts/AddExpenseForm'
 import ClientLedger from '@/components/accounts/ClientLedger'
 import ExpenseLedger from '@/components/accounts/ExpenseLedger'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -75,8 +74,14 @@ export default async function AccountsPage() {
       {/* ── Record Customer Payment ── */}
       {unpaidBookings.length > 0 && <AddPaymentForm bookings={unpaidBookings} />}
 
-      {/* ── Record Supplier Expense ── */}
-      <AddExpenseForm />
+      <Card className="shadow-sm border-0 bg-slate-50/80">
+        <CardContent className="py-4 px-5">
+          <p className="text-sm text-muted-foreground">
+            Package expenses are recorded automatically when you save a booking from the Package Calculator.
+            The expense amount equals the package cost (selling price minus profit).
+          </p>
+        </CardContent>
+      </Card>
 
       {/* ── Client Ledger (per-customer filter + print + copy) ── */}
       <ClientLedger

@@ -1,5 +1,4 @@
-import { getBookings, getPayments, getCustomInvoices } from '@/lib/db'
-import { isPackageInvoice } from '@/lib/package-invoice'
+import { getBookings, getPayments } from '@/lib/db'
 import { pkr } from '@/lib/formatters'
 import KpiCard from '@/components/shared/KpiCard'
 import KpiGrid, { PageContainer } from '@/components/shared/KpiGrid'
@@ -23,29 +22,26 @@ function monthLabel(key: string) {
 }
 
 export default async function DashboardPage() {
-  const [bookings, payments, allCustomInvoices] = await Promise.all([
+  const [bookings, payments] = await Promise.all([
     getBookings(),
     getPayments(),
-    getCustomInvoices(),
   ])
 
-  const customInvoices = allCustomInvoices.filter(inv => !isPackageInvoice(inv))
+  const bookingIds = new Set(bookings.map(b => b.id))
+  const bookingPayments = payments.filter(p => bookingIds.has(p.booking_id))
 
-  // ── KPIs ──────────────────────────────────────────────────────────────────
+  // ── KPIs (bookings only — settings clients / standalone invoices are excluded) ──
   const totalBookings   = bookings.length
-  const customerNames   = new Set(bookings.map(b => b.customer_name))
-  for (const inv of customInvoices) {
-    if (inv.billed_to_name) customerNames.add(inv.billed_to_name)
-  }
+  const customerNames   = new Set(
+    bookings
+      .map(b => b.customer_name.trim())
+      .filter(name => name && name.toLowerCase() !== 'walk-in customer'),
+  )
   const uniqueCustomers = customerNames.size
-  const bookingRevenue  = bookings.reduce((s, b) => s + b.total_pkr, 0)
-  const customRevenue   = customInvoices.reduce((s, inv) => s + inv.total, 0)
-  const totalRevenue    = bookingRevenue + customRevenue
+  const totalRevenue    = bookings.reduce((s, b) => s + b.total_pkr, 0)
   const totalCost       = bookings.reduce((s, b) => s + b.cost_pkr, 0)
   const totalProfit     = bookings.reduce((s, b) => s + b.profit_pkr, 0)
-  const bookingDue      = bookings.reduce((s, b) => s + b.remaining_pkr, 0)
-  const customDue       = customInvoices.reduce((s, inv) => s + inv.remaining, 0)
-  const totalDue        = bookingDue + customDue
+  const totalDue        = bookings.reduce((s, b) => s + b.remaining_pkr, 0)
   const recent          = bookings.slice(0, 5)
 
   // ── Monthly revenue data — always 6 months grid ──────────────────────────
@@ -87,7 +83,7 @@ export default async function DashboardPage() {
 
   // ── Payment method data ───────────────────────────────────────────────────
   const methodMap: Record<string, number> = {}
-  for (const p of payments) {
+  for (const p of bookingPayments) {
     methodMap[p.method] = (methodMap[p.method] ?? 0) + p.amount_pkr
   }
   const paymentMethodData = Object.entries(methodMap).map(([method, amount]) => ({ method, amount }))

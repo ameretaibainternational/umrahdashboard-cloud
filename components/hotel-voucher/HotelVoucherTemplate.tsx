@@ -13,7 +13,6 @@ export interface Pilgrim {
   pax: string
   beds: string
   visaNumber: string
-  pnr: string
 }
 
 export interface Accommodation {
@@ -34,10 +33,13 @@ export interface VoucherData {
   date: string        // ISO "YYYY-MM-DD"
   packageInfo: string
   familyHead: string
+  companyName: string
   pilgrims: Pilgrim[]
   accommodations: Accommodation[]
   makkahHotelContact: string
   madinaHotelContact: string
+  makkahHotelContactId?: string
+  madinaHotelContactId?: string
   makkahTransportContact: string
   madinaTransportContact: string
   jeddahTransportContact: string
@@ -297,13 +299,12 @@ export const VoucherPage1 = forwardRef<HTMLDivElement, { data: VoucherData; bran
       { label: 'Pax', width: '40px', align: 'center' as const },
       { label: 'Beds', width: '40px', align: 'center' as const },
       ...(showVisa ? [{ label: 'Visa Number' }] : []),
-      { label: 'PNR' },
     ]
     const pilgrimRows = data.pilgrims.map(p => ({
       id: p.id,
       cells: showVisa
-        ? [p.name, p.passportNo, p.pax, p.beds, p.visaNumber, p.pnr]
-        : [p.name, p.passportNo, p.pax, p.beds, p.pnr],
+        ? [p.name, p.passportNo, p.pax, p.beds, p.visaNumber]
+        : [p.name, p.passportNo, p.pax, p.beds],
     }))
     const hasContactNotes =
       data.makkahHotelContact ||
@@ -350,7 +351,7 @@ export const VoucherPage1 = forwardRef<HTMLDivElement, { data: VoucherData; bran
           {/* A ── Header (centered) */}
           <div style={{ position: 'absolute', top: '40px', left: 0, right: 0, textAlign: 'center' }}>
             <div style={{ fontSize: '34px', fontWeight: 700, color: '#ffffff' }}>
-              Amere Taiba International
+              {data.companyName?.trim() || 'Amere Taiba International'}
             </div>
           </div>
 

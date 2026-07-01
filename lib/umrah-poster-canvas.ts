@@ -36,6 +36,8 @@ export interface UmrahPosterFormData {
   doublePrice: string
   savingPrice: string
   bookBeforeDate: string
+  contactNumber: string
+  websiteUrl: string
 }
 
 export const BOOK_BEFORE_PREFIX = 'Book Before'
@@ -56,6 +58,8 @@ export const DEFAULT_POSTER_DATA: UmrahPosterFormData = {
   doublePrice: '235,000',
   savingPrice: 'PKR: 15,000',
   bookBeforeDate: '10 March 2026',
+  contactNumber: '+92 300 0000000',
+  websiteUrl: 'www.ameretaiba.com',
 }
 
 export function cm(value: number): number {
@@ -79,7 +83,7 @@ export async function loadPosterFonts(): Promise<void> {
     '700 27.8px Poppins',
     '500 32px Poppins',
     '700 32px Poppins',
-    '700 28px Poppins',
+    '700 34px Poppins',
     '700 33px Poppins',
     '700 40px Poppins',
     '700 42px Poppins',
@@ -400,6 +404,18 @@ export function renderUmrahPoster(
       bookBeforeY + bookBeforeLineH,
       bookBeforeFont,
     )
+  }
+
+  const footerFont = '700 34px Poppins, sans-serif'
+  const footerY = cm(54.77)
+  const contactY = cm(54.90)
+
+  if (data.contactNumber.trim()) {
+    drawGradientText(ctx, data.contactNumber.trim(), cm(14.76), contactY, footerFont)
+  }
+
+  if (data.websiteUrl.trim()) {
+    drawGradientText(ctx, data.websiteUrl.trim(), cm(25.97), footerY, footerFont)
   }
 }
 

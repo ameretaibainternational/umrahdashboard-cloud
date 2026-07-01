@@ -53,6 +53,8 @@ async function insertCustomInvoiceDirect(row: {
   storage_key: string
   file_size_bytes: number
   created_by?: string | null
+  invoice_number?: string
+  invoice_title_text?: string
 }, options?: { force?: boolean }) {
   const sql = requireWriteSql(options)
   const baseValues = {
@@ -78,23 +80,42 @@ async function insertCustomInvoiceDirect(row: {
   try {
     const [created] = await sql<{ id: string; invoice_number: string }[]>`
       INSERT INTO custom_invoices (
-        id, invoice_date, billed_to_name, billed_to_address, billed_to_client_number,
+        id, invoice_number, invoice_date, billed_to_name, billed_to_address, billed_to_client_number,
         payment_bank_name, payment_account_number, terms_text,
         contact_phone, contact_email, contact_location,
         line_items, total, received, remaining,
-        storage_key, file_size_bytes, created_by
+        storage_key, file_size_bytes, invoice_title_text, created_by
       ) VALUES (
-        ${baseValues.id}, ${baseValues.invoice_date}, ${baseValues.billed_to_name}, ${baseValues.billed_to_address}, ${baseValues.billed_to_client_number},
+        ${baseValues.id}, ${row.invoice_number!}, ${baseValues.invoice_date}, ${baseValues.billed_to_name}, ${baseValues.billed_to_address}, ${baseValues.billed_to_client_number},
         ${baseValues.payment_bank_name}, ${baseValues.payment_account_number}, ${baseValues.terms_text},
         ${baseValues.contact_phone}, ${baseValues.contact_email}, ${baseValues.contact_location},
         ${baseValues.line_items}, ${baseValues.total}, ${baseValues.received}, ${baseValues.remaining},
-        ${baseValues.storage_key}, ${baseValues.file_size_bytes}, ${row.created_by ?? null}
+        ${baseValues.storage_key}, ${baseValues.file_size_bytes}, ${row.invoice_title_text ?? 'INVOICE'}, ${row.created_by ?? null}
       )
       RETURNING id, invoice_number
     `
     return created
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
+    if (message.includes('invoice_title_text')) {
+      const [created] = await sql<{ id: string; invoice_number: string }[]>`
+        INSERT INTO custom_invoices (
+          id, invoice_number, invoice_date, billed_to_name, billed_to_address, billed_to_client_number,
+          payment_bank_name, payment_account_number, terms_text,
+          contact_phone, contact_email, contact_location,
+          line_items, total, received, remaining,
+          storage_key, file_size_bytes, created_by
+        ) VALUES (
+          ${baseValues.id}, ${row.invoice_number!}, ${baseValues.invoice_date}, ${baseValues.billed_to_name}, ${baseValues.billed_to_address}, ${baseValues.billed_to_client_number},
+          ${baseValues.payment_bank_name}, ${baseValues.payment_account_number}, ${baseValues.terms_text},
+          ${baseValues.contact_phone}, ${baseValues.contact_email}, ${baseValues.contact_location},
+          ${baseValues.line_items}, ${baseValues.total}, ${baseValues.received}, ${baseValues.remaining},
+          ${baseValues.storage_key}, ${baseValues.file_size_bytes}, ${row.created_by ?? null}
+        )
+        RETURNING id, invoice_number
+      `
+      return created
+    }
     if (!message.includes('created_by')) throw error
     const [created] = await sql<{ id: string; invoice_number: string }[]>`
       INSERT INTO custom_invoices (
@@ -135,6 +156,7 @@ type PackageInvoiceRow = {
   contact_email?: string
   contact_location?: string
   created_by?: string | null
+  invoice_title_text?: string
 }
 
 export function mapCustomInvoiceRow(r: Record<string, unknown>): CustomInvoice {
@@ -189,14 +211,14 @@ export async function insertPackageInvoiceDirect(row: PackageInvoiceRow, options
         contact_phone, contact_email, contact_location,
         line_items, total, received, remaining,
         storage_key, file_size_bytes, created_by,
-        invoice_kind, package_data
+        invoice_kind, package_data, invoice_title_text
       ) VALUES (
         ${baseValues.id}, ${baseValues.invoice_number}, ${baseValues.invoice_date}, ${baseValues.billed_to_name}, ${baseValues.billed_to_address}, ${baseValues.billed_to_client_number},
         '', '', '',
         ${baseValues.contact_phone}, ${baseValues.contact_email}, ${baseValues.contact_location},
         '[]', ${baseValues.total}, ${baseValues.received}, ${baseValues.remaining},
         ${baseValues.storage_key}, ${baseValues.file_size_bytes}, ${row.created_by ?? null},
-        'package', ${baseValues.package_data}
+        'package', ${baseValues.package_data}, ${row.invoice_title_text ?? 'INVOICE'}
       )
       RETURNING id, invoice_number
     `
@@ -252,6 +274,7 @@ export async function updatePackageInvoiceDirect(row: PackageInvoiceRow, options
   try {
     await sql`
       UPDATE custom_invoices SET
+        invoice_number = ${row.invoice_number},
         invoice_date = ${row.invoice_date},
         billed_to_name = ${row.billed_to_name},
         billed_to_address = ${row.billed_to_address ?? ''},
@@ -265,7 +288,8 @@ export async function updatePackageInvoiceDirect(row: PackageInvoiceRow, options
         storage_key = ${row.storage_key},
         file_size_bytes = ${row.file_size_bytes},
         package_data = ${packageJson},
-        invoice_kind = 'package'
+        invoice_kind = 'package',
+        invoice_title_text = ${row.invoice_title_text ?? 'INVOICE'}
       WHERE id = ${row.id}
     `
   } catch (error) {
@@ -351,30 +375,59 @@ type CustomInvoiceUpdateRow = {
   remaining: number
   storage_key: string
   file_size_bytes: number
+  invoice_title_text?: string
 }
 
 export async function updateCustomInvoiceDirect(row: CustomInvoiceUpdateRow, options?: { force?: boolean }) {
   const sql = requireWriteSql(options)
-  await sql`
-    UPDATE custom_invoices SET
-      invoice_date = ${row.invoice_date},
-      billed_to_name = ${row.billed_to_name},
-      billed_to_address = ${row.billed_to_address},
-      billed_to_client_number = ${row.billed_to_client_number},
-      payment_bank_name = ${row.payment_bank_name},
-      payment_account_number = ${row.payment_account_number},
-      terms_text = ${row.terms_text},
-      contact_phone = ${row.contact_phone},
-      contact_email = ${row.contact_email},
-      contact_location = ${row.contact_location},
-      line_items = ${sql.json(row.line_items as unknown as postgres.JSONValue)},
-      total = ${row.total},
-      received = ${row.received},
-      remaining = ${row.remaining},
-      storage_key = ${row.storage_key},
-      file_size_bytes = ${row.file_size_bytes}
-    WHERE id = ${row.id}
-  `
+  try {
+    await sql`
+      UPDATE custom_invoices SET
+        invoice_number = ${row.invoice_number},
+        invoice_date = ${row.invoice_date},
+        billed_to_name = ${row.billed_to_name},
+        billed_to_address = ${row.billed_to_address},
+        billed_to_client_number = ${row.billed_to_client_number},
+        payment_bank_name = ${row.payment_bank_name},
+        payment_account_number = ${row.payment_account_number},
+        terms_text = ${row.terms_text},
+        contact_phone = ${row.contact_phone},
+        contact_email = ${row.contact_email},
+        contact_location = ${row.contact_location},
+        line_items = ${sql.json(row.line_items as unknown as postgres.JSONValue)},
+        total = ${row.total},
+        received = ${row.received},
+        remaining = ${row.remaining},
+        storage_key = ${row.storage_key},
+        file_size_bytes = ${row.file_size_bytes},
+        invoice_title_text = ${row.invoice_title_text ?? 'INVOICE'}
+      WHERE id = ${row.id}
+    `
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    if (!message.includes('invoice_title_text')) throw error
+    await sql`
+      UPDATE custom_invoices SET
+        invoice_number = ${row.invoice_number},
+        invoice_date = ${row.invoice_date},
+        billed_to_name = ${row.billed_to_name},
+        billed_to_address = ${row.billed_to_address},
+        billed_to_client_number = ${row.billed_to_client_number},
+        payment_bank_name = ${row.payment_bank_name},
+        payment_account_number = ${row.payment_account_number},
+        terms_text = ${row.terms_text},
+        contact_phone = ${row.contact_phone},
+        contact_email = ${row.contact_email},
+        contact_location = ${row.contact_location},
+        line_items = ${sql.json(row.line_items as unknown as postgres.JSONValue)},
+        total = ${row.total},
+        received = ${row.received},
+        remaining = ${row.remaining},
+        storage_key = ${row.storage_key},
+        file_size_bytes = ${row.file_size_bytes}
+      WHERE id = ${row.id}
+    `
+  }
   return { id: row.id, invoice_number: row.invoice_number }
 }
 

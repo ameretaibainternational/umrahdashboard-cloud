@@ -9,7 +9,9 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { Download, ChevronDown, ChevronUp } from 'lucide-react'
 import { toast } from 'sonner'
 import { getCalc } from '@/lib/calculations'
-import type { Airline, Hotel, VisaSettings, CurrencySettings, TransportRate, RoomType, CalcInput } from '@/lib/types'
+import type { Airline, Hotel, VisaSettings, CurrencySettings, TransportRate, RoomType, CalcInput, ZiaratOption } from '@/lib/types'
+import { DEFAULT_TRANSPORT_VEHICLE, TRANSPORT_VEHICLES, type TransportVehicle } from '@/lib/transport'
+import { ziaratBySlug } from '@/lib/ziarats'
 import {
   BOOK_BEFORE_PREFIX,
   DEFAULT_POSTER_DATA,
@@ -117,6 +119,13 @@ interface Props {
   visa: VisaSettings
   currency: CurrencySettings
   transportRates: TransportRate[]
+  ziarats: ZiaratOption[]
+}
+
+function defaultPosterZiaratIds(ziarats: ZiaratOption[]): string[] {
+  return ['makkah', 'madinah']
+    .map(slug => ziaratBySlug(ziarats, slug as 'makkah' | 'madinah')?.id)
+    .filter((id): id is string => Boolean(id))
 }
 
 export default function UmrahPosterForm({
@@ -126,6 +135,7 @@ export default function UmrahPosterForm({
   visa,
   currency,
   transportRates,
+  ziarats,
 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [data, setData] = useState<UmrahPosterFormData>(DEFAULT_POSTER_DATA)
@@ -134,15 +144,12 @@ export default function UmrahPosterForm({
   const [child, setChild] = useState(0)
   const [infant, setInfant] = useState(0)
   const [airlineId, setAirlineId] = useState(airlines[0]?.id ?? '')
-  const [transportType, setTransportType] = useState<'bus' | 'private'>('bus')
+  const [transportType, setTransportType] = useState<TransportVehicle>(DEFAULT_TRANSPORT_VEHICLE)
   const [makkahHotelId, setMakkahHotelId] = useState(makkahHotels[0]?.id ?? '')
   const [madinahHotelId, setMadinahHotelId] = useState(madinahHotels[0]?.id ?? '')
   const [makkahNights, setMakkahNights] = useState(10)
   const [madinahNights, setMadinahNights] = useState(7)
-  const [makkahZiarat, setMakkahZiarat] = useState(true)
-  const [madinahZiarat, setMadinahZiarat] = useState(true)
-  const [badrZiarat, setBadrZiarat] = useState(false)
-  const [taifZiarat, setTaifZiarat] = useState(false)
+  const [selectedZiaratIds, setSelectedZiaratIds] = useState<string[]>(() => defaultPosterZiaratIds(ziarats))
   const [isRendering, setIsRendering] = useState(false)
   const [isDownloading, setIsDownloading] = useState(false)
   const [logoUrl, setLogoUrl] = useState<string | null>(null)
@@ -212,13 +219,10 @@ export default function UmrahPosterForm({
       sellingOverride: null,
       advance: 0,
       customerName: '',
-      makkahZiarat,
-      madinahZiarat,
-      badrZiarat,
-      taifZiarat,
-      walkingZiarat: false,
+      selectedZiaratIds,
       includeMakkahHotel: true,
       includeMadinahHotel: true,
+      includeTickets: true,
       customTicket: false,
       customTicketLabel: '',
       customTicketPkr: 0,
@@ -239,14 +243,14 @@ export default function UmrahPosterForm({
         makkahRoom: room,
         madinahRoom: room,
       }
-      prices[room] = getCalc(input, transportRates, currency.sar_to_pkr, visa, visa.transport_mode).selling
+      prices[room] = getCalc(input, transportRates, currency.sar_to_pkr, visa, visa.transport_mode, ziarats).selling
     }
 
     return prices
   }, [
     adult, child, infant, airline, transportType, makkahHotel, madinahHotel,
-    makkahNights, madinahNights, makkahZiarat, madinahZiarat, badrZiarat, taifZiarat,
-    transportRates, currency.sar_to_pkr, visa,
+    makkahNights, madinahNights, selectedZiaratIds,
+    transportRates, currency.sar_to_pkr, visa, ziarats,
   ])
 
   useEffect(() => {
@@ -436,31 +440,30 @@ export default function UmrahPosterForm({
               <Label className="text-xs">Transport</Label>
               <select
                 value={transportType}
-                onChange={e => setTransportType(e.target.value as 'bus' | 'private')}
+                onChange={e => setTransportType(e.target.value as TransportVehicle)}
                 className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm"
               >
-                <option value="bus">Bus</option>
-                <option value="private">Private</option>
+                {TRANSPORT_VEHICLES.map(vehicle => (
+                  <option key={vehicle} value={vehicle}>{vehicle}</option>
+                ))}
               </select>
             </div>
           </div>
           <div className="flex flex-wrap gap-4 pt-1">
-            <label className="flex items-center gap-2 cursor-pointer">
-              <Checkbox checked={makkahZiarat} onCheckedChange={v => setMakkahZiarat(Boolean(v))} />
-              <span className="text-xs">Makkah Ziarat</span>
-            </label>
-            <label className="flex items-center gap-2 cursor-pointer">
-              <Checkbox checked={madinahZiarat} onCheckedChange={v => setMadinahZiarat(Boolean(v))} />
-              <span className="text-xs">Madinah Ziarat</span>
-            </label>
-            <label className="flex items-center gap-2 cursor-pointer">
-              <Checkbox checked={badrZiarat} onCheckedChange={v => setBadrZiarat(Boolean(v))} />
-              <span className="text-xs">Badr Ziarat</span>
-            </label>
-            <label className="flex items-center gap-2 cursor-pointer">
-              <Checkbox checked={taifZiarat} onCheckedChange={v => setTaifZiarat(Boolean(v))} />
-              <span className="text-xs">Taif Ziarat</span>
-            </label>
+            {ziarats.map(z => (
+              <label key={z.id} className="flex items-center gap-2 cursor-pointer">
+                <Checkbox
+                  checked={selectedZiaratIds.includes(z.id)}
+                  onCheckedChange={v => {
+                    const checked = Boolean(v)
+                    setSelectedZiaratIds(prev =>
+                      checked ? [...new Set([...prev, z.id])] : prev.filter(id => id !== z.id),
+                    )
+                  }}
+                />
+                <span className="text-xs">{z.name}</span>
+              </label>
+            ))}
           </div>
         </Section>
 
@@ -584,6 +587,26 @@ export default function UmrahPosterForm({
               placeholder="10 March 2026"
               className="h-9"
             />
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label className="text-xs">Contact Number</Label>
+              <Input
+                value={data.contactNumber}
+                onChange={e => setField('contactNumber', e.target.value)}
+                placeholder="+92 300 0000000"
+                className="h-9"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Website URL</Label>
+              <Input
+                value={data.websiteUrl}
+                onChange={e => setField('websiteUrl', e.target.value)}
+                placeholder="www.ameretaiba.com"
+                className="h-9"
+              />
+            </div>
           </div>
         </Section>
 

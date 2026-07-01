@@ -1,4 +1,6 @@
-import type { Airline, Hotel, Booking, Payment, Expense, StaffUser, VisaSettings, CurrencySettings, TransportRate, Company, InvoiceSettings, InvoiceClient, InvoicePaymentMethod, InvoiceService, CustomInvoice, HotelVoucherSettings, HotelVoucherRecord, StorageUsage } from './types'
+import type { Airline, Hotel, Booking, Payment, Expense, StaffUser, VisaSettings, CurrencySettings, TransportRate, Company, InvoiceSettings, InvoiceClient, InvoicePaymentMethod, InvoiceService, CustomInvoice, HotelVoucherSettings, HotelVoucherRecord, StorageUsage, ZiaratOption, HotelContact } from './types'
+import { DEFAULT_TRANSPORT_RATE_SAR, TRANSPORT_VEHICLES, transportServiceName } from './transport'
+import { DEFAULT_ZIARAT_SEED } from './ziarats'
 import { DEFAULT_URDU_FOOTER, DEFAULT_URDU_GUIDELINES } from './hotel-voucher-defaults'
 import { DEFAULT_INVOICE_SETTINGS } from './invoice-defaults'
 import { demoFileStore } from './demo-file-store'
@@ -51,18 +53,27 @@ const DEFAULT_INVOICE_PAYMENT_METHODS: InvoicePaymentMethod[] = [
 const DEFAULT_INVOICE_SERVICES: InvoiceService[] = [
   { id: 'sv1', name: '03 MONTH UMRAH VISA' },
   { id: 'sv2', name: 'UMRAH PACKAGE' },
+  ...TRANSPORT_VEHICLES.map((vehicle, i) => ({
+    id: `sv-transport-${i + 1}`,
+    name: transportServiceName(vehicle),
+  })),
 ]
 
-const DEFAULT_TRANSPORT_RATES: TransportRate[] = [
-  { id: 't1', type: 'bus', pax_count: 1, rate_sar: 750 },
-  { id: 't2', type: 'bus', pax_count: 2, rate_sar: 700 },
-  { id: 't3', type: 'bus', pax_count: 3, rate_sar: 670 },
-  { id: 't4', type: 'bus', pax_count: 4, rate_sar: 650 },
-  { id: 't5', type: 'private', pax_count: 1, rate_sar: 900 },
-  { id: 't6', type: 'private', pax_count: 2, rate_sar: 750 },
-  { id: 't7', type: 'private', pax_count: 3, rate_sar: 700 },
-  { id: 't8', type: 'private', pax_count: 4, rate_sar: 675 },
-]
+const DEFAULT_TRANSPORT_RATES: TransportRate[] = TRANSPORT_VEHICLES.flatMap((type, vi) =>
+  ([1, 2, 3, 4] as const).map((pax_count, pi) => ({
+    id: `t${vi * 4 + pi + 1}`,
+    type,
+    pax_count,
+    rate_sar: DEFAULT_TRANSPORT_RATE_SAR[type][pax_count - 1],
+  }))
+)
+
+const DEFAULT_ZIARATS: ZiaratOption[] = DEFAULT_ZIARAT_SEED.map((seed, i) => ({
+  id: `z${i + 1}`,
+  ...seed,
+}))
+
+const DEFAULT_HOTEL_CONTACTS: HotelContact[] = []
 
 const DEFAULT_VISA: VisaSettings = {
   id: 'v1',
@@ -135,6 +146,8 @@ class DemoStore {
   airlines: Airline[] = [...DEFAULT_AIRLINES]
   hotels: Hotel[] = [...DEFAULT_HOTELS]
   transportRates: TransportRate[] = [...DEFAULT_TRANSPORT_RATES]
+  ziarats: ZiaratOption[] = [...DEFAULT_ZIARATS]
+  hotelContacts: HotelContact[] = [...DEFAULT_HOTEL_CONTACTS]
   visa: VisaSettings = { ...DEFAULT_VISA }
   currency: CurrencySettings = { ...DEFAULT_CURRENCY }
   company: Company = { ...DEFAULT_COMPANY }
@@ -252,6 +265,53 @@ class DemoStore {
     this.invoiceServices = this.invoiceServices.filter(s => s.id !== id)
   }
 
+  upsertZiarat(data: Omit<ZiaratOption, 'id' | 'created_at'> & { id?: string }) {
+    if (data.id) {
+      this.ziarats = this.ziarats.map(z =>
+        z.id === data.id ? { ...z, ...data } : z,
+      )
+    } else {
+      const nextOrder = this.ziarats.reduce((max, z) => Math.max(max, z.sort_order), 0) + 1
+      this.ziarats.push({
+        id: uid(),
+        name: data.name,
+        slug: data.slug ?? null,
+        rate_sar: data.rate_sar,
+        sort_order: data.sort_order || nextOrder,
+        created_at: new Date().toISOString(),
+      })
+    }
+  }
+  deleteZiarat(id: string) {
+    this.ziarats = this.ziarats.filter(z => z.id !== id)
+  }
+
+  upsertHotelContact(data: Omit<HotelContact, 'id' | 'created_at'> & { id?: string }) {
+    if (data.id) {
+      this.hotelContacts = this.hotelContacts.map(c =>
+        c.id === data.id ? { ...c, ...data } : c,
+      )
+    } else {
+      const existing = this.hotelContacts.findIndex(c =>
+        c.name.toLowerCase() === data.name.toLowerCase() && c.city.toLowerCase() === data.city.toLowerCase(),
+      )
+      if (existing >= 0) {
+        this.hotelContacts[existing] = { ...this.hotelContacts[existing], ...data }
+      } else {
+        this.hotelContacts.push({
+          id: uid(),
+          name: data.name,
+          city: data.city,
+          contact_number: data.contact_number,
+          created_at: new Date().toISOString(),
+        })
+      }
+    }
+  }
+  deleteHotelContact(id: string) {
+    this.hotelContacts = this.hotelContacts.filter(c => c.id !== id)
+  }
+
   // Hotels
   upsertHotel(data: Omit<Hotel, 'id'> & { id?: string }) {
     if (data.id) {
@@ -275,6 +335,7 @@ class DemoStore {
   deleteBooking(id: string) {
     this.bookings = this.bookings.filter(b => b.id !== id)
     this.payments = this.payments.filter(p => p.booking_id !== id)
+    this.expenses = this.expenses.filter(e => e.booking_id !== id)
   }
   updateBooking(id: string, data: Partial<Omit<Booking, 'id' | 'created_at' | 'created_by'>>) {
     const booking = this.bookings.find(b => b.id === id)
@@ -291,6 +352,22 @@ class DemoStore {
     if (booking) {
       booking.paid_pkr += data.amount_pkr
       booking.remaining_pkr = Math.max(0, booking.total_pkr - booking.paid_pkr)
+    }
+  }
+
+  /** Ledger entry only — booking totals already set (e.g. advance at booking creation). */
+  addPaymentRecord(data: Omit<Payment, 'id' | 'created_at'>) {
+    const payment: Payment = { ...data, id: uid(), created_at: new Date().toISOString() }
+    this.payments = [payment, ...this.payments]
+    return payment
+  }
+
+  deletePaymentsForBooking(bookingId: string) {
+    this.payments = this.payments.filter(p => p.booking_id !== bookingId)
+    const booking = this.bookings.find(b => b.id === bookingId)
+    if (booking) {
+      booking.paid_pkr = 0
+      booking.remaining_pkr = booking.total_pkr
     }
   }
 
@@ -393,6 +470,8 @@ class DemoStore {
     this.airlines = [...DEFAULT_AIRLINES]
     this.hotels = [...DEFAULT_HOTELS]
     this.transportRates = [...DEFAULT_TRANSPORT_RATES]
+    this.ziarats = [...DEFAULT_ZIARATS]
+    this.hotelContacts = [...DEFAULT_HOTEL_CONTACTS]
     this.visa = { ...DEFAULT_VISA }
     this.currency = { ...DEFAULT_CURRENCY }
     this.company = { ...DEFAULT_COMPANY }
@@ -415,7 +494,7 @@ class DemoStore {
 }
 
 // Bump this whenever DemoStore gains new fields, to force recreation in dev hot-reloads
-const STORE_VERSION = 9
+const STORE_VERSION = 11
 
 const globalStore = globalThis as typeof globalThis & {
   __demoStore?: DemoStore

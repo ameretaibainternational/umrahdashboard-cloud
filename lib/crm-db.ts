@@ -18,6 +18,7 @@ export async function ensureOwnershipColumns(): Promise<void> {
     await sql`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS created_by UUID`
     await sql`ALTER TABLE payments ADD COLUMN IF NOT EXISTS created_by UUID`
     await sql`ALTER TABLE expenses ADD COLUMN IF NOT EXISTS created_by UUID`
+    await sql`ALTER TABLE expenses ADD COLUMN IF NOT EXISTS booking_id UUID REFERENCES bookings(id) ON DELETE CASCADE`
     await sql`ALTER TABLE custom_invoices ADD COLUMN IF NOT EXISTS created_by UUID`
     await sql`ALTER TABLE hotel_vouchers ADD COLUMN IF NOT EXISTS created_by UUID`
     await sql`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS source_invoice_id UUID`
@@ -25,6 +26,7 @@ export async function ensureOwnershipColumns(): Promise<void> {
     await sql`CREATE INDEX IF NOT EXISTS idx_bookings_source_invoice_id ON bookings(source_invoice_id)`
     await sql`CREATE INDEX IF NOT EXISTS idx_payments_created_by ON payments(created_by)`
     await sql`CREATE INDEX IF NOT EXISTS idx_expenses_created_by ON expenses(created_by)`
+    await sql`CREATE INDEX IF NOT EXISTS idx_expenses_booking_id ON expenses(booking_id)`
     await sql`CREATE INDEX IF NOT EXISTS idx_custom_invoices_created_by ON custom_invoices(created_by)`
     await sql`CREATE INDEX IF NOT EXISTS idx_hotel_vouchers_created_by ON hotel_vouchers(created_by)`
     await sql.unsafe(`NOTIFY pgrst, 'reload schema'`)
@@ -79,11 +81,11 @@ export async function fetchBookings(createdBy?: string | null): Promise<Booking[
 
 export async function insertBooking(
   payload: Omit<Booking, 'id' | 'created_at'> & { booking_date?: string },
-): Promise<void> {
+): Promise<string> {
   await ensureOwnershipColumns()
   const sql = requireWriteSql()
   try {
-    await sql`
+    const [row] = await sql<{ id: string }[]>`
       INSERT INTO bookings (
         booking_date, customer_name, airline_name,
         total_pkr, cost_pkr, profit_pkr, advance_pkr, paid_pkr, remaining_pkr,
@@ -103,11 +105,13 @@ export async function insertBooking(
         ${payload.madinah_room_type}, ${payload.madinah_nights},
         ${payload.created_by ?? null}, ${payload.source_invoice_id ?? null}
       )
+      RETURNING id
     `
+    return row.id
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
     if (!message.includes('source_invoice_id')) throw error
-    await sql`
+    const [row] = await sql<{ id: string }[]>`
       INSERT INTO bookings (
         booking_date, customer_name, airline_name,
         total_pkr, cost_pkr, profit_pkr, advance_pkr, paid_pkr, remaining_pkr,
@@ -127,7 +131,9 @@ export async function insertBooking(
         ${payload.madinah_room_type}, ${payload.madinah_nights},
         ${payload.created_by ?? null}
       )
+      RETURNING id
     `
+    return row.id
   }
 }
 
@@ -244,6 +250,14 @@ export async function updateBookingPaidTotals(
   `
 }
 
+export async function deletePaymentsForBooking(bookingId: string): Promise<void> {
+  const sql = requireWriteSql()
+  await sql`DELETE FROM payments WHERE booking_id = ${bookingId}`
+  await sql`
+    UPDATE bookings SET paid_pkr = 0, remaining_pkr = total_pkr WHERE id = ${bookingId}
+  `
+}
+
 export async function fetchPayments(createdBy?: string | null): Promise<Payment[]> {
   const sql = requireSql()
   const rows = await fetchOwnedRows(
@@ -262,17 +276,30 @@ export async function insertExpense(row: {
   method: Expense['method']
   note: string
   expense_date: string
+  booking_id?: string | null
   created_by: string
 }): Promise<void> {
   await ensureOwnershipColumns()
   const sql = requireWriteSql()
-  await sql`
-    INSERT INTO expenses (expense_type, supplier, amount_pkr, method, note, expense_date, created_by)
-    VALUES (
-      ${row.expense_type}, ${row.supplier}, ${row.amount_pkr},
-      ${row.method}, ${row.note}, ${row.expense_date}, ${row.created_by}
-    )
-  `
+  try {
+    await sql`
+      INSERT INTO expenses (expense_type, supplier, amount_pkr, method, note, expense_date, booking_id, created_by)
+      VALUES (
+        ${row.expense_type}, ${row.supplier}, ${row.amount_pkr},
+        ${row.method}, ${row.note}, ${row.expense_date}, ${row.booking_id ?? null}, ${row.created_by}
+      )
+    `
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    if (!message.includes('booking_id')) throw error
+    await sql`
+      INSERT INTO expenses (expense_type, supplier, amount_pkr, method, note, expense_date, created_by)
+      VALUES (
+        ${row.expense_type}, ${row.supplier}, ${row.amount_pkr},
+        ${row.method}, ${row.note}, ${row.expense_date}, ${row.created_by}
+      )
+    `
+  }
 }
 
 export async function fetchExpenses(createdBy?: string | null): Promise<Expense[]> {
@@ -284,6 +311,21 @@ export async function fetchExpenses(createdBy?: string | null): Promise<Expense[
     createdBy,
   )
   return rows.map(r => ({ ...r, amount_pkr: Number(r.amount_pkr) }))
+}
+
+export async function getExpenseOwner(id: string): Promise<string | null | undefined> {
+  await ensureOwnershipColumns()
+  const sql = requireWriteSql()
+  const [row] = await sql<{ created_by: string | null }[]>`
+    SELECT created_by FROM expenses WHERE id = ${id}
+  `
+  if (!row) return undefined
+  return row.created_by
+}
+
+export async function deleteExpenseById(id: string): Promise<void> {
+  const sql = requireWriteSql()
+  await sql`DELETE FROM expenses WHERE id = ${id}`
 }
 
 type InvoiceBookingSnapshot = {

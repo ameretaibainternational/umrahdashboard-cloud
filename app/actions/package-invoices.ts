@@ -29,6 +29,7 @@ type PackageInvoicePayload = {
   contact_phone?: string
   contact_email?: string
   contact_location?: string
+  invoice_title_text?: string
 }
 
 async function persistPackageInvoice(

@@ -1,14 +1,15 @@
 import HotelVoucherForm from '@/components/hotel-voucher/HotelVoucherForm'
-import { getHotelVoucherSettings, getHotelVouchers, getCurrentStaff, getHotels } from '@/lib/db'
+import { getHotelVoucherSettings, getHotelVouchers, getCurrentStaff, getHotels, getHotelContacts } from '@/lib/db'
 import { isAdminPermission } from '@/lib/permissions'
 import { BedDouble } from 'lucide-react'
 
 export default async function HotelVoucherPage() {
-  const [settings, vouchers, staff, hotels] = await Promise.all([
+  const [settings, vouchers, staff, hotels, hotelContacts] = await Promise.all([
     getHotelVoucherSettings(),
     getHotelVouchers(),
     getCurrentStaff(),
     getHotels(),
+    getHotelContacts(),
   ])
 
   const makkahHotels = hotels.filter(h => h.city === 'Makkah')
@@ -33,6 +34,7 @@ export default async function HotelVoucherPage() {
         }}
         makkahHotels={makkahHotels}
         madinahHotels={madinahHotels}
+        hotelContacts={hotelContacts}
         existingVouchers={vouchers}
         canEditGuidelines={!!staff && isAdminPermission(staff.permission)}
       />

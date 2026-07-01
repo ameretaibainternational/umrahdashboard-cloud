@@ -1,4 +1,6 @@
-import type { CustomInvoice, PackageInvoiceData } from '@/lib/types'
+import type { CustomInvoice, PackageInvoiceData, ZiaratOption } from '@/lib/types'
+import { normalizeTransportType } from '@/lib/transport'
+import { resolveSelectedZiaratIds, ziaratLegacyFlags, mergeDefaultZiarats } from '@/lib/ziarats'
 
 export const PACKAGE_DATA_TERMS_PREFIX = '__PKG__:'
 
@@ -19,10 +21,10 @@ export function encodePackageDataInTerms(data: PackageInvoiceData): string {
   return `${PACKAGE_DATA_TERMS_PREFIX}${JSON.stringify(data)}`
 }
 
-export function decodePackageDataFromTerms(terms: string | null | undefined): PackageInvoiceData | null {
+export function decodePackageDataFromTerms(terms: string | null | undefined, ziarats: ZiaratOption[] = []): PackageInvoiceData | null {
   if (!terms?.startsWith(PACKAGE_DATA_TERMS_PREFIX)) return null
   try {
-    return parsePackageInvoiceData(JSON.parse(terms.slice(PACKAGE_DATA_TERMS_PREFIX.length)))
+    return parsePackageInvoiceData(JSON.parse(terms.slice(PACKAGE_DATA_TERMS_PREFIX.length)), ziarats)
   } catch {
     return null
   }
@@ -31,21 +33,24 @@ export function decodePackageDataFromTerms(terms: string | null | undefined): Pa
 export function getPackageDataFromInvoice(inv: {
   package_data?: unknown
   terms_text?: string | null
-}): PackageInvoiceData | null {
-  const fromColumn = parsePackageInvoiceData(inv.package_data)
+}, ziarats: ZiaratOption[] = []): PackageInvoiceData | null {
+  const fromColumn = parsePackageInvoiceData(inv.package_data, ziarats)
   if (fromColumn) return fromColumn
-  return decodePackageDataFromTerms(inv.terms_text)
+  return decodePackageDataFromTerms(inv.terms_text, ziarats)
 }
 
-export function parsePackageInvoiceData(raw: unknown): PackageInvoiceData | null {
+export function parsePackageInvoiceData(raw: unknown, ziarats: ZiaratOption[] = []): PackageInvoiceData | null {
   if (!raw || typeof raw !== 'object') return null
   const d = raw as Record<string, unknown>
+  const list = ziarats.length > 0 ? ziarats : mergeDefaultZiarats([])
+  const selectedZiaratIds = resolveSelectedZiaratIds(d as unknown as PackageInvoiceData, list)
+  const legacy = ziaratLegacyFlags(selectedZiaratIds, list)
   return {
     adult: Number(d.adult ?? 1),
     child: Number(d.child ?? 0),
     infant: Number(d.infant ?? 0),
     airlineId: String(d.airlineId ?? ''),
-    transportType: d.transportType === 'private' ? 'private' : 'bus',
+    transportType: normalizeTransportType(d.transportType),
     makkahHotelId: String(d.makkahHotelId ?? ''),
     makkahRoom: (['room', 'sharing', 'quad', 'triple', 'double'].includes(String(d.makkahRoom))
       ? d.makkahRoom
@@ -61,13 +66,15 @@ export function parsePackageInvoiceData(raw: unknown): PackageInvoiceData | null
     sellingOverride: d.sellingOverride != null ? Number(d.sellingOverride) : null,
     advance: Number(d.advance ?? 0),
     customerName: String(d.customerName ?? ''),
-    makkahZiarat: Boolean(d.makkahZiarat),
-    madinahZiarat: Boolean(d.madinahZiarat),
-    badrZiarat: Boolean(d.badrZiarat),
-    taifZiarat: Boolean(d.taifZiarat),
-    walkingZiarat: Boolean(d.walkingZiarat),
+    selectedZiaratIds,
+    makkahZiarat: legacy.makkahZiarat,
+    madinahZiarat: legacy.madinahZiarat,
+    badrZiarat: legacy.badrZiarat,
+    taifZiarat: legacy.taifZiarat,
+    walkingZiarat: legacy.walkingZiarat,
     includeMakkahHotel: d.includeMakkahHotel !== false,
     includeMadinahHotel: d.includeMadinahHotel !== false,
+    includeTickets: d.includeTickets !== false,
     customTicket: Boolean(d.customTicket),
     customTicketLabel: String(d.customTicketLabel ?? ''),
     customTicketAmount: Number(d.customTicketAmount ?? 0),

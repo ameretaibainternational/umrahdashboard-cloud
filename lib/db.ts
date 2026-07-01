@@ -9,7 +9,24 @@ import { demoStore } from './demo-store'
 import { isAdminPermission } from './permissions'
 import { hasDirectDb, isDirectDbConnectionError, isDirectDbRecoverableError, markDirectDbAuthFailed } from './sql'
 import { parseFlightCities, DEFAULT_PK_FLIGHT_CITIES, DEFAULT_SA_FLIGHT_CITIES } from './flight-cities'
-import type { Airline, Hotel, Booking, Payment, Expense, StaffUser, VisaSettings, CurrencySettings, TransportRate, Company, InvoiceSettings, InvoiceClient, InvoicePaymentMethod, InvoiceService, CustomInvoice, HotelVoucherSettings, HotelVoucherRecord, StorageUsage, StoredFileRow, StaffActivityStats } from './types'
+import type { Airline, Hotel, Booking, Payment, Expense, StaffUser, VisaSettings, CurrencySettings, TransportRate, Company, InvoiceSettings, InvoiceClient, InvoicePaymentMethod, InvoiceService, CustomInvoice, HotelVoucherSettings, HotelVoucherRecord, StorageUsage, StoredFileRow, StaffActivityStats, ZiaratOption, HotelContact } from './types'
+import { DEFAULT_TRANSPORT_RATE_SAR, TRANSPORT_VEHICLES, transportServiceName } from './transport'
+import { mergeDefaultZiarats } from './ziarats'
+import { isPackageInvoice } from './package-invoice'
+
+function mergeTransportRates(rows: TransportRate[]): TransportRate[] {
+  return TRANSPORT_VEHICLES.flatMap((type, vi) =>
+    ([1, 2, 3, 4] as const).map((pax_count, pi) => {
+      const fromDb = rows.find(r => r.type === type && r.pax_count === pax_count)
+      return fromDb ?? {
+        id: `default-${vi}-${pi}`,
+        type,
+        pax_count,
+        rate_sar: DEFAULT_TRANSPORT_RATE_SAR[type][pax_count - 1],
+      }
+    })
+  )
+}
 import { DEFAULT_URDU_FOOTER, DEFAULT_URDU_GUIDELINES } from './hotel-voucher-defaults'
 import { resolveInvoiceSettings } from './invoice-defaults'
 
@@ -136,6 +153,24 @@ export async function getTransportRates(): Promise<TransportRate[]> {
   if (isDemoMode()) return [...demoStore.transportRates]
   const sb = await getSupabase()
   const { data } = await sb.from('transport_rates').select('*').order('type').order('pax_count')
+  return mergeTransportRates(data ?? [])
+}
+
+export async function getZiarats(): Promise<ZiaratOption[]> {
+  if (isDemoMode()) {
+    return [...demoStore.ziarats].sort((a, b) => a.sort_order - b.sort_order || a.name.localeCompare(b.name))
+  }
+  const sb = await getSupabase()
+  const { data } = await sb.from('ziarats').select('*').order('sort_order').order('name')
+  return mergeDefaultZiarats((data ?? []) as ZiaratOption[])
+}
+
+export async function getHotelContacts(): Promise<HotelContact[]> {
+  if (isDemoMode()) {
+    return [...demoStore.hotelContacts].sort((a, b) => a.city.localeCompare(b.city) || a.name.localeCompare(b.name))
+  }
+  const sb = await getSupabase()
+  const { data } = await sb.from('hotel_contacts').select('*').order('city').order('name')
   return data ?? []
 }
 
@@ -155,19 +190,51 @@ export async function getCompany(): Promise<Company> {
 
 // ── Bookings ──────────────────────────────────────────────────────────────────
 
+function attachInvoiceNumbers(bookings: Booking[], invoices: CustomInvoice[]): Booking[] {
+  const byId = new Map(invoices.map(inv => [inv.id, inv.invoice_number]))
+  const fallbackByBookingId = new Map<string, string>()
+
+  for (const inv of invoices) {
+    if (!isPackageInvoice(inv)) continue
+    if (bookings.some(b => b.source_invoice_id === inv.id)) continue
+
+    const match = bookings.find(b =>
+      !fallbackByBookingId.has(b.id) &&
+      b.customer_name === inv.billed_to_name &&
+      b.total_pkr === inv.total &&
+      b.booking_date === inv.invoice_date,
+    )
+    if (match) fallbackByBookingId.set(match.id, inv.invoice_number)
+  }
+
+  return bookings.map(b => ({
+    ...b,
+    invoice_number:
+      (b.source_invoice_id ? (byId.get(b.source_invoice_id) ?? null) : null)
+      ?? fallbackByBookingId.get(b.id)
+      ?? null,
+  }))
+}
+
 export async function getBookings(): Promise<Booking[]> {
   const ownerId = await getOwnerFilter()
-  if (isDemoMode()) return filterByOwner([...demoStore.bookings], ownerId)
-  return withDirectDbFallback(
-    async () => {
-      const { fetchBookings } = await import('@/lib/crm-db')
-      return fetchBookings(ownerId)
-    },
-    async () => {
-      const rows = await supabaseSelectAll<Booking>('bookings')
-      return filterByOwner(rows, ownerId)
-    },
-  )
+  let bookings: Booking[]
+  if (isDemoMode()) {
+    bookings = filterByOwner([...demoStore.bookings], ownerId)
+  } else {
+    bookings = await withDirectDbFallback(
+      async () => {
+        const { fetchBookings } = await import('@/lib/crm-db')
+        return fetchBookings(ownerId)
+      },
+      async () => {
+        const rows = await supabaseSelectAll<Booking>('bookings')
+        return filterByOwner(rows, ownerId)
+      },
+    )
+  }
+  const invoices = await getCustomInvoices()
+  return attachInvoiceNumbers(bookings, invoices)
 }
 
 export async function findBookingForCustomInvoice(
@@ -309,12 +376,22 @@ export async function getInvoicePaymentMethods(): Promise<InvoicePaymentMethod[]
 }
 
 export async function getInvoiceServices(): Promise<InvoiceService[]> {
+  const transportDefaults = TRANSPORT_VEHICLES.map((vehicle, i) => ({
+    id: `default-transport-${i}`,
+    name: transportServiceName(vehicle),
+  }))
   if (isDemoMode()) {
     return [...demoStore.invoiceServices].sort((a, b) => a.name.localeCompare(b.name))
   }
   const sb = await getSupabase()
   const { data } = await sb.from('invoice_services').select('*').order('name')
-  return data ?? []
+  const rows = data ?? []
+  const names = new Set(rows.map(r => r.name))
+  const merged = [
+    ...rows,
+    ...transportDefaults.filter(s => !names.has(s.name)),
+  ]
+  return merged.sort((a, b) => a.name.localeCompare(b.name))
 }
 
 // ── Hotel Voucher Settings ─────────────────────────────────────────────────────
