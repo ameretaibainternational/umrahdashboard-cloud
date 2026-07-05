@@ -1,0 +1,250 @@
+================================================================================
+  AMERE TAIBA INTERNATIONAL — UMRAH CRM
+  HOTEL VOUCHER QR CODE VERIFICATION
+
+
+================================================================================
+1. WHAT IS THIS FEATURE?
+================================================================================
+
+When your staff creates a Hotel Voucher in the CRM and downloads the PDF, a QR
+code will be printed on the voucher (usually on the first page, near the voucher
+details).
+
+When a customer, hotel, transport company, or anyone else scans that QR code
+with their phone camera or a QR scanner app, they will be taken to a special
+web page on your website. That page will instantly show:
+
+  • Whether the voucher is VALID or NOT VALID
+  • Key booking details (if valid) — so they can confirm the booking is genuine
+
+This helps hotels and partners trust that the voucher was really issued by
+Amere Taiba International, and reduces fake or edited vouchers.
+
+
+================================================================================
+2. HOW IT WORKS — STEP BY STEP
+================================================================================
+
+FOR YOUR STAFF (Inside the CRM)
+--------------------------------
+
+Step 1 — Create the voucher as you do today
+  • Open Hotel Voucher in the CRM
+  • Fill in family head name, pilgrims, hotel details, dates, contacts, etc.
+
+Step 2 — Save & Download
+  • Click "Save & Download" as usual
+  • The CRM saves the voucher in the database and generates the PDF
+
+Step 3 — QR code is added automatically
+  • Each saved voucher gets a unique secure link
+  • That link is turned into a QR code and placed on the PDF
+  • You do NOT need to create the QR code manually — it is automatic
+
+Step 4 — Send or print the voucher
+  • Give the PDF to the customer, hotel, or transport company as you do now
+  • The QR code goes with the voucher on the printed or shared PDF
+
+
+FOR THE PERSON SCANNING THE QR CODE (Customer / Hotel / Partner)
+-----------------------------------------------------------------
+
+Step 1 — Scan the QR code
+  • Use iPhone Camera, Android Camera, or any QR scanner app
+  • Point the camera at the QR code on the voucher PDF (printed or on screen)
+
+Step 2 — Browser opens automatically
+  • The phone opens a web page on your site (no login required for the scanner)
+  • Example address:
+      https://ameretaiba.netlify.app/verify/voucher/xxxxxxxx
+
+Step 3 — See the result
+  • If VALID   → Green message + voucher details shown below
+  • If INVALID → Red message (voucher not found, revoked, or link incorrect)
+
+
+================================================================================
+3. WHAT WILL THE VERIFICATION PAGE SHOW?
+================================================================================
+
+WHEN THE VOUCHER IS VALID
+---------------------------
+The page will show something like:
+
+  ✓  Verified Hotel Voucher
+  ✓  Issued by Amere Taiba International
+
+  Voucher Number     : HV-027
+  Reference No       : (as entered in CRM)
+  Voucher Date       : (date on voucher)
+  Family Head        : (name)
+  Package Info       : (package description)
+
+  Accommodation summary:
+  • Hotel name, city, room type, check-in, check-out, nights
+
+  Pilgrim summary:
+  • Number of pilgrims / pax (full passport list can be limited for privacy —
+    see Section 5 below)
+
+  Status             : Active / Valid
+
+
+WHEN THE VOUCHER IS NOT VALID
+------------------------------
+The page will show something like:
+
+  ✗  Voucher Not Valid
+
+  Possible reasons:
+  • Voucher was never issued through your CRM
+  • Link is wrong or tampered with
+  • Voucher was cancelled / revoked by admin (if you use this option later)
+  • Voucher has expired (optional — e.g. after last check-out date)
+
+No sensitive internal CRM data is shown when invalid — only a clear
+"not valid" message.
+
+
+================================================================================
+4. WHY THIS IS SECURE
+================================================================================
+
+Each voucher gets a unique ID and a secret verification code (token). The QR
+code link includes both. Someone cannot simply guess random numbers and see
+other people's vouchers.
+
+  • Only vouchers saved in YOUR CRM database can show as valid
+  • The verification page is read-only — scanners cannot edit bookings
+  • Staff still need to log in to the CRM to create or change vouchers
+  • The public page only shows what you choose to display (not your full CRM)
+
+Optional later: Admin can "Revoke" a voucher so even a real QR code shows
+"Not Valid" if a voucher is cancelled or reissued.
+
+
+================================================================================
+5. WHAT DETAILS TO SHOW PUBLICLY (Client Decision)
+================================================================================
+
+Before development, please confirm how much detail you want on the public
+verification page:
+
+OPTION A — Summary only (Recommended for privacy)
+  • Voucher number, family head, dates, hotel names, room types, pax count
+  • Does NOT show full passport numbers on the public page
+
+OPTION B — Full details
+  • Everything on the voucher including pilgrim names, passport numbers, PNR,
+    visa numbers (if enabled on voucher)
+
+OPTION C — Custom mix
+  • You tell us exactly which fields to show and which to hide
+
+Please reply with Option A, B, or C (or your own list).
+
+
+================================================================================
+6. TECHNICAL PROCESS (How We Will Build It — Simple Explanation)
+================================================================================
+
+This feature does NOT exist in the CRM yet. Here is what will be added:
+
+  1. Database update
+     • Store a secure verification token with each hotel voucher when saved
+
+  2. QR code on PDF
+     • When the voucher PDF is generated, embed a QR code linking to your
+       verification page
+
+  3. Public verification page
+     • New page on your website: /verify/voucher/...
+     • Works without login — anyone with the QR link can open it
+
+  4. Server check
+     • When someone opens the link, the server checks the database
+     • Returns valid + details, or invalid
+
+  5. Middleware update
+     • Allow the verification page to be public (today everything requires login)
+
+Estimated development time: about 1–2 days for a first working version.
+
+
+================================================================================
+7. WHAT STAYS THE SAME FOR YOUR TEAM
+================================================================================
+
+  • Same Hotel Voucher form — no extra steps for daily use
+  • Same Save & Download button
+  • Same PDF design (with QR code added in an agreed position)
+  • Same saved voucher list in the CRM
+  • Vouchers already saved before this feature will NOT have QR codes unless
+    you re-save or we run a one-time update (optional)
+
+
+================================================================================
+8. REQUIREMENTS FROM CLIENT BEFORE WE START
+================================================================================
+
+Please confirm:
+
+  [ ]  Yes, proceed with QR verification on hotel voucher PDFs
+
+  [ ]  Which details to show on public page (Section 5 — Option A / B / C)
+
+  [ ]  Where to place QR on PDF (e.g. top-right of page 1, bottom corner)
+
+  [ ]  Should voucher become "invalid" automatically after check-out date?
+       (Yes / No)
+
+  [ ]  Do you need an admin "Revoke voucher" button in CRM? (Yes / No — can
+       add in phase 2)
+
+  [ ]  Confirm production URL for QR links (e.g. etaiba.netlify.app)
+
+
+================================================================================
+9. EXAMPLE USER JOURNEY (Short Summary for Client)
+================================================================================
+
+  Staff creates voucher in CRM → Saves PDF with QR code → Customer receives PDF
+  → Hotel scans QR → Website opens → "Verified" + booking details shown
+  → Hotel confirms booking is genuine.
+
+  Fake voucher (no QR or wrong QR) → Scan fails or shows "Not Valid" → Hotel
+  can reject or contact your office.
+
+
+================================================================================
+10. QUESTIONS & ANSWERS
+================================================================================
+
+Q: Does the customer need the CRM login to scan?
+A: No. Scanning only opens a public verification page.
+
+Q: Does it work on iPhone and Android?
+A: Yes. Any phone with a camera and internet can scan QR codes.
+
+Q: What if the PDF is printed in black and white?
+A: QR codes work in black and white print as long as the print is clear.
+
+Q: What if someone forwards the PDF to another person?
+A: They can scan it too — it still shows the same valid/invalid result. The
+   link proves the voucher was issued by you, not who currently holds the PDF.
+
+Q: Can we add QR to Custom Invoices or Package Invoices too?
+A: Yes, same system can be extended later. This proposal is for Hotel Vouchers
+   first.
+
+Q: Is there an extra monthly cost?
+A: No significant new service cost — uses your existing Netlify site and
+   Supabase database. Only development time to build the feature.
+
+
+================================================================================
+END OF DOCUMENT
+================================================================================
+
+For questions or to approve development, reply with your choices in Section 8.

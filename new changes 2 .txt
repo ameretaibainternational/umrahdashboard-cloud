@@ -1,0 +1,6 @@
+In the downloaded invoices, the items of rows of table are not aligned to easch other horizontally center as marked in attached screenshot with the prompt. fix it
+
+When i click on save and download invoice in package calculator, it saves the booking in bookings using invoice id starting from 15__, however, if i just click on save booking, it shows invoice id INV-D72CFBD4 like random , fix it too
+
+we have added a dropdown on Hotel Contact fields on Hotel voucer page and it gets data from settings what we feed in settings and then select. do the same for Makkah transport contact, Madina Transport contact and Jeddah transport contact, make them dropdowns and pull the data from settings just like hotel contacts.
+
