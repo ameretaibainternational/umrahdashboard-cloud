@@ -97,6 +97,8 @@ export interface UmrahPosterFormData {
   airplaneHeight: number
 }
 
+
+
 export const BOOK_BEFORE_PREFIX = 'Book Before'
 
 export const DEFAULT_POSTER_DATA: UmrahPosterFormData = {
