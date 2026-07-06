@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
-import { Download, ChevronDown, ChevronUp } from 'lucide-react'
+import { Download, ChevronDown, ChevronUp, RotateCcw } from 'lucide-react'
 import { toast } from 'sonner'
 import { getCalc } from '@/lib/calculations'
 import type { Airline, Hotel, VisaSettings, CurrencySettings, TransportRate, RoomType, CalcInput, ZiaratOption } from '@/lib/types'
@@ -122,6 +122,7 @@ interface ColorPickerProps {
 
 function ColorPicker({ label = 'Color', value, defaultValue, onChange }: ColorPickerProps) {
   const color = value || defaultValue
+  const hasChanged = value !== undefined && value !== null && value.toLowerCase() !== defaultValue.toLowerCase()
   return (
     <div className="space-y-1 shrink-0">
       <Label className="text-xs">{label}</Label>
@@ -152,6 +153,18 @@ function ColorPicker({ label = 'Color', value, defaultValue, onChange }: ColorPi
           placeholder={defaultValue}
           maxLength={7}
         />
+        {hasChanged && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            onClick={() => onChange(defaultValue)}
+            className="w-8 h-9 shrink-0 hover:bg-destructive/10 hover:text-destructive text-muted-foreground"
+            title="Reset to default color"
+          >
+            <RotateCcw className="w-3.5 h-3.5" />
+          </Button>
+        )}
       </div>
     </div>
   )
@@ -762,8 +775,28 @@ export default function UmrahPosterForm({
           <div className="flex gap-2 items-start">
             <div className="flex-1 space-y-3">
               <div className="space-y-1.5">
-                <Label className="text-xs">Makkah Hotel Name</Label>
-                {makkahHotels.length > 0 ? (
+                <Label className="text-xs">Makkah Hotel Label</Label>
+                <Input
+                  value={data.makkahHotelLabel !== undefined ? data.makkahHotelLabel : 'Makkah Hotel:'}
+                  onChange={e => setField('makkahHotelLabel', e.target.value)}
+                  placeholder="Makkah Hotel:"
+                  className="h-9"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between gap-2">
+                  <Label className="text-xs">Makkah Hotel Name</Label>
+                  {makkahHotels.length > 0 && (
+                    <label className="flex items-center gap-1.5 cursor-pointer select-none">
+                      <Checkbox
+                        checked={!!data.makkahCustomName}
+                        onCheckedChange={v => setField('makkahCustomName', Boolean(v))}
+                      />
+                      <span className="text-[10px] font-medium text-muted-foreground">Custom Name</span>
+                    </label>
+                  )}
+                </div>
+                {makkahHotels.length > 0 && !data.makkahCustomName ? (
                   <select
                     value={makkahHotels.find(h => h.name === data.makkahHotelName)?.id ?? makkahHotelId}
                     onChange={e => handleMakkahHotelSelect(e.target.value)}
@@ -802,8 +835,28 @@ export default function UmrahPosterForm({
           <div className="flex gap-2 items-start">
             <div className="flex-1 space-y-3">
               <div className="space-y-1.5">
-                <Label className="text-xs">Madina Hotel Name</Label>
-                {madinahHotels.length > 0 ? (
+                <Label className="text-xs">Madina Hotel Label</Label>
+                <Input
+                  value={data.madinaHotelLabel !== undefined ? data.madinaHotelLabel : 'Madina Hotel:'}
+                  onChange={e => setField('madinaHotelLabel', e.target.value)}
+                  placeholder="Madina Hotel:"
+                  className="h-9"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between gap-2">
+                  <Label className="text-xs">Madina Hotel Name</Label>
+                  {madinahHotels.length > 0 && (
+                    <label className="flex items-center gap-1.5 cursor-pointer select-none">
+                      <Checkbox
+                        checked={!!data.madinaCustomName}
+                        onCheckedChange={v => setField('madinaCustomName', Boolean(v))}
+                      />
+                      <span className="text-[10px] font-medium text-muted-foreground">Custom Name</span>
+                    </label>
+                  )}
+                </div>
+                {madinahHotels.length > 0 && !data.madinaCustomName ? (
                   <select
                     value={madinahHotels.find(h => h.name === data.madinaHotelName)?.id ?? madinahHotelId}
                     onChange={e => handleMadinahHotelSelect(e.target.value)}
@@ -877,22 +930,89 @@ export default function UmrahPosterForm({
 
           <div className="flex gap-2 items-start">
             <div className="flex-1 space-y-3">
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1.5">
-                  <Label className="text-xs">Sharing</Label>
-                  <Input value={data.sharingPrice} onChange={e => setField('sharingPrice', e.target.value)} className="h-9" />
+              <div className="space-y-3">
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <Label className="text-[10px] text-muted-foreground">Sharing Label</Label>
+                    <Input
+                      value={data.sharingLabel !== undefined ? data.sharingLabel : 'Sharing: '}
+                      onChange={e => setField('sharingLabel', e.target.value)}
+                      placeholder="Sharing: "
+                      className="h-9 text-xs"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-[10px] text-muted-foreground">Sharing Price</Label>
+                    <Input
+                      value={data.sharingPrice}
+                      onChange={e => setField('sharingPrice', e.target.value)}
+                      placeholder="Price"
+                      className="h-9 text-xs"
+                    />
+                  </div>
                 </div>
-                <div className="space-y-1.5">
-                  <Label className="text-xs">Quad</Label>
-                  <Input value={data.quadPrice} onChange={e => setField('quadPrice', e.target.value)} className="h-9" />
+
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <Label className="text-[10px] text-muted-foreground">Quad Label</Label>
+                    <Input
+                      value={data.quadLabel !== undefined ? data.quadLabel : 'Quad: '}
+                      onChange={e => setField('quadLabel', e.target.value)}
+                      placeholder="Quad: "
+                      className="h-9 text-xs"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-[10px] text-muted-foreground">Quad Price</Label>
+                    <Input
+                      value={data.quadPrice}
+                      onChange={e => setField('quadPrice', e.target.value)}
+                      placeholder="Price"
+                      className="h-9 text-xs"
+                    />
+                  </div>
                 </div>
-                <div className="space-y-1.5">
-                  <Label className="text-xs">Triple</Label>
-                  <Input value={data.triplePrice} onChange={e => setField('triplePrice', e.target.value)} className="h-9" />
+
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <Label className="text-[10px] text-muted-foreground">Triple Label</Label>
+                    <Input
+                      value={data.tripleLabel !== undefined ? data.tripleLabel : 'Triple: '}
+                      onChange={e => setField('tripleLabel', e.target.value)}
+                      placeholder="Triple: "
+                      className="h-9 text-xs"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-[10px] text-muted-foreground">Triple Price</Label>
+                    <Input
+                      value={data.triplePrice}
+                      onChange={e => setField('triplePrice', e.target.value)}
+                      placeholder="Price"
+                      className="h-9 text-xs"
+                    />
+                  </div>
                 </div>
-                <div className="space-y-1.5">
-                  <Label className="text-xs">Double</Label>
-                  <Input value={data.doublePrice} onChange={e => setField('doublePrice', e.target.value)} className="h-9" />
+
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <Label className="text-[10px] text-muted-foreground">Double Label</Label>
+                    <Input
+                      value={data.doubleLabel !== undefined ? data.doubleLabel : 'Double: '}
+                      onChange={e => setField('doubleLabel', e.target.value)}
+                      placeholder="Double: "
+                      className="h-9 text-xs"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-[10px] text-muted-foreground">Double Price</Label>
+                    <Input
+                      value={data.doublePrice}
+                      onChange={e => setField('doublePrice', e.target.value)}
+                      placeholder="Price"
+                      className="h-9 text-xs"
+                    />
+                  </div>
                 </div>
               </div>
             </div>

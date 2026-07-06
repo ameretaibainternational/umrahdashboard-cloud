@@ -162,6 +162,14 @@ async function captureUrduPage(
     scrollX: 0,
     scrollY: 0,
     onclone: (clonedDoc: Document) => {
+      // Copy preloaded fonts to cloned document to fix web fonts in iframe
+      document.fonts.forEach(font => {
+        try {
+          clonedDoc.fonts.add(font)
+        } catch (e) {
+          console.error('Failed to copy font to cloned doc:', e)
+        }
+      })
       // Keep Urdu font rules; only strip app stylesheets that break html2canvas (lab colors)
       clonedDoc.querySelectorAll('style, link[rel="stylesheet"]').forEach(node => node.remove())
       injectUrduPdfStyles(clonedDoc)
@@ -210,7 +218,7 @@ function calcCheckOut(checkIn: string, nights: string): string {
 }
 
 function hotelLabel(h: Hotel) {
-  return `${h.name} · ${h.distance}`
+  return `${h.name} | ${h.distance}`
 }
 
 function hotelsForCity(city: string, makkahHotels: Hotel[], madinahHotels: Hotel[]): Hotel[] {
@@ -228,9 +236,10 @@ const DEFAULT_DATA: VoucherData = {
   voucherNo: '',
   referenceNo: '',
   date: new Date().toISOString().slice(0, 10),
-  packageInfo: '',
+  packageInfo: 'Room (30) Nights',
   familyHead: '',
   companyName: 'Amere Taiba International',
+  companyField: 'Amere Taiba International',
   pilgrims: [emptyPilgrim()],
   accommodations: [emptyAccommodation(), { ...emptyAccommodation(), id: uid(), city: 'Madina' }],
   makkahHotelContact: '',
@@ -334,7 +343,7 @@ export default function HotelVoucherForm({
   const [hotelSelections, setHotelSelections] = useState<Record<string, string>>({})
   const [newHotelForAccommodationId, setNewHotelForAccommodationId] = useState<string | null>(null)
   const [isSavingHotel, startHotelTransition] = useTransition()
-  const [logoUrl, setLogoUrl] = useState<string | null>(null)
+  const [logoUrl, setLogoUrl] = useState<string | null>('/logo-for-invoice.png')
   const [logoSize, setLogoSize] = useState(DEFAULT_VOUCHER_LOGO_SIZE)
   const [logoX, setLogoX] = useState(DEFAULT_VOUCHER_LOGO_X)
   const [logoY, setLogoY] = useState(DEFAULT_VOUCHER_LOGO_Y)
@@ -535,7 +544,7 @@ export default function HotelVoucherForm({
         const city = formData.get('city') as string
         const name = (formData.get('name') as string).trim()
         const distance = (formData.get('distance') as string) || ''
-        updateAccommodation(accommodationId, { hotelName: `${name} · ${distance}` })
+        updateAccommodation(accommodationId, { hotelName: `${name} | ${distance}` })
       }
     })
   }
@@ -846,801 +855,813 @@ export default function HotelVoucherForm({
 
   return (
     <div className="space-y-6">
-    <div className="flex flex-col xl:flex-row gap-6">
+      <div className="flex flex-col xl:flex-row gap-6">
 
-      {/* ── LEFT: Form ──────────────────────────────────────────────────────── */}
-      <div className="hvf-form xl:w-[46%] shrink-0 space-y-4">
+        {/* ── LEFT: Form ──────────────────────────────────────────────────────── */}
+        <div className="hvf-form xl:w-[46%] shrink-0 space-y-4">
 
-        {/* Voucher Info */}
-        <Section title="Voucher Information">
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1 min-w-0">
-              <Label className="text-xs">Voucher No</Label>
-              <Input placeholder="1502" value={data.voucherNo}
-                onChange={e => setField('voucherNo', e.target.value)} className="h-8 text-sm" />
+          {/* Voucher Info */}
+          <Section title="Voucher Information">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1 min-w-0">
+                <Label className="text-xs">Voucher No</Label>
+                <Input placeholder="1502" value={data.voucherNo}
+                  onChange={e => setField('voucherNo', e.target.value)} className="h-8 text-sm" />
+              </div>
+              <div className="space-y-1 min-w-0">
+                <Label className="text-xs">Reference No</Label>
+                <Input placeholder="ATT-1502" value={data.referenceNo}
+                  onChange={e => setField('referenceNo', e.target.value)} className="h-8 text-sm" />
+              </div>
+              <div className="space-y-1 col-span-2 sm:col-span-1 min-w-0">
+                <Label className="text-xs">Date</Label>
+                <Input type="date" value={data.date}
+                  onChange={e => setField('date', e.target.value)} className="h-8 text-sm" />
+              </div>
+              <div className="space-y-1 col-span-2 sm:col-span-1 min-w-0">
+                <Label className="text-xs">Family Head (Name)</Label>
+                <Input placeholder="SHAKIL AHMAD" value={data.familyHead}
+                  onChange={e => setField('familyHead', e.target.value)} className="h-8 text-sm" />
+              </div>
+              <div className="space-y-1 col-span-2 min-w-0">
+                <Label className="text-xs">Package Info</Label>
+                <Input placeholder="Room (30) Nights" value={data.packageInfo}
+                  onChange={e => setField('packageInfo', e.target.value)} className="h-8 text-sm" />
+              </div>
+              <div className="space-y-1 col-span-2 min-w-0">
+                <Label className="text-xs">Company Name (header on voucher)</Label>
+                <Input placeholder="Amere Taiba International" value={data.companyName}
+                  onChange={e => setField('companyName', e.target.value)} className="h-8 text-sm" />
+              </div>
+              <div className="space-y-1 col-span-2 min-w-0">
+                <Label className="text-xs">Company Name (metadata table field)</Label>
+                <Input placeholder="Amere Taiba International" value={data.companyField !== undefined ? data.companyField : 'Amere Taiba International'}
+                  onChange={e => setField('companyField', e.target.value)} className="h-8 text-sm" />
+              </div>
             </div>
-            <div className="space-y-1 min-w-0">
-              <Label className="text-xs">Reference No</Label>
-              <Input placeholder="ATT-1502" value={data.referenceNo}
-                onChange={e => setField('referenceNo', e.target.value)} className="h-8 text-sm" />
-            </div>
-            <div className="space-y-1 col-span-2 sm:col-span-1 min-w-0">
-              <Label className="text-xs">Date</Label>
-              <Input type="date" value={data.date}
-                onChange={e => setField('date', e.target.value)} className="h-8 text-sm" />
-            </div>
-            <div className="space-y-1 col-span-2 sm:col-span-1 min-w-0">
-              <Label className="text-xs">Family Head (Name)</Label>
-              <Input placeholder="SHAKIL AHMAD" value={data.familyHead}
-                onChange={e => setField('familyHead', e.target.value)} className="h-8 text-sm" />
-            </div>
-            <div className="space-y-1 col-span-2 min-w-0">
-              <Label className="text-xs">Package Info</Label>
-              <Input placeholder="Room (30) Nights" value={data.packageInfo}
-                onChange={e => setField('packageInfo', e.target.value)} className="h-8 text-sm" />
-            </div>
-          </div>
-        </Section>
+          </Section>
 
-        {/* Pilgrims */}
-        <Section title="Pilgrims Details">
-          <div className="space-y-3">
-            {data.pilgrims.map((p, i) => (
-              <div key={p.id} className="border rounded-md p-3 space-y-2 relative bg-muted/30">
-                <div className="flex items-center justify-between mb-1">
-                  <span className="text-xs font-semibold text-muted-foreground">Pilgrim {i + 1}</span>
-                  {data.pilgrims.length > 1 && (
-                    <button onClick={() => removePilgrim(p.id)}
-                      className="text-destructive hover:text-destructive/80 transition-colors">
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  )}
-                </div>
-                <div className="grid grid-cols-2 gap-2">
-                  <div className="space-y-1 col-span-2">
-                    <Label className="text-xs">Mutamer Name</Label>
-                    <Input placeholder="Full name" value={p.name}
-                      onChange={e => updatePilgrim(p.id, { name: e.target.value })}
-                      className="h-7 text-xs" />
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs">Passport No</Label>
-                    <Input placeholder="AB1234567" value={p.passportNo}
-                      onChange={e => updatePilgrim(p.id, { passportNo: e.target.value })}
-                      className="h-7 text-xs" />
-                  </div>
-                  <div className="space-y-1">
-                    <div className="flex items-center justify-between gap-2">
-                      <Label className="text-xs">Visa Number</Label>
-                      {i === 0 && (
-                        <label className="flex items-center gap-1.5 cursor-pointer select-none shrink-0">
-                          <Checkbox
-                            checked={data.showVisaNumber}
-                            onCheckedChange={v => setField('showVisaNumber', Boolean(v))}
-                          />
-                          <span className="text-xs font-medium">Show</span>
-                        </label>
-                      )}
-                    </div>
-                    {data.showVisaNumber && (
-                      <Input placeholder="Visa No" value={p.visaNumber}
-                        onChange={e => updatePilgrim(p.id, { visaNumber: e.target.value })}
-                        className="h-7 text-xs" />
+          {/* Pilgrims */}
+          <Section title="Pilgrims Details">
+            <div className="space-y-3">
+              {data.pilgrims.map((p, i) => (
+                <div key={p.id} className="border rounded-md p-3 space-y-2 relative bg-muted/30">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-xs font-semibold text-muted-foreground">Pilgrim {i + 1}</span>
+                    {data.pilgrims.length > 1 && (
+                      <button onClick={() => removePilgrim(p.id)}
+                        className="text-destructive hover:text-destructive/80 transition-colors">
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
                     )}
                   </div>
                   <div className="grid grid-cols-2 gap-2">
-                    <div className="space-y-1">
-                      <Label className="text-xs">Pax</Label>
-                      <Input type="number" min="1" value={p.pax}
-                        onChange={e => updatePilgrim(p.id, { pax: e.target.value })}
+                    <div className="space-y-1 col-span-2">
+                      <Label className="text-xs">Mutamer Name</Label>
+                      <Input placeholder="Full name" value={p.name}
+                        onChange={e => updatePilgrim(p.id, { name: e.target.value })}
                         className="h-7 text-xs" />
                     </div>
                     <div className="space-y-1">
-                      <Label className="text-xs">Beds</Label>
-                      <Input type="number" min="1" value={p.beds}
-                        onChange={e => updatePilgrim(p.id, { beds: e.target.value })}
+                      <Label className="text-xs">Passport No</Label>
+                      <Input placeholder="AB1234567" value={p.passportNo}
+                        onChange={e => updatePilgrim(p.id, { passportNo: e.target.value })}
                         className="h-7 text-xs" />
                     </div>
-                  </div>
-                </div>
-              </div>
-            ))}
-            <Button type="button" variant="outline" size="sm" onClick={addPilgrim}
-              className="w-full h-8 text-xs gap-1.5 border-dashed">
-              <Plus className="w-3.5 h-3.5" /> Add Pilgrim
-            </Button>
-          </div>
-        </Section>
-
-        {/* Accommodations */}
-        <Section title="Accommodation Details">
-          <div className="space-y-3">
-            {data.accommodations.map((a, i) => {
-              const cityHotels = hotelsForCity(a.city, makkahHotels, madinahHotels)
-              const selectedHotelId = hotelSelections[a.id] || resolveHotelId(a.hotelName, cityHotels)
-              const useHotelDropdown = a.city === 'Makkah' || a.city === 'Madina'
-
-              return (
-              <div key={a.id} className="border rounded-md p-3 space-y-2 bg-muted/30">
-                <div className="flex items-center justify-between mb-1">
-                  <span className="text-xs font-semibold text-muted-foreground">Hotel {i + 1}</span>
-                  {data.accommodations.length > 1 && (
-                    <button onClick={() => removeAccommodation(a.id)}
-                      className="text-destructive hover:text-destructive/80 transition-colors">
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  )}
-                </div>
-                <div className="grid grid-cols-2 gap-2">
-                  <div className="space-y-1">
-                    <Label className="text-xs">City</Label>
-                    <select value={a.city}
-                      onChange={e => handleAccommodationCityChange(a.id, e.target.value)}
-                      className="h-7 text-xs w-full rounded-md border border-input bg-background px-2">
-                      <option value="Makkah">Makkah</option>
-                      <option value="Madina">Madina</option>
-                      <option value="Jeddah">Jeddah</option>
-                      <option value="Other">Other</option>
-                    </select>
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs">Confirmation No</Label>
-                    <Input placeholder="CONF-001" value={a.confirmNo}
-                      onChange={e => updateAccommodation(a.id, { confirmNo: e.target.value })}
-                      className="h-7 text-xs" />
-                  </div>
-                  <div className="space-y-1 col-span-2">
-                    <div className="flex items-center justify-between gap-2">
-                      <Label className="text-xs">Hotel Name</Label>
-                      {useHotelDropdown && (
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          className="h-6 text-[10px] px-2"
-                          onClick={() => setNewHotelForAccommodationId(a.id)}
-                        >
-                          <Plus className="w-3 h-3 mr-1" /> New Hotel
-                        </Button>
+                    <div className="space-y-1">
+                      <div className="flex items-center justify-between gap-2">
+                        <Label className="text-xs">Visa Number</Label>
+                        {i === 0 && (
+                          <label className="flex items-center gap-1.5 cursor-pointer select-none shrink-0">
+                            <Checkbox
+                              checked={data.showVisaNumber}
+                              onCheckedChange={v => setField('showVisaNumber', Boolean(v))}
+                            />
+                            <span className="text-xs font-medium">Show</span>
+                          </label>
+                        )}
+                      </div>
+                      {data.showVisaNumber && (
+                        <Input placeholder="Visa No" value={p.visaNumber}
+                          onChange={e => updatePilgrim(p.id, { visaNumber: e.target.value })}
+                          className="h-7 text-xs" />
                       )}
                     </div>
-                    {useHotelDropdown ? (
-                      <Select
-                        items={cityHotels.map(h => ({ value: h.id, label: hotelLabel(h) }))}
-                        value={selectedHotelId || null}
-                        onValueChange={v => { if (v) handleHotelSelect(a.id, v, a.city) }}
-                      >
-                        <SelectTrigger className="h-7 text-xs w-full">
-                          <SelectValue placeholder="Select hotel" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {cityHotels.map(h => (
-                            <SelectItem key={h.id} value={h.id} label={hotelLabel(h)}>
-                              {hotelLabel(h)}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    ) : (
-                      <Input placeholder="Hotel name" value={a.hotelName}
-                        onChange={e => updateAccommodation(a.id, { hotelName: e.target.value })}
-                        className="h-7 text-xs" />
-                    )}
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs">Room Type</Label>
-                    <select value={a.roomType || 'Room'}
-                      onChange={e => updateAccommodation(a.id, { roomType: e.target.value })}
-                      className="h-7 text-xs w-full rounded-md border border-input bg-background px-2">
-                      {VOUCHER_ROOM_TYPES.map(r => (
-                        <option key={r} value={r}>{r}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs">Meal Plan</Label>
-                    <select value={a.mealPlan}
-                      onChange={e => updateAccommodation(a.id, { mealPlan: e.target.value })}
-                      className="h-7 text-xs w-full rounded-md border border-input bg-background px-2">
-                      <option value="BB">BB (Bed & Breakfast)</option>
-                      <option value="HB">HB (Half Board)</option>
-                      <option value="FB">FB (Full Board)</option>
-                      <option value="RO">RO (Room Only)</option>
-                    </select>
-                  </div>
-                  <div className="space-y-1 col-span-2 sm:col-span-1 min-w-0">
-                    <Label className="text-xs">Check In</Label>
-                    <Input type="date" value={a.checkIn}
-                      onChange={e => updateAccommodation(a.id, { checkIn: e.target.value })}
-                      className="h-7 text-xs" />
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs">Nights</Label>
-                    <Input type="number" min="1" placeholder="7" value={a.nights}
-                      onChange={e => updateAccommodation(a.id, { nights: e.target.value })}
-                      className="h-7 text-xs" />
-                  </div>
-                  <div className="space-y-1 col-span-2 sm:col-span-1 min-w-0">
-                    <Label className="text-xs">Check Out (auto)</Label>
-                    <Input type="date" value={a.checkOut} readOnly
-                      className="h-7 text-xs bg-muted/50" />
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="space-y-1">
+                        <Label className="text-xs">Pax</Label>
+                        <Input type="number" min="1" value={p.pax}
+                          onChange={e => updatePilgrim(p.id, { pax: e.target.value })}
+                          className="h-7 text-xs" />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs">Beds</Label>
+                        <Input type="number" min="1" value={p.beds}
+                          onChange={e => updatePilgrim(p.id, { beds: e.target.value })}
+                          className="h-7 text-xs" />
+                      </div>
+                    </div>
                   </div>
                 </div>
+              ))}
+              <Button type="button" variant="outline" size="sm" onClick={addPilgrim}
+                className="w-full h-8 text-xs gap-1.5 border-dashed">
+                <Plus className="w-3.5 h-3.5" /> Add Pilgrim
+              </Button>
+            </div>
+          </Section>
+
+          {/* Accommodations */}
+          <Section title="Accommodation Details">
+            <div className="space-y-3">
+              {data.accommodations.map((a, i) => {
+                const cityHotels = hotelsForCity(a.city, makkahHotels, madinahHotels)
+                const selectedHotelId = hotelSelections[a.id] || resolveHotelId(a.hotelName, cityHotels)
+                const useHotelDropdown = a.city === 'Makkah' || a.city === 'Madina'
+
+                return (
+                  <div key={a.id} className="border rounded-md p-3 space-y-2 bg-muted/30">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-xs font-semibold text-muted-foreground">Hotel {i + 1}</span>
+                      {data.accommodations.length > 1 && (
+                        <button onClick={() => removeAccommodation(a.id)}
+                          className="text-destructive hover:text-destructive/80 transition-colors">
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="space-y-1">
+                        <Label className="text-xs">City</Label>
+                        <select value={a.city}
+                          onChange={e => handleAccommodationCityChange(a.id, e.target.value)}
+                          className="h-7 text-xs w-full rounded-md border border-input bg-background px-2">
+                          <option value="Makkah">Makkah</option>
+                          <option value="Madina">Madina</option>
+                          <option value="Jeddah">Jeddah</option>
+                          <option value="Other">Other</option>
+                        </select>
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs">Confirmation No</Label>
+                        <Input placeholder="CONF-001" value={a.confirmNo}
+                          onChange={e => updateAccommodation(a.id, { confirmNo: e.target.value })}
+                          className="h-7 text-xs" />
+                      </div>
+                      <div className="space-y-1 col-span-2">
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-1.5">
+                            <Label className="text-xs">Hotel Name</Label>
+                            {useHotelDropdown && (
+                              <label className="flex items-center gap-1 cursor-pointer select-none">
+                                <Checkbox
+                                  checked={!!a.isCustom}
+                                  onCheckedChange={v => updateAccommodation(a.id, { isCustom: Boolean(v) })}
+                                />
+                                <span className="text-[10px] font-medium text-muted-foreground">Custom Name</span>
+                              </label>
+                            )}
+                          </div>
+                          {useHotelDropdown && !a.isCustom && (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="h-6 text-[10px] px-2"
+                              onClick={() => setNewHotelForAccommodationId(a.id)}
+                            >
+                              <Plus className="w-3 h-3 mr-1" /> New Hotel
+                            </Button>
+                          )}
+                        </div>
+                        {useHotelDropdown && !a.isCustom ? (
+                          <Select
+                            items={cityHotels.map(h => ({ value: h.id, label: hotelLabel(h) }))}
+                            value={selectedHotelId || null}
+                            onValueChange={v => { if (v) handleHotelSelect(a.id, v, a.city) }}
+                          >
+                            <SelectTrigger className="h-7 text-xs w-full">
+                              <SelectValue placeholder="Select hotel" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {cityHotels.map(h => (
+                                <SelectItem key={h.id} value={h.id} label={hotelLabel(h)}>
+                                  {hotelLabel(h)}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        ) : (
+                          <Input placeholder="Hotel name (e.g. 4 Star Hotel)" value={a.hotelName}
+                            onChange={e => updateAccommodation(a.id, { hotelName: e.target.value })}
+                            className="h-7 text-xs" />
+                        )}
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs">Room Type</Label>
+                        <select value={a.roomType || 'Room'}
+                          onChange={e => updateAccommodation(a.id, { roomType: e.target.value })}
+                          className="h-7 text-xs w-full rounded-md border border-input bg-background px-2">
+                          {VOUCHER_ROOM_TYPES.map(r => (
+                            <option key={r} value={r}>{r}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs">Meal Plan</Label>
+                        <select value={a.mealPlan}
+                          onChange={e => updateAccommodation(a.id, { mealPlan: e.target.value })}
+                          className="h-7 text-xs w-full rounded-md border border-input bg-background px-2">
+                          <option value="BB">BB (Bed & Breakfast)</option>
+                          <option value="HB">HB (Half Board)</option>
+                          <option value="FB">FB (Full Board)</option>
+                          <option value="RO">RO (Room Only)</option>
+                        </select>
+                      </div>
+                      <div className="space-y-1 col-span-2 sm:col-span-1 min-w-0">
+                        <Label className="text-xs">Check In</Label>
+                        <Input type="date" value={a.checkIn}
+                          onChange={e => updateAccommodation(a.id, { checkIn: e.target.value })}
+                          className="h-7 text-xs" />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs">Nights</Label>
+                        <Input type="number" min="1" placeholder="7" value={a.nights}
+                          onChange={e => updateAccommodation(a.id, { nights: e.target.value })}
+                          className="h-7 text-xs" />
+                      </div>
+                      <div className="space-y-1 col-span-2 sm:col-span-1 min-w-0">
+                        <Label className="text-xs">Check Out (auto)</Label>
+                        <Input type="date" value={a.checkOut} readOnly
+                          className="h-7 text-xs bg-muted/50" />
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
+              <Button type="button" variant="outline" size="sm" onClick={addAccommodation}
+                className="w-full h-8 text-xs gap-1.5 border-dashed">
+                <Plus className="w-3.5 h-3.5" /> Add Hotel
+              </Button>
+            </div>
+          </Section>
+
+          {/* Contact & Timing */}
+          <Section title="Contact &amp; Timing Notes">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1 col-span-2">
+                <Label className="text-xs">Makkah Hotel Contact</Label>
+                {makkahContactOptions.length === 0 ? (
+                  <p className="text-xs text-muted-foreground py-2">
+                    Add contacts in Settings → Hotel Contacts.
+                  </p>
+                ) : (
+                  <>
+                    <Select
+                      value={resolvedMakkahContactId || ""}
+                      onValueChange={v => v && selectMakkahHotelContact(v)}
+                    >
+                      <SelectTrigger className="h-8 text-sm w-full">
+                        <SelectValue placeholder="Select hotel (name · city)">
+                          {selectedMakkahContact ? hotelContactLabel(selectedMakkahContact) : null}
+                        </SelectValue>
+                      </SelectTrigger>
+                      <SelectContent>
+                        {makkahContactOptions.map(c => (
+                          <SelectItem key={c.id} value={c.id} label={hotelContactLabel(c)}>
+                            {hotelContactLabel(c)}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {data.makkahHotelContact && (
+                      <p className="text-[10px] text-muted-foreground">Voucher shows: {data.makkahHotelContact}</p>
+                    )}
+                  </>
+                )}
               </div>
-            )})}
-            <Button type="button" variant="outline" size="sm" onClick={addAccommodation}
-              className="w-full h-8 text-xs gap-1.5 border-dashed">
-              <Plus className="w-3.5 h-3.5" /> Add Hotel
+              <div className="space-y-1 col-span-2">
+                <Label className="text-xs">Madina Hotel Contact</Label>
+                {madinahContactOptions.length === 0 ? (
+                  <p className="text-xs text-muted-foreground py-2">
+                    Add contacts in Settings → Hotel Contacts.
+                  </p>
+                ) : (
+                  <>
+                    <Select
+                      value={resolvedMadinaContactId || ""}
+                      onValueChange={v => v && selectMadinaHotelContact(v)}
+                    >
+                      <SelectTrigger className="h-8 text-sm w-full">
+                        <SelectValue placeholder="Select hotel (name · city)">
+                          {selectedMadinaContact ? hotelContactLabel(selectedMadinaContact) : null}
+                        </SelectValue>
+                      </SelectTrigger>
+                      <SelectContent>
+                        {madinahContactOptions.map(c => (
+                          <SelectItem key={c.id} value={c.id} label={hotelContactLabel(c)}>
+                            {hotelContactLabel(c)}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {data.madinaHotelContact && (
+                      <p className="text-[10px] text-muted-foreground">Voucher shows: {data.madinaHotelContact}</p>
+                    )}
+                  </>
+                )}
+              </div>
+              <div className="space-y-1 col-span-2">
+                <Label className="text-xs">Makkah Transport Contact</Label>
+                {makkahTransportOptions.length === 0 ? (
+                  <p className="text-xs text-muted-foreground py-2">
+                    Add contacts in Settings → Transport Contacts.
+                  </p>
+                ) : (
+                  <>
+                    <Select
+                      value={resolvedMakkahTransportContactId || ""}
+                      onValueChange={v => v && selectMakkahTransportContact(v)}
+                    >
+                      <SelectTrigger className="h-8 text-sm w-full">
+                        <SelectValue placeholder="Select contact (name · city)">
+                          {selectedMakkahTransportContact ? hotelContactLabel(selectedMakkahTransportContact) : null}
+                        </SelectValue>
+                      </SelectTrigger>
+                      <SelectContent>
+                        {makkahTransportOptions.map(c => (
+                          <SelectItem key={c.id} value={c.id} label={hotelContactLabel(c)}>
+                            {hotelContactLabel(c)}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {data.makkahTransportContact && (
+                      <p className="text-[10px] text-muted-foreground">Voucher shows: {data.makkahTransportContact}</p>
+                    )}
+                  </>
+                )}
+              </div>
+              <div className="space-y-1 col-span-2">
+                <Label className="text-xs">Madina Transport Contact</Label>
+                {madinahTransportOptions.length === 0 ? (
+                  <p className="text-xs text-muted-foreground py-2">
+                    Add contacts in Settings → Transport Contacts.
+                  </p>
+                ) : (
+                  <>
+                    <Select
+                      value={resolvedMadinaTransportContactId || ""}
+                      onValueChange={v => v && selectMadinaTransportContact(v)}
+                    >
+                      <SelectTrigger className="h-8 text-sm w-full">
+                        <SelectValue placeholder="Select contact (name · city)">
+                          {selectedMadinaTransportContact ? hotelContactLabel(selectedMadinaTransportContact) : null}
+                        </SelectValue>
+                      </SelectTrigger>
+                      <SelectContent>
+                        {madinahTransportOptions.map(c => (
+                          <SelectItem key={c.id} value={c.id} label={hotelContactLabel(c)}>
+                            {hotelContactLabel(c)}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {data.madinaTransportContact && (
+                      <p className="text-[10px] text-muted-foreground">Voucher shows: {data.madinaTransportContact}</p>
+                    )}
+                  </>
+                )}
+              </div>
+              <div className="space-y-1 col-span-2">
+                <Label className="text-xs">Jeddah Transport Contact</Label>
+                {jeddahTransportOptions.length === 0 ? (
+                  <p className="text-xs text-muted-foreground py-2">
+                    Add contacts in Settings → Transport Contacts.
+                  </p>
+                ) : (
+                  <>
+                    <Select
+                      value={resolvedJeddahTransportContactId || ""}
+                      onValueChange={v => v && selectJeddahTransportContact(v)}
+                    >
+                      <SelectTrigger className="h-8 text-sm w-full">
+                        <SelectValue placeholder="Select contact (name · city)">
+                          {selectedJeddahTransportContact ? hotelContactLabel(selectedJeddahTransportContact) : null}
+                        </SelectValue>
+                      </SelectTrigger>
+                      <SelectContent>
+                        {jeddahTransportOptions.map(c => (
+                          <SelectItem key={c.id} value={c.id} label={hotelContactLabel(c)}>
+                            {hotelContactLabel(c)}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {data.jeddahTransportContact && (
+                      <p className="text-[10px] text-muted-foreground">Voucher shows: {data.jeddahTransportContact}</p>
+                    )}
+                  </>
+                )}
+              </div>
+              <div className="space-y-1 col-span-2 sm:col-span-1 min-w-0">
+                <Label className="text-xs">Check-In Time</Label>
+                <Input type="time" value={data.checkInTime}
+                  onChange={e => setField('checkInTime', e.target.value)} className="h-8 text-sm" />
+              </div>
+              <div className="space-y-1 col-span-2 sm:col-span-1 min-w-0">
+                <Label className="text-xs">Check-Out Time</Label>
+                <Input type="time" value={data.checkOutTime}
+                  onChange={e => setField('checkOutTime', e.target.value)} className="h-8 text-sm" />
+              </div>
+            </div>
+          </Section>
+
+          <Section title="Branding">
+            <p className="text-[10px] text-muted-foreground mb-2">
+              Logo stays in your browser only until download — not uploaded or stored on the server. Shown on both voucher pages.
+            </p>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Logo Upload (max 150 KB)</Label>
+              <div className="flex items-center gap-2 flex-wrap">
+                <Input
+                  ref={logoInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handleLogoUpload}
+                  className="h-9 text-xs"
+                />
+                {logoUrl && (
+                  <Button type="button" variant="outline" size="sm" className="h-8 text-xs" onClick={clearLogo}>
+                    Remove
+                  </Button>
+                )}
+              </div>
+            </div>
+            {logoUrl && (
+              <div className="space-y-3 pt-2 border-t border-dashed">
+                <BrandingSlider
+                  label="Logo Size (width)"
+                  value={logoSize}
+                  min={VOUCHER_LOGO_SIZE_MIN}
+                  max={VOUCHER_LOGO_SIZE_MAX}
+                  onChange={updateLogoSize}
+                />
+                <BrandingSlider
+                  label="Logo X Position"
+                  value={logoX}
+                  min={0}
+                  max={logoMaxX}
+                  onChange={updateLogoX}
+                />
+                <BrandingSlider
+                  label="Logo Y Position"
+                  value={logoY}
+                  min={0}
+                  max={logoMaxY}
+                  onChange={updateLogoY}
+                />
+                <BrandingResetButton
+                  onReset={resetLogoDefaults}
+                  disabled={isDefaultLogo}
+                />
+              </div>
+            )}
+          </Section>
+
+          <div className="flex gap-2">
+            {editingVoucherId && (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={handleCancelEdit}
+                className="flex-1 h-10 text-xs"
+              >
+                Cancel Edit
+              </Button>
+            )}
+            <Button
+              type="button"
+              onClick={handleSaveAndDownload}
+              disabled={isDownloading}
+              className="flex-1 gap-2 bg-navy hover:bg-navy/90 text-white h-10 text-xs"
+            >
+              <Download className="w-4 h-4" />
+              {isDownloading
+                ? 'Saving PDF…'
+                : (editingVoucherId ? 'Update & Download' : 'Save & Download Voucher')
+              }
             </Button>
           </div>
-        </Section>
+        </div>
 
-        {/* Contact & Timing */}
-        <Section title="Contact &amp; Timing Notes">
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1 col-span-2">
-              <Label className="text-xs">Makkah Hotel Contact</Label>
-              {makkahContactOptions.length === 0 ? (
-                <p className="text-xs text-muted-foreground py-2">
-                  Add contacts in Settings → Hotel Contacts.
-                </p>
-              ) : (
-                <>
-                  <Select
-                    value={resolvedMakkahContactId || ""}
-                    onValueChange={v => v && selectMakkahHotelContact(v)}
-                  >
-                    <SelectTrigger className="h-8 text-sm w-full">
-                      <SelectValue placeholder="Select hotel (name · city)">
-                        {selectedMakkahContact ? hotelContactLabel(selectedMakkahContact) : null}
-                      </SelectValue>
-                    </SelectTrigger>
-                    <SelectContent>
-                      {makkahContactOptions.map(c => (
-                        <SelectItem key={c.id} value={c.id} label={hotelContactLabel(c)}>
-                          {hotelContactLabel(c)}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  {data.makkahHotelContact && (
-                    <p className="text-[10px] text-muted-foreground">Voucher shows: {data.makkahHotelContact}</p>
-                  )}
-                </>
-              )}
+        {/* ── RIGHT: Preview + Download ─────────────────────────────────────────── */}
+        <div className="hvf-preview-wrap min-w-0 w-full xl:flex-1 xl:sticky xl:top-6 xl:self-start space-y-3">
+
+          {/* Page toggle + download button */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <div className="flex rounded-lg border overflow-hidden text-xs font-medium">
+              <button
+                onClick={() => setPreviewPage(1)}
+                className={`px-3 py-1.5 transition-colors ${previewPage === 1 ? 'bg-navy text-white' : 'bg-background hover:bg-muted'}`}
+              >
+                <Eye className="w-3 h-3 inline mr-1" />Page 1 (English)
+              </button>
+              <button
+                onClick={() => setPreviewPage(2)}
+                className={`px-3 py-1.5 transition-colors ${previewPage === 2 ? 'bg-navy text-white' : 'bg-background hover:bg-muted'}`}
+              >
+                <Eye className="w-3 h-3 inline mr-1" />Page 2 (اردو)
+              </button>
             </div>
-            <div className="space-y-1 col-span-2">
-              <Label className="text-xs">Madina Hotel Contact</Label>
-              {madinahContactOptions.length === 0 ? (
-                <p className="text-xs text-muted-foreground py-2">
-                  Add contacts in Settings → Hotel Contacts.
-                </p>
-              ) : (
-                <>
-                  <Select
-                    value={resolvedMadinaContactId || ""}
-                    onValueChange={v => v && selectMadinaHotelContact(v)}
-                  >
-                    <SelectTrigger className="h-8 text-sm w-full">
-                      <SelectValue placeholder="Select hotel (name · city)">
-                        {selectedMadinaContact ? hotelContactLabel(selectedMadinaContact) : null}
-                      </SelectValue>
-                    </SelectTrigger>
-                    <SelectContent>
-                      {madinahContactOptions.map(c => (
-                        <SelectItem key={c.id} value={c.id} label={hotelContactLabel(c)}>
-                          {hotelContactLabel(c)}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  {data.madinaHotelContact && (
-                    <p className="text-[10px] text-muted-foreground">Voucher shows: {data.madinaHotelContact}</p>
-                  )}
-                </>
-              )}
-            </div>
-            <div className="space-y-1 col-span-2">
-              <Label className="text-xs">Makkah Transport Contact</Label>
-              {makkahTransportOptions.length === 0 ? (
-                <p className="text-xs text-muted-foreground py-2">
-                  Add contacts in Settings → Transport Contacts.
-                </p>
-              ) : (
-                <>
-                  <Select
-                    value={resolvedMakkahTransportContactId || ""}
-                    onValueChange={v => v && selectMakkahTransportContact(v)}
-                  >
-                    <SelectTrigger className="h-8 text-sm w-full">
-                      <SelectValue placeholder="Select contact (name · city)">
-                        {selectedMakkahTransportContact ? hotelContactLabel(selectedMakkahTransportContact) : null}
-                      </SelectValue>
-                    </SelectTrigger>
-                    <SelectContent>
-                      {makkahTransportOptions.map(c => (
-                        <SelectItem key={c.id} value={c.id} label={hotelContactLabel(c)}>
-                          {hotelContactLabel(c)}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  {data.makkahTransportContact && (
-                    <p className="text-[10px] text-muted-foreground">Voucher shows: {data.makkahTransportContact}</p>
-                  )}
-                </>
-              )}
-            </div>
-            <div className="space-y-1 col-span-2">
-              <Label className="text-xs">Madina Transport Contact</Label>
-              {madinahTransportOptions.length === 0 ? (
-                <p className="text-xs text-muted-foreground py-2">
-                  Add contacts in Settings → Transport Contacts.
-                </p>
-              ) : (
-                <>
-                  <Select
-                    value={resolvedMadinaTransportContactId || ""}
-                    onValueChange={v => v && selectMadinaTransportContact(v)}
-                  >
-                    <SelectTrigger className="h-8 text-sm w-full">
-                      <SelectValue placeholder="Select contact (name · city)">
-                        {selectedMadinaTransportContact ? hotelContactLabel(selectedMadinaTransportContact) : null}
-                      </SelectValue>
-                    </SelectTrigger>
-                    <SelectContent>
-                      {madinahTransportOptions.map(c => (
-                        <SelectItem key={c.id} value={c.id} label={hotelContactLabel(c)}>
-                          {hotelContactLabel(c)}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  {data.madinaTransportContact && (
-                    <p className="text-[10px] text-muted-foreground">Voucher shows: {data.madinaTransportContact}</p>
-                  )}
-                </>
-              )}
-            </div>
-            <div className="space-y-1 col-span-2">
-              <Label className="text-xs">Jeddah Transport Contact</Label>
-              {jeddahTransportOptions.length === 0 ? (
-                <p className="text-xs text-muted-foreground py-2">
-                  Add contacts in Settings → Transport Contacts.
-                </p>
-              ) : (
-                <>
-                  <Select
-                    value={resolvedJeddahTransportContactId || ""}
-                    onValueChange={v => v && selectJeddahTransportContact(v)}
-                  >
-                    <SelectTrigger className="h-8 text-sm w-full">
-                      <SelectValue placeholder="Select contact (name · city)">
-                        {selectedJeddahTransportContact ? hotelContactLabel(selectedJeddahTransportContact) : null}
-                      </SelectValue>
-                    </SelectTrigger>
-                    <SelectContent>
-                      {jeddahTransportOptions.map(c => (
-                        <SelectItem key={c.id} value={c.id} label={hotelContactLabel(c)}>
-                          {hotelContactLabel(c)}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  {data.jeddahTransportContact && (
-                    <p className="text-[10px] text-muted-foreground">Voucher shows: {data.jeddahTransportContact}</p>
-                  )}
-                </>
-              )}
-            </div>
-            <div className="space-y-1 col-span-2 sm:col-span-1 min-w-0">
-              <Label className="text-xs">Check-In Time</Label>
-              <Input type="time" value={data.checkInTime}
-                onChange={e => setField('checkInTime', e.target.value)} className="h-8 text-sm" />
-            </div>
-            <div className="space-y-1 col-span-2 sm:col-span-1 min-w-0">
-              <Label className="text-xs">Check-Out Time</Label>
-              <Input type="time" value={data.checkOutTime}
-                onChange={e => setField('checkOutTime', e.target.value)} className="h-8 text-sm" />
-            </div>
+            {canEditGuidelines && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={openGuidelinesDialog}
+                className="h-8 text-xs gap-1.5"
+              >
+                <FileText className="w-3.5 h-3.5" />
+                Change Guidelines
+              </Button>
+            )}
+            <Button
+              onClick={handleSaveAndDownload}
+              disabled={isDownloading}
+              className="ml-auto gap-2 bg-navy hover:bg-navy/90 text-white h-8 text-xs"
+              size="sm"
+            >
+              <Download className="w-3.5 h-3.5" />
+              {isDownloading
+                ? 'Saving PDF…'
+                : (editingVoucherId ? 'Update & Download' : 'Save & Download Voucher')
+              }
+            </Button>
           </div>
-        </Section>
 
-        <Section title="Branding">
-          <p className="text-[10px] text-muted-foreground mb-2">
-            Logo stays in your browser only until download — not uploaded or stored on the server. Shown on both voucher pages.
+          {/* Preview */}
+          <div className="border rounded-lg overflow-hidden bg-muted/20 shadow-sm">
+            <ScaledPreview>
+              {previewPage === 1
+                ? <VoucherPage1 data={data} branding={branding} />
+                : <VoucherPage2 urduLines={urduLines} urduFooter={urduFooter} branding={branding} />
+              }
+            </ScaledPreview>
+          </div>
+
+          <p className="text-[10px] text-muted-foreground text-center">
+            Live preview — both pages are included in the downloaded PDF
           </p>
-          <div className="space-y-1.5">
-            <Label className="text-xs">Company Name (header on voucher)</Label>
-            <Input
-              placeholder="Amere Taiba International"
-              value={data.companyName}
-              onChange={e => setField('companyName', e.target.value)}
-              className="h-9 text-sm"
-            />
+        </div>
+
+        {/* ── Hidden capture targets (always in DOM, invisible) ───────────────── */}
+        <div style={{ position: 'fixed', top: 0, left: 0, zIndex: -9999, pointerEvents: 'none' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+            <VoucherPage1 ref={page1Ref} data={data} branding={branding} />
+            <VoucherPage2 ref={page2Ref} urduLines={urduLines} urduFooter={urduFooter} branding={branding} />
           </div>
-          <div className="space-y-1.5">
-            <Label className="text-xs">Logo Upload (max 150 KB)</Label>
-            <div className="flex items-center gap-2 flex-wrap">
-              <Input
-                ref={logoInputRef}
-                type="file"
-                accept="image/*"
-                onChange={handleLogoUpload}
-                className="h-9 text-xs"
-              />
-              {logoUrl && (
-                <Button type="button" variant="outline" size="sm" className="h-8 text-xs" onClick={clearLogo}>
-                  Remove
+        </div>
+
+        <Dialog open={!!newHotelForAccommodationId} onOpenChange={open => !open && setNewHotelForAccommodationId(null)}>
+          <DialogContent className="max-w-lg">
+            <DialogHeader>
+              <DialogTitle>New Hotel</DialogTitle>
+            </DialogHeader>
+            {(() => {
+              const acc = data.accommodations.find(a => a.id === newHotelForAccommodationId)
+              const city = acc?.city === 'Madina' ? 'Madinah' : 'Makkah'
+              return (
+                <form action={handleNewHotelSubmit} className="space-y-4">
+                  <input type="hidden" name="city" value={city} />
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1.5 col-span-2">
+                      <Label className="text-xs">City</Label>
+                      <Input value={city} readOnly className="bg-muted/50" />
+                    </div>
+                    <div className="space-y-1.5 col-span-2">
+                      <Label className="text-xs">Hotel Name</Label>
+                      <Input name="name" required />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs">Distance</Label>
+                      <Input name="distance" placeholder="e.g. 200 MTR" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs">Contact Number</Label>
+                      <Input name="contact_number" placeholder="+966 12 000 0000" />
+                    </div>
+                    <div className="space-y-1.5 col-span-2">
+                      <Label className="text-xs">Location (optional)</Label>
+                      <Input name="location" />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-5 gap-3">
+                    {['room', 'sharing', 'quad', 'triple', 'double'].map(r => (
+                      <div key={r} className="space-y-1.5">
+                        <Label className="text-xs capitalize">{r} SAR</Label>
+                        <Input type="number" name={`${r}_sar`} min={0} defaultValue={0} />
+                      </div>
+                    ))}
+                  </div>
+                  <DialogFooter>
+                    <Button type="button" variant="outline" onClick={() => setNewHotelForAccommodationId(null)}>
+                      Cancel
+                    </Button>
+                    <Button type="submit" disabled={isSavingHotel} className="bg-navy hover:bg-navy/90 text-white">
+                      {isSavingHotel && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                      Save Hotel
+                    </Button>
+                  </DialogFooter>
+                </form>
+              )
+            })()}
+          </DialogContent>
+        </Dialog>
+
+        <Dialog open={guidelinesOpen} onOpenChange={setGuidelinesOpen}>
+          <DialogContent className="max-w-2xl sm:max-w-2xl">
+            <DialogHeader>
+              <DialogTitle>Change Urdu Guidelines (Page 2)</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div className="space-y-1.5">
+                <Label className="text-xs">Guidelines — one line per numbered point</Label>
+                <textarea
+                  value={draftGuidelines}
+                  onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setDraftGuidelines(e.target.value)}
+                  rows={14}
+                  dir="rtl"
+                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring resize-y"
+                  style={{ fontFamily: "'Jameel Noori Nastaleeq', 'Noto Nastaliq Urdu', serif" }}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs">Footer declaration</Label>
+                <textarea
+                  value={draftFooter}
+                  onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setDraftFooter(e.target.value)}
+                  rows={2}
+                  dir="rtl"
+                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring resize-none"
+                  style={{ fontFamily: "'Jameel Noori Nastaleeq', 'Noto Nastaliq Urdu', serif" }}
+                />
+              </div>
+              <p className="text-[11px] text-muted-foreground">
+                Saved guidelines apply to all future hotel vouchers for your organization.
+              </p>
+            </div>
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setGuidelinesOpen(false)}
+                disabled={isSavingGuidelines}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                onClick={handleSaveGuidelines}
+                disabled={isSavingGuidelines}
+                className="bg-navy hover:bg-navy/90 text-white"
+              >
+                {isSavingGuidelines ? 'Saving…' : 'Save Guidelines'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      </div>
+
+      {(existingVouchers.length > 0 || savedVouchers.length > 0) && (
+        <Card className="border shadow-sm mt-6">
+          <CardHeader className="pb-3 pt-4 px-6 border-b flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between bg-muted/20">
+            <div>
+              <CardTitle className="text-base">Saved Vouchers</CardTitle>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Manage and search saved hotel vouchers
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-3">
+              <label className="flex items-center gap-2 text-xs font-medium cursor-pointer select-none">
+                <Checkbox
+                  checked={showAllVouchers}
+                  onCheckedChange={v => {
+                    setShowAllVouchers(Boolean(v))
+                    setSelectedVoucherIds(new Set())
+                  }}
+                />
+                Include Vouchers with deleted PDFs
+              </label>
+              {selectedVoucherIds.size > 0 && (
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={handleBulkDelete}
+                  disabled={isVoucherPending}
+                  className="gap-1.5 h-8 text-xs"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  Delete Selected ({selectedVoucherIds.size})
                 </Button>
               )}
             </div>
-          </div>
-          {logoUrl && (
-            <div className="space-y-3 pt-2 border-t border-dashed">
-              <BrandingSlider
-                label="Logo Size (width)"
-                value={logoSize}
-                min={VOUCHER_LOGO_SIZE_MIN}
-                max={VOUCHER_LOGO_SIZE_MAX}
-                onChange={updateLogoSize}
-              />
-              <BrandingSlider
-                label="Logo X Position"
-                value={logoX}
-                min={0}
-                max={logoMaxX}
-                onChange={updateLogoX}
-              />
-              <BrandingSlider
-                label="Logo Y Position"
-                value={logoY}
-                min={0}
-                max={logoMaxY}
-                onChange={updateLogoY}
-              />
-              <BrandingResetButton
-                onReset={resetLogoDefaults}
-                disabled={isDefaultLogo}
-              />
-            </div>
-          )}
-        </Section>
-
-        <div className="flex gap-2">
-          {editingVoucherId && (
-            <Button
-              type="button"
-              variant="outline"
-              onClick={handleCancelEdit}
-              className="flex-1 h-10 text-xs"
-            >
-              Cancel Edit
-            </Button>
-          )}
-          <Button
-            type="button"
-            onClick={handleSaveAndDownload}
-            disabled={isDownloading}
-            className="flex-1 gap-2 bg-navy hover:bg-navy/90 text-white h-10 text-xs"
-          >
-            <Download className="w-4 h-4" />
-            {isDownloading
-              ? 'Saving PDF…'
-              : (editingVoucherId ? 'Update & Download' : 'Save & Download Voucher')
-            }
-          </Button>
-        </div>
-      </div>
-
-      {/* ── RIGHT: Preview + Download ─────────────────────────────────────────── */}
-      <div className="hvf-preview-wrap min-w-0 w-full xl:flex-1 xl:sticky xl:top-6 xl:self-start space-y-3">
-
-        {/* Page toggle + download button */}
-        <div className="flex items-center gap-2 flex-wrap">
-          <div className="flex rounded-lg border overflow-hidden text-xs font-medium">
-            <button
-              onClick={() => setPreviewPage(1)}
-              className={`px-3 py-1.5 transition-colors ${previewPage === 1 ? 'bg-navy text-white' : 'bg-background hover:bg-muted'}`}
-            >
-              <Eye className="w-3 h-3 inline mr-1" />Page 1 (English)
-            </button>
-            <button
-              onClick={() => setPreviewPage(2)}
-              className={`px-3 py-1.5 transition-colors ${previewPage === 2 ? 'bg-navy text-white' : 'bg-background hover:bg-muted'}`}
-            >
-              <Eye className="w-3 h-3 inline mr-1" />Page 2 (اردو)
-            </button>
-          </div>
-          {canEditGuidelines && (
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={openGuidelinesDialog}
-              className="h-8 text-xs gap-1.5"
-            >
-              <FileText className="w-3.5 h-3.5" />
-              Change Guidelines
-            </Button>
-          )}
-          <Button
-            onClick={handleSaveAndDownload}
-            disabled={isDownloading}
-            className="ml-auto gap-2 bg-navy hover:bg-navy/90 text-white h-8 text-xs"
-            size="sm"
-          >
-            <Download className="w-3.5 h-3.5" />
-            {isDownloading
-              ? 'Saving PDF…'
-              : (editingVoucherId ? 'Update & Download' : 'Save & Download Voucher')
-            }
-          </Button>
-        </div>
-
-        {/* Preview */}
-        <div className="border rounded-lg overflow-hidden bg-muted/20 shadow-sm">
-          <ScaledPreview>
-            {previewPage === 1
-              ? <VoucherPage1 data={data} branding={branding} />
-              : <VoucherPage2 urduLines={urduLines} urduFooter={urduFooter} branding={branding} />
-            }
-          </ScaledPreview>
-        </div>
-
-        <p className="text-[10px] text-muted-foreground text-center">
-          Live preview — both pages are included in the downloaded PDF
-        </p>
-      </div>
-
-      {/* ── Hidden capture targets (always in DOM, invisible) ───────────────── */}
-      <div style={{ position: 'fixed', top: 0, left: 0, zIndex: -9999, pointerEvents: 'none' }}>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
-          <VoucherPage1 ref={page1Ref} data={data} branding={branding} />
-          <VoucherPage2 ref={page2Ref} urduLines={urduLines} urduFooter={urduFooter} branding={branding} />
-        </div>
-      </div>
-
-      <Dialog open={!!newHotelForAccommodationId} onOpenChange={open => !open && setNewHotelForAccommodationId(null)}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle>New Hotel</DialogTitle>
-          </DialogHeader>
-          {(() => {
-            const acc = data.accommodations.find(a => a.id === newHotelForAccommodationId)
-            const city = acc?.city === 'Madina' ? 'Madinah' : 'Makkah'
-            return (
-              <form action={handleNewHotelSubmit} className="space-y-4">
-                <input type="hidden" name="city" value={city} />
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1.5 col-span-2">
-                    <Label className="text-xs">City</Label>
-                    <Input value={city} readOnly className="bg-muted/50" />
-                  </div>
-                  <div className="space-y-1.5 col-span-2">
-                    <Label className="text-xs">Hotel Name</Label>
-                    <Input name="name" required />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label className="text-xs">Distance</Label>
-                    <Input name="distance" placeholder="e.g. 200 MTR" />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label className="text-xs">Contact Number</Label>
-                    <Input name="contact_number" placeholder="+966 12 000 0000" />
-                  </div>
-                  <div className="space-y-1.5 col-span-2">
-                    <Label className="text-xs">Location (optional)</Label>
-                    <Input name="location" />
-                  </div>
-                </div>
-                <div className="grid grid-cols-5 gap-3">
-                  {['room', 'sharing', 'quad', 'triple', 'double'].map(r => (
-                    <div key={r} className="space-y-1.5">
-                      <Label className="text-xs capitalize">{r} SAR</Label>
-                      <Input type="number" name={`${r}_sar`} min={0} defaultValue={0} />
-                    </div>
-                  ))}
-                </div>
-                <DialogFooter>
-                  <Button type="button" variant="outline" onClick={() => setNewHotelForAccommodationId(null)}>
-                    Cancel
-                  </Button>
-                  <Button type="submit" disabled={isSavingHotel} className="bg-navy hover:bg-navy/90 text-white">
-                    {isSavingHotel && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-                    Save Hotel
-                  </Button>
-                </DialogFooter>
-              </form>
-            )
-          })()}
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={guidelinesOpen} onOpenChange={setGuidelinesOpen}>
-        <DialogContent className="max-w-2xl sm:max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>Change Urdu Guidelines (Page 2)</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div className="space-y-1.5">
-              <Label className="text-xs">Guidelines — one line per numbered point</Label>
-              <textarea
-                value={draftGuidelines}
-                onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setDraftGuidelines(e.target.value)}
-                rows={14}
-                dir="rtl"
-                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring resize-y"
-                style={{ fontFamily: "'Jameel Noori Nastaleeq', 'Noto Nastaliq Urdu', serif" }}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs">Footer declaration</Label>
-              <textarea
-                value={draftFooter}
-                onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setDraftFooter(e.target.value)}
-                rows={2}
-                dir="rtl"
-                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring resize-none"
-                style={{ fontFamily: "'Jameel Noori Nastaleeq', 'Noto Nastaliq Urdu', serif" }}
-              />
-            </div>
-            <p className="text-[11px] text-muted-foreground">
-              Saved guidelines apply to all future hotel vouchers for your organization.
-            </p>
-          </div>
-          <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => setGuidelinesOpen(false)}
-              disabled={isSavingGuidelines}
-            >
-              Cancel
-            </Button>
-            <Button
-              type="button"
-              onClick={handleSaveGuidelines}
-              disabled={isSavingGuidelines}
-              className="bg-navy hover:bg-navy/90 text-white"
-            >
-              {isSavingGuidelines ? 'Saving…' : 'Save Guidelines'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </div>
-
-    {(existingVouchers.length > 0 || savedVouchers.length > 0) && (
-      <Card className="border shadow-sm mt-6">
-        <CardHeader className="pb-3 pt-4 px-6 border-b flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between bg-muted/20">
-          <div>
-            <CardTitle className="text-base">Saved Vouchers</CardTitle>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              Manage and search saved hotel vouchers
-            </p>
-          </div>
-          <div className="flex flex-wrap items-center gap-3">
-            <label className="flex items-center gap-2 text-xs font-medium cursor-pointer select-none">
-              <Checkbox
-                checked={showAllVouchers}
-                onCheckedChange={v => {
-                  setShowAllVouchers(Boolean(v))
-                  setSelectedVoucherIds(new Set())
-                }}
-              />
-              Include Vouchers with deleted PDFs
-            </label>
-            {selectedVoucherIds.size > 0 && (
-              <Button
-                variant="destructive"
-                size="sm"
-                onClick={handleBulkDelete}
-                disabled={isVoucherPending}
-                className="gap-1.5 h-8 text-xs"
-              >
-                <Trash2 className="w-3.5 h-3.5" />
-                Delete Selected ({selectedVoucherIds.size})
-              </Button>
-            )}
-          </div>
-        </CardHeader>
-        <CardContent className="p-0 overflow-x-auto">
-          <table className="w-full text-sm min-w-[700px]">
-            <thead className="bg-muted/30 text-left border-b">
-              <tr>
-                <th className="p-3 w-10">
-                  <Checkbox
-                    checked={savedVouchers.length > 0 && savedVouchers.every(v => selectedVoucherIds.has(v.id))}
-                    onCheckedChange={checked => toggleAllVouchers(checked === true)}
-                    aria-label="Select all vouchers"
-                  />
-                </th>
-                <th className="p-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Voucher #</th>
-                <th className="p-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Family Head</th>
-                <th className="p-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Package Info</th>
-                <th className="p-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Date</th>
-                <th className="p-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">PDF Status</th>
-                <th className="p-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {savedVouchers.length === 0 ? (
+          </CardHeader>
+          <CardContent className="p-0 overflow-x-auto">
+            <table className="w-full text-sm min-w-[700px]">
+              <thead className="bg-muted/30 text-left border-b">
                 <tr>
-                  <td colSpan={7} className="text-center text-muted-foreground py-8 text-xs">
-                    No vouchers match the filter.
-                  </td>
+                  <th className="p-3 w-10">
+                    <Checkbox
+                      checked={savedVouchers.length > 0 && savedVouchers.every(v => selectedVoucherIds.has(v.id))}
+                      onCheckedChange={checked => toggleAllVouchers(checked === true)}
+                      aria-label="Select all vouchers"
+                    />
+                  </th>
+                  <th className="p-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Voucher #</th>
+                  <th className="p-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Family Head</th>
+                  <th className="p-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Package Info</th>
+                  <th className="p-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Date</th>
+                  <th className="p-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">PDF Status</th>
+                  <th className="p-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider text-right">Actions</th>
                 </tr>
-              ) : (
-                savedVouchers.map(v => {
-                  const isSelected = selectedVoucherIds.has(v.id)
-                  const hasFile = v.storage_key && !v.file_deleted_at
-                  return (
-                    <tr key={v.id} className="hover:bg-slate-50/50 transition-colors">
-                      <td className="p-3">
-                        <Checkbox
-                          checked={isSelected}
-                          onCheckedChange={checked => toggleVoucherSelect(v.id, checked === true)}
-                          aria-label={`Select voucher ${v.voucher_number}`}
-                        />
-                      </td>
-                      <td className="p-3 font-semibold text-navy text-xs font-mono">{v.voucher_number}</td>
-                      <td className="p-3 text-sm font-medium">{v.family_head}</td>
-                      <td className="p-3 text-xs text-muted-foreground truncate max-w-[200px]" title={v.package_info}>
-                        {v.package_info || '—'}
-                      </td>
-                      <td className="p-3 text-xs text-muted-foreground">{v.voucher_date}</td>
-                      <td className="p-3">
-                        <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium border ${
-                          hasFile
-                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                            : 'bg-amber-50 text-amber-700 border-amber-200'
-                        }`}>
-                          {hasFile ? 'Stored PDF' : 'PDF Deleted'}
-                        </span>
-                      </td>
-                      <td className="p-3 text-right">
-                        <div className="flex items-center justify-end gap-1.5">
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            className="h-7 w-7 p-0"
-                            onClick={() => handleEdit(v)}
-                            title="Edit Voucher"
-                          >
-                            <Pencil className="w-3.5 h-3.5" />
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            className="h-7 w-7 p-0"
-                            disabled={!hasFile || isDownloading}
-                            onClick={() => handleStoredDownload(v)}
-                            title="Download PDF"
-                          >
-                            <Download className="w-3.5 h-3.5" />
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            className="h-7 w-7 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
-                            disabled={isVoucherPending}
-                            onClick={() => handleDeleteVoucher(v)}
-                            title="Delete Voucher"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </Button>
-                        </div>
-                      </td>
-                    </tr>
-                  )
-                })
-              )}
-            </tbody>
-          </table>
-        </CardContent>
-      </Card>
-    )}
+              </thead>
+              <tbody className="divide-y divide-border">
+                {savedVouchers.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} className="text-center text-muted-foreground py-8 text-xs">
+                      No vouchers match the filter.
+                    </td>
+                  </tr>
+                ) : (
+                  savedVouchers.map(v => {
+                    const isSelected = selectedVoucherIds.has(v.id)
+                    const hasFile = v.storage_key && !v.file_deleted_at
+                    return (
+                      <tr key={v.id} className="hover:bg-slate-50/50 transition-colors">
+                        <td className="p-3">
+                          <Checkbox
+                            checked={isSelected}
+                            onCheckedChange={checked => toggleVoucherSelect(v.id, checked === true)}
+                            aria-label={`Select voucher ${v.voucher_number}`}
+                          />
+                        </td>
+                        <td className="p-3 font-semibold text-navy text-xs font-mono">{v.voucher_number}</td>
+                        <td className="p-3 text-sm font-medium">{v.family_head}</td>
+                        <td className="p-3 text-xs text-muted-foreground truncate max-w-[200px]" title={v.package_info}>
+                          {v.package_info || '—'}
+                        </td>
+                        <td className="p-3 text-xs text-muted-foreground">{v.voucher_date}</td>
+                        <td className="p-3">
+                          <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium border ${hasFile
+                              ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                              : 'bg-amber-50 text-amber-700 border-amber-200'
+                            }`}>
+                            {hasFile ? 'Stored PDF' : 'PDF Deleted'}
+                          </span>
+                        </td>
+                        <td className="p-3 text-right">
+                          <div className="flex items-center justify-end gap-1.5">
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-7 w-7 p-0"
+                              onClick={() => handleEdit(v)}
+                              title="Edit Voucher"
+                            >
+                              <Pencil className="w-3.5 h-3.5" />
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-7 w-7 p-0"
+                              disabled={!hasFile || isDownloading}
+                              onClick={() => handleStoredDownload(v)}
+                              title="Download PDF"
+                            >
+                              <Download className="w-3.5 h-3.5" />
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-7 w-7 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
+                              disabled={isVoucherPending}
+                              onClick={() => handleDeleteVoucher(v)}
+                              title="Delete Voucher"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </Button>
+                          </div>
+                        </td>
+                      </tr>
+                    )
+                  })
+                )}
+              </tbody>
+            </table>
+          </CardContent>
+        </Card>
+      )}
     </div>
   )
 }

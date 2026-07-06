@@ -95,6 +95,16 @@ export interface UmrahPosterFormData {
   airplaneY: number
   airplaneWidth: number
   airplaneHeight: number
+
+  // Customizable labels
+  sharingLabel?: string
+  quadLabel?: string
+  tripleLabel?: string
+  doubleLabel?: string
+  makkahHotelLabel?: string
+  madinaHotelLabel?: string
+  makkahCustomName?: boolean
+  madinaCustomName?: boolean
 }
 
 
@@ -155,6 +165,16 @@ export const DEFAULT_POSTER_DATA: UmrahPosterFormData = {
   airplaneY: -0.15,
   airplaneWidth: 19.5,
   airplaneHeight: 5.75,
+
+  // Defaults for customizable labels
+  sharingLabel: 'Sharing: ',
+  quadLabel: 'Quad: ',
+  tripleLabel: 'Triple: ',
+  doubleLabel: 'Double: ',
+  makkahHotelLabel: 'Makkah Hotel:',
+  madinaHotelLabel: 'Madina Hotel:',
+  makkahCustomName: false,
+  madinaCustomName: false,
 }
 
 export function cm(value: number): number {
@@ -292,22 +312,28 @@ function drawHotelEntry(
   if (trimmedName) {
     const nameLines = wrapTextByCharLimit(withLeadingSpace(trimmedName), maxNameChars)
     ctx.textBaseline = 'top'
-    ctx.font = boldFont
-    const labelW = ctx.measureText(label).width
-    ctx.font = mediumFont
-    const valW = ctx.measureText(nameLines[0]).width
-    const totalW = labelW + valW
-    const startX = centerX - totalW / 2
+    if (label.trim()) {
+      ctx.font = boldFont
+      const labelW = ctx.measureText(label).width
+      ctx.font = mediumFont
+      const valW = ctx.measureText(nameLines[0]).width
+      const totalW = labelW + valW
+      const startX = centerX - totalW / 2
 
-    drawSolidText(ctx, label, startX, currentY, boldFont, color)
-    drawSolidText(ctx, nameLines[0], startX + labelW, currentY, mediumFont, color)
+      drawSolidText(ctx, label, startX, currentY, boldFont, color)
+      drawSolidText(ctx, nameLines[0], startX + labelW, currentY, mediumFont, color)
+    } else {
+      drawSolidText(ctx, nameLines[0], centerX, currentY, boldFont, color, centerX)
+    }
 
     for (let i = 1; i < nameLines.length; i++) {
       currentY += lineHeight
       drawSolidText(ctx, nameLines[i], centerX, currentY, mediumFont, color, centerX)
     }
   } else {
-    drawSolidText(ctx, label, centerX, currentY, boldFont, color, centerX)
+    if (label.trim()) {
+      drawSolidText(ctx, label, centerX, currentY, boldFont, color, centerX)
+    }
   }
 
   if (trimmedDetails) {
@@ -389,12 +415,25 @@ function drawPackagePriceList(
 ): void {
   const fontSize = 36
   const lineHeight = 48
-  const rows: [string, string][] = [
-    ['Sharing: ', data.sharingPrice],
-    ['Quad: ', data.quadPrice],
-    ['Triple: ', data.triplePrice],
-    ['Double: ', data.doublePrice],
-  ]
+  const rows: [string, string][] = []
+
+  const sharingL = data.sharingLabel !== undefined ? data.sharingLabel : 'Sharing: '
+  const quadL = data.quadLabel !== undefined ? data.quadLabel : 'Quad: '
+  const tripleL = data.tripleLabel !== undefined ? data.tripleLabel : 'Triple: '
+  const doubleL = data.doubleLabel !== undefined ? data.doubleLabel : 'Double: '
+
+  if (data.sharingPrice?.trim() && sharingL.trim()) {
+    rows.push([sharingL, data.sharingPrice.trim()])
+  }
+  if (data.quadPrice?.trim() && quadL.trim()) {
+    rows.push([quadL, data.quadPrice.trim()])
+  }
+  if (data.triplePrice?.trim() && tripleL.trim()) {
+    rows.push([tripleL, data.triplePrice.trim()])
+  }
+  if (data.doublePrice?.trim() && doubleL.trim()) {
+    rows.push([doubleL, data.doublePrice.trim()])
+  }
   const boldFont = `700 ${fontSize}px Poppins, sans-serif`
   const mediumFont = `500 ${fontSize}px Poppins, sans-serif`
   rows.forEach(([label, value], i) => {
@@ -490,7 +529,7 @@ export function renderUmrahPoster(
   if (data.makkahHotelName.trim() || data.makkahHotelDetails.trim()) {
     drawHotelEntry(
       ctx,
-      'Makkah Hotel:',
+      data.makkahHotelLabel !== undefined ? data.makkahHotelLabel : 'Makkah Hotel:',
       data.makkahHotelName,
       data.makkahHotelDetails,
       cm(26.7),
@@ -504,7 +543,7 @@ export function renderUmrahPoster(
   if (data.madinaHotelName.trim() || data.madinaHotelDetails.trim()) {
     drawHotelEntry(
       ctx,
-      'Madina Hotel:',
+      data.madinaHotelLabel !== undefined ? data.madinaHotelLabel : 'Madina Hotel:',
       data.madinaHotelName,
       data.madinaHotelDetails,
       cm(29.3),

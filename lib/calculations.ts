@@ -53,7 +53,7 @@ export function getCalc(
     visaCost = currencyUnit === 'SAR' ? customVisaPkr / sarToPkr : customVisaPkr
   } else {
     const visaAdultSar = getAdultVisaRate(visa, pax)
-    const rawVisaCostSar = (adult + child) * visaAdultSar + infant * visa.infant_sar
+    const rawVisaCostSar = adult * visaAdultSar + child * visa.child_sar + infant * visa.infant_sar
     visaCost = currencyUnit === 'SAR' ? rawVisaCostSar : rawVisaCostSar * sarToPkr
   }
 
@@ -66,11 +66,13 @@ export function getCalc(
   const transportCost = currencyUnit === 'SAR' ? rawTransportCostSar : rawTransportCostSar * sarToPkr
 
   const makkahRateSar = includeMakkahHotel ? hotelRateSar(makkahHotel, makkahRoom) : 0
-  const rawMakkahCostSar = makkahRateSar * makkahNights * pax
+  const makkahMultiplier = makkahRoom === 'room' ? 1 : (adult + child)
+  const rawMakkahCostSar = makkahRateSar * makkahNights * makkahMultiplier
   const makkahCost = currencyUnit === 'SAR' ? rawMakkahCostSar : rawMakkahCostSar * sarToPkr
 
   const madinahRateSar = includeMadinahHotel ? hotelRateSar(madinahHotel, madinahRoom) : 0
-  const rawMadinahCostSar = madinahRateSar * madinahNights * pax
+  const madinahMultiplier = madinahRoom === 'room' ? 1 : (adult + child)
+  const rawMadinahCostSar = madinahRateSar * madinahNights * madinahMultiplier
   const madinahCost = currencyUnit === 'SAR' ? rawMadinahCostSar : rawMadinahCostSar * sarToPkr
 
   const selected = new Set(selectedZiaratIds)

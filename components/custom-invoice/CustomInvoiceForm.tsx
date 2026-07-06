@@ -92,11 +92,11 @@ function toNum(s: string) { const n = parseFloat(s.replace(/,/g, '')); return is
 
 // globalCurrency = locked invoice currency derived from first row with use_pax_price
 function buildLineItem(d: LineItemDraft, globalCurrency: string | null): CustomInvoiceLineItem {
-  const pax_price   = d.use_pax_price   && d.pax_price   !== '' ? toNum(d.pax_price)   : null
+  const pax_price = d.use_pax_price && d.pax_price !== '' ? toNum(d.pax_price) : null
   const night_price = d.use_night_price && d.night_price !== '' ? toNum(d.night_price) : null
   const qty = toNum(d.total_pax) || 1  // total_pax doubles as total_nights in night mode
 
-  const paxUnit   = d.use_pax_price   ? (globalCurrency ?? d.pax_price_unit)   : d.pax_price_unit
+  const paxUnit = d.use_pax_price ? (globalCurrency ?? d.pax_price_unit) : d.pax_price_unit
   const nightUnit = d.night_price_unit || 'PKR'
 
   let total: number
@@ -140,7 +140,7 @@ function buildInvoice(
   profitPkr: number,
 ): CustomInvoice {
   const items = rows.map(r => buildLineItem(r, globalCurrency))
-  const total    = items.reduce((s, i) => s + i.total, 0)
+  const total = items.reduce((s, i) => s + i.total, 0)
   const received = items.reduce((s, i) => s + i.received, 0)
   return {
     id: '',
@@ -247,10 +247,10 @@ export default function CustomInvoiceForm({
   const initialClient = editClientMatch ?? (hasSavedClients ? savedClients[0] : null)
   const initialBilled = editInvoice
     ? {
-        name: editInvoice.billed_to_name,
-        address: editInvoice.billed_to_address,
-        phone: editInvoice.billed_to_client_number,
-      }
+      name: editInvoice.billed_to_name,
+      address: editInvoice.billed_to_address,
+      phone: editInvoice.billed_to_client_number,
+    }
     : initialClient
       ? applyClientToBilled(initialClient)
       : { name: '', address: '', phone: '' }
@@ -295,7 +295,7 @@ export default function CustomInvoiceForm({
   const [editingId, setEditingId] = useState(editInvoice?.id ?? '')
   const [invoiceNumber, setInvoiceNumber] = useState(() => editInvoice?.invoice_number ?? getNextInvoiceNumber(existingInvoices))
   const [invoiceTitleText, setInvoiceTitleText] = useState(() => editInvoice?.invoice_title_text?.trim() || 'INVOICE')
-  const [date, setDate]             = useState(editInvoice?.invoice_date ?? today)
+  const [date, setDate] = useState(editInvoice?.invoice_date ?? today)
   const [selectedClientId, setSelectedClientId] = useState(initialClient?.id ?? '')
   const [isNewCustomer, setIsNewCustomer] = useState(editInvoice ? !editClientMatch : !hasSavedClients)
   const [billedName, setBilledName] = useState(initialBilled.name)
@@ -310,25 +310,25 @@ export default function CustomInvoiceForm({
       ? findPaymentMethodId(paymentMethods, editInvoice.payment_bank_name, editInvoice.payment_account_number)
       : paymentMethods[0]?.id ?? '',
   )
-  const [bankName, setBankName]     = useState(editInvoice?.payment_bank_name ?? resolvedSettings.payment_bank_name)
-  const [accountNo, setAccountNo]   = useState(editInvoice?.payment_account_number ?? resolvedSettings.payment_account_number)
-  const [terms, setTerms]           = useState(editInvoice?.terms_text ?? resolvedSettings.terms_text)
-  const [phone, setPhone]           = useState(editInvoice?.contact_phone ?? resolvedSettings.contact_phone)
-  const [email, setEmail]           = useState(editInvoice?.contact_email ?? resolvedSettings.contact_email)
-  const [location, setLocation]     = useState(editInvoice?.contact_location ?? resolvedSettings.contact_location)
-  const [rows, setRows]             = useState<LineItemDraft[]>(() =>
+  const [bankName, setBankName] = useState(editInvoice?.payment_bank_name ?? resolvedSettings.payment_bank_name)
+  const [accountNo, setAccountNo] = useState(editInvoice?.payment_account_number ?? resolvedSettings.payment_account_number)
+  const [terms, setTerms] = useState(editInvoice?.terms_text ?? resolvedSettings.terms_text)
+  const [phone, setPhone] = useState(editInvoice?.contact_phone ?? resolvedSettings.contact_phone)
+  const [email, setEmail] = useState(editInvoice?.contact_email ?? resolvedSettings.contact_email)
+  const [location, setLocation] = useState(editInvoice?.contact_location ?? resolvedSettings.contact_location)
+  const [rows, setRows] = useState<LineItemDraft[]>(() =>
     editInvoice?.line_items?.length
       ? editInvoice.line_items.map((item, i) => lineItemToDraft(item, `${formId}-${i}`))
       : [newRow(`${formId}-0`)],
   )
-  const [showForm, setShowForm]     = useState(true)
+  const [showForm, setShowForm] = useState(true)
   const [newServiceRowId, setNewServiceRowId] = useState<string | null>(null)
   const [newServiceName, setNewServiceName] = useState('')
   const [isSavingService, setIsSavingService] = useState(false)
-  const [logoUrl, setLogoUrl]       = useState<string | null>(null)
-  const [logoSize, setLogoSize]     = useState(DEFAULT_LOGO_SIZE)
-  const [logoX, setLogoX]           = useState(DEFAULT_LOGO_X)
-  const [logoY, setLogoY]           = useState(DEFAULT_LOGO_Y)
+  const [logoUrl, setLogoUrl] = useState<string | null>('/logo-for-invoice.png')
+  const [logoSize, setLogoSize] = useState(DEFAULT_LOGO_SIZE)
+  const [logoX, setLogoX] = useState(DEFAULT_LOGO_X)
+  const [logoY, setLogoY] = useState(DEFAULT_LOGO_Y)
   const [signatureUrl, setSignatureUrl] = useState<string | null>(null)
   const [signaturePersonName, setSignaturePersonName] = useState('')
   const [invoiceBackground, setInvoiceBackground] = useState(DEFAULT_CUSTOM_INVOICE_BACKGROUND)

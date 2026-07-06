@@ -25,6 +25,7 @@ export interface Accommodation {
   checkIn: string
   checkOut: string
   nights: string
+  isCustom?: boolean
 }
 
 export interface VoucherData {
@@ -34,6 +35,7 @@ export interface VoucherData {
   packageInfo: string
   familyHead: string
   companyName: string
+  companyField?: string
   pilgrims: Pilgrim[]
   accommodations: Accommodation[]
   makkahHotelContact: string
@@ -368,7 +370,7 @@ export const VoucherPage1 = forwardRef<HTMLDivElement, { data: VoucherData; bran
             fontSize: '28px',
             fontWeight: 700,
             textTransform: 'uppercase',
-            
+
             letterSpacing: 'normal',
             color: '#ffffff',
           }}>
@@ -394,8 +396,8 @@ export const VoucherPage1 = forwardRef<HTMLDivElement, { data: VoucherData; bran
                 gap: '8px 12px',
               }}>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', minWidth: 0 }}>
-                  <MetaField label="Company" value="AMERE TAIBA INTERNATIONAL" />
-                  <MetaField label="Voucher No" value={data.voucherNo || '—'}   accent  />
+                  <MetaField label="Company" value={data.companyField ? data.companyField.toUpperCase() : (data.companyName ? data.companyName.toUpperCase() : 'AMERE TAIBA INTERNATIONAL')} />
+                  <MetaField label="Voucher No" value={data.voucherNo || '—'} accent />
                   <MetaField label="Family Head" value={data.familyHead ? data.familyHead.toUpperCase() : '—'} />
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', minWidth: 0 }}>
@@ -548,9 +550,9 @@ export const VoucherPage2 = forwardRef<HTMLDivElement, VoucherPage2Props>(
         <div
           dir="rtl"
           style={{
-            position: 'absolute', top: 20, left: 0,
+            position: 'absolute', top: -20, left: 0,
             width: '100%', height: '100%', zIndex: 10,
-            padding: '40px 50px',
+            padding: '20px 50px',
             boxSizing: 'border-box',
             ...URDU_TEXT,
           }}
@@ -564,7 +566,7 @@ export const VoucherPage2 = forwardRef<HTMLDivElement, VoucherPage2Props>(
               fontWeight: 'normal',
               textAlign: 'center',
               marginBottom: '24px',
-              
+
               color: '#ffffff',
               marginTop: 0,
             }}

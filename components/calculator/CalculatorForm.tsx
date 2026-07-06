@@ -152,10 +152,10 @@ export default function CalculatorForm({
   const matchedClient = invoiceClients.find(c => c.name === initialCustomerName)
   const initialBilled = editInvoice
     ? {
-        name: editInvoice.billed_to_name,
-        address: editInvoice.billed_to_address,
-        phone: editInvoice.billed_to_client_number,
-      }
+      name: editInvoice.billed_to_name,
+      address: editInvoice.billed_to_address,
+      phone: editInvoice.billed_to_client_number,
+    }
     : matchedClient
       ? applyClientToBilled(matchedClient)
       : { name: initialCustomerName, address: '', phone: '' }
@@ -169,7 +169,7 @@ export default function CalculatorForm({
     editInvoice?.invoice_title_text?.trim() || 'INVOICE',
   )
   const [pdfReady, setPdfReady] = useState(false)
-  const [logoUrl, setLogoUrl] = useState<string | null>(null)
+  const [logoUrl, setLogoUrl] = useState<string | null>('/logo-for-invoice.png')
   const [logoSize, setLogoSize] = useState(DEFAULT_LOGO_SIZE)
   const [logoX, setLogoX] = useState(DEFAULT_LOGO_X)
   const [logoY, setLogoY] = useState(DEFAULT_LOGO_Y)
@@ -392,15 +392,15 @@ export default function CalculatorForm({
   const calc = useMemo(
     () => getCalc(input, transportRates, currency.sar_to_pkr, visa, visa.transport_mode, ziarats),
     [adult, child, infant, airlineId, transportType, makkahHotelId, makkahRoom, makkahNights,
-     madinahHotelId, madinahRoom, madinahNights, profitType, profitValue, sellingOverride, advance,
-     currency.sar_to_pkr,
-     visa.visa_rate_1_pax, visa.visa_rate_2_pax, visa.visa_rate_3_pax,
-     visa.visa_rate_4_pax, visa.visa_rate_group_pax,
-     visa.infant_sar, visa.transport_mode,
-     selectedZiaratIds,
-     includeMakkahHotel, includeMadinahHotel, includeTickets, includeTransport,
-     customTicket, customTicketPkr,
-     transportRates, ziarats, currencyUnit]
+      madinahHotelId, madinahRoom, madinahNights, profitType, profitValue, sellingOverride, advance,
+      currency.sar_to_pkr,
+      visa.visa_rate_1_pax, visa.visa_rate_2_pax, visa.visa_rate_3_pax,
+      visa.visa_rate_4_pax, visa.visa_rate_group_pax,
+      visa.infant_sar, visa.transport_mode,
+      selectedZiaratIds,
+      includeMakkahHotel, includeMadinahHotel, includeTickets, includeTransport,
+      customTicket, customTicketPkr,
+      transportRates, ziarats, currencyUnit]
   )
 
   const fmt = useCallback((n: number) => {
@@ -700,9 +700,9 @@ export default function CalculatorForm({
       ? new Date(travelDate + 'T00:00:00').toLocaleDateString('en-PK', { day: '2-digit', month: 'long', year: 'numeric' })
       : null
     const paxParts = [
-      adult  > 0 ? `${adult} Adult${adult > 1 ? 's' : ''}`     : '',
-      child  > 0 ? `${child} Child${child > 1 ? 'ren' : ''}`   : '',
-      infant > 0 ? `${infant} Infant${infant > 1 ? 's' : ''}`  : '',
+      adult > 0 ? `${adult} Adult${adult > 1 ? 's' : ''}` : '',
+      child > 0 ? `${child} Child${child > 1 ? 'ren' : ''}` : '',
+      infant > 0 ? `${infant} Infant${infant > 1 ? 's' : ''}` : '',
     ].filter(Boolean).join(', ')
     const contact = company.phone
       ? `🟢 Contact: ${company.phone}`
@@ -737,6 +737,13 @@ export default function CalculatorForm({
         `🏨 *Madinah Hotel*`,
         formatHotelForWhatsApp(madinahHotel),
         `🛏️ ${cap(madinahRoom)} Room | 🌙 ${madinahNights} Nights`,
+        ``,
+      )
+    }
+
+    if (includeTransport && transportType) {
+      lines.push(
+        `🚗 *Transport:* ${transportType} (Included)`,
         ``,
       )
     }
@@ -824,85 +831,84 @@ export default function CalculatorForm({
             </CardHeader>
             <CardContent className="grid grid-cols-2 gap-4">
               {includeTickets && (
-              <>
-              <label className="col-span-2 flex items-center gap-2.5 cursor-pointer select-none">
-                <Checkbox
-                  checked={customTicket}
-                  onCheckedChange={v => setCustomTicket(Boolean(v))}
-                />
-                <span className="text-sm">Custom Ticket</span>
-              </label>
-
-              {customTicket ? (
                 <>
-                  <div className="col-span-2 space-y-1.5">
-                    <Label className="text-xs">Airline / Route</Label>
-                    <Input
-                      placeholder="e.g. PIA — LHR to JED"
-                      value={customTicketLabel}
-                      onChange={e => setCustomTicketLabel(e.target.value)}
+                  <label className="col-span-2 flex items-center gap-2.5 cursor-pointer select-none">
+                    <Checkbox
+                      checked={customTicket}
+                      onCheckedChange={v => setCustomTicket(Boolean(v))}
                     />
-                  </div>
-                  <div className="space-y-1.5">
-                    <div className="flex items-center justify-between">
-                      <Label className="text-xs">Ticket Price</Label>
-                      <div className="flex rounded-md overflow-hidden border text-xs">
-                        {(['SAR', 'PKR'] as const).map(cur => (
-                          <button
-                            key={cur}
-                            type="button"
-                            onClick={() => setCustomTicketCurrency(cur)}
-                            className={`px-2.5 py-0.5 font-semibold transition-colors ${
-                              customTicketCurrency === cur
-                                ? 'bg-navy text-white'
-                                : 'bg-white text-muted-foreground hover:bg-muted'
-                            }`}
-                          >
-                            {cur}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                    <Input
-                      type="number" min={0}
-                      value={customTicketAmount || ''}
-                      placeholder="0"
-                      onChange={e => setCustomTicketAmount(parseFloat(e.target.value) || 0)}
-                    />
-                    {customTicketAmount > 0 && customTicketCurrency === 'SAR' && (
-                      <p className="text-xs text-muted-foreground">
-                        = {fmtPkr(customTicketPkr)}
-                      </p>
-                    )}
-                  </div>
-                </>
-              ) : (
-                <div className="space-y-1.5">
-                  <Label className="text-xs">Airline</Label>
-                  {airlines.length === 0 ? (
-                    <p className="text-xs text-muted-foreground rounded-lg border border-dashed px-3 py-2">
-                      No airlines found. Add airlines in Settings first.
-                    </p>
-                  ) : (
-                    <Select
-                      items={airlineItems}
-                      value={resolveOptionValue(airlineId, airlines)}
-                      onValueChange={v => { if (v) setAirlineId(v) }}
-                    >
-                      <SelectTrigger className="w-full">
-                        <SelectValue placeholder="Select airline" />
-                      </SelectTrigger>
-                      <SelectContent className="min-w-[var(--anchor-width)] w-[var(--anchor-width)]">
-                        {airlines.map(a => (
-                          <SelectItem key={a.id} value={a.id} label={a.name}>{a.name}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  )}
-                </div>
-              )}
+                    <span className="text-sm">Custom Ticket</span>
+                  </label>
 
-              </>
+                  {customTicket ? (
+                    <>
+                      <div className="col-span-2 space-y-1.5">
+                        <Label className="text-xs">Airline / Route</Label>
+                        <Input
+                          placeholder="e.g. PIA — LHR to JED"
+                          value={customTicketLabel}
+                          onChange={e => setCustomTicketLabel(e.target.value)}
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <div className="flex items-center justify-between">
+                          <Label className="text-xs">Ticket Price</Label>
+                          <div className="flex rounded-md overflow-hidden border text-xs">
+                            {(['SAR', 'PKR'] as const).map(cur => (
+                              <button
+                                key={cur}
+                                type="button"
+                                onClick={() => setCustomTicketCurrency(cur)}
+                                className={`px-2.5 py-0.5 font-semibold transition-colors ${customTicketCurrency === cur
+                                    ? 'bg-navy text-white'
+                                    : 'bg-white text-muted-foreground hover:bg-muted'
+                                  }`}
+                              >
+                                {cur}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                        <Input
+                          type="number" min={0}
+                          value={customTicketAmount || ''}
+                          placeholder="0"
+                          onChange={e => setCustomTicketAmount(parseFloat(e.target.value) || 0)}
+                        />
+                        {customTicketAmount > 0 && customTicketCurrency === 'SAR' && (
+                          <p className="text-xs text-muted-foreground">
+                            = {fmtPkr(customTicketPkr)}
+                          </p>
+                        )}
+                      </div>
+                    </>
+                  ) : (
+                    <div className="space-y-1.5">
+                      <Label className="text-xs">Airline</Label>
+                      {airlines.length === 0 ? (
+                        <p className="text-xs text-muted-foreground rounded-lg border border-dashed px-3 py-2">
+                          No airlines found. Add airlines in Settings first.
+                        </p>
+                      ) : (
+                        <Select
+                          items={airlineItems}
+                          value={resolveOptionValue(airlineId, airlines)}
+                          onValueChange={v => { if (v) setAirlineId(v) }}
+                        >
+                          <SelectTrigger className="w-full">
+                            <SelectValue placeholder="Select airline" />
+                          </SelectTrigger>
+                          <SelectContent className="min-w-[var(--anchor-width)] w-[var(--anchor-width)]">
+                            {airlines.map(a => (
+                              <SelectItem key={a.id} value={a.id} label={a.name}>{a.name}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      )}
+                    </div>
+                  )}
+
+                </>
               )}
 
               <div className="space-y-1.5">
