@@ -22,11 +22,13 @@ function monthLabel(key: string) {
 }
 
 export default async function DashboardPage() {
-  const [bookings, payments, customInvoices] = await Promise.all([
+  const [rawBookings, payments, customInvoices] = await Promise.all([
     getBookings(),
     getPayments(),
     getStandaloneCustomInvoices(),
   ])
+
+  const bookings = rawBookings.filter(b => b.source_invoice_id !== null)
 
   const bookingIds = new Set(bookings.map(b => b.id))
   const bookingPayments = payments.filter(p => bookingIds.has(p.booking_id))

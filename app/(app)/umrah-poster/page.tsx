@@ -1,15 +1,18 @@
-import { getAirlines, getHotels, getVisa, getCurrency, getTransportRates, getZiarats } from '@/lib/db'
+import { getAirlines, getHotels, getVisa, getCurrency, getTransportRates, getZiarats, getTransportRoutes, getTransportVehicles, getRouteVehicleRates } from '@/lib/db'
 import UmrahPosterForm from '@/components/umrah-poster/UmrahPosterForm'
 import { ImageIcon } from 'lucide-react'
 
 export default async function UmrahPosterPage() {
-  const [airlines, hotels, visa, currency, transportRates, ziarats] = await Promise.all([
+  const [airlines, hotels, visa, currency, transportRates, ziarats, transportRoutes, transportVehicles, routeVehicleRates] = await Promise.all([
     getAirlines(),
     getHotels(),
     getVisa(),
     getCurrency(),
     getTransportRates(),
     getZiarats(),
+    getTransportRoutes(),
+    getTransportVehicles(),
+    getRouteVehicleRates(),
   ])
 
   const makkahHotels = hotels.filter(h => h.city === 'Makkah')
@@ -37,6 +40,9 @@ export default async function UmrahPosterPage() {
         currency={currency}
         transportRates={transportRates}
         ziarats={ziarats}
+        transportRoutes={transportRoutes}
+        transportVehicles={transportVehicles}
+        routeVehicleRates={routeVehicleRates}
       />
     </div>
   )

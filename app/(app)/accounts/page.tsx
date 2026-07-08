@@ -9,12 +9,14 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Wallet, TrendingDown, AlertCircle, DollarSign } from 'lucide-react'
 
 export default async function AccountsPage() {
-  const [bookings, payments, expenses, company] = await Promise.all([
+  const [rawBookings, payments, expenses, company] = await Promise.all([
     getBookings(),
     getPayments(),
     getExpenses(),
     getCompany(),
   ])
+
+  const bookings = rawBookings.filter(b => b.source_invoice_id !== null)
 
   // ── KPI Calculations ───────────────────────────────────────────────────────
   // Total cash received from customers (sum of all individual payment records)

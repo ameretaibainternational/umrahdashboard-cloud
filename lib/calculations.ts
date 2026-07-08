@@ -1,4 +1,4 @@
-import type { CalcInput, CalcResult, TransportRate, VisaSettings, ZiaratOption } from './types'
+import type { CalcInput, CalcResult, TransportRate, VisaSettings, ZiaratOption, RouteVehicleRate, TransportRoute, TransportVehicle } from './types'
 import { normalizeTransportType } from './transport'
 
 function getAdultVisaRate(visa: VisaSettings, pax: number): number {
@@ -22,6 +22,9 @@ export function getCalc(
   visa: VisaSettings,
   transportMode: 'included' | 'separate',
   ziarats: ZiaratOption[],
+  routeVehicleRates?: RouteVehicleRate[],
+  transportVehicles?: TransportVehicle[],
+  transportRoutes?: TransportRoute[],
 ): CalcResult {
   const { adult, child, infant, airline, transportType,
           makkahHotel, makkahRoom, makkahNights,
@@ -29,7 +32,7 @@ export function getCalc(
           profitType, profitValue, sellingOverride, advance,
           selectedZiaratIds,
           includeMakkahHotel, includeMadinahHotel,
-          includeTickets, includeTransport = true,
+          includeTickets, includeTransport = true, includeVisa = true,
           customTicket, customTicketPkr,
           currencyUnit = 'PKR',
           customVisaPkr } = input
@@ -49,29 +52,42 @@ export function getCalc(
     : rawTicketCostPkr
 
   let visaCost = 0
-  if (customVisaPkr && customVisaPkr > 0) {
-    visaCost = currencyUnit === 'SAR' ? customVisaPkr / sarToPkr : customVisaPkr
-  } else {
-    const visaAdultSar = getAdultVisaRate(visa, pax)
-    const rawVisaCostSar = adult * visaAdultSar + child * visa.child_sar + infant * visa.infant_sar
-    visaCost = currencyUnit === 'SAR' ? rawVisaCostSar : rawVisaCostSar * sarToPkr
+  if (includeVisa) {
+    if (customVisaPkr && customVisaPkr > 0) {
+      visaCost = currencyUnit === 'SAR' ? customVisaPkr / sarToPkr : customVisaPkr
+    } else {
+      const visaAdultSar = getAdultVisaRate(visa, pax)
+      const rawVisaCostSar = adult * visaAdultSar + child * visa.child_sar + infant * visa.infant_sar
+      visaCost = currencyUnit === 'SAR' ? rawVisaCostSar : rawVisaCostSar * sarToPkr
+    }
   }
 
-  const vehicle = normalizeTransportType(transportType)
-  const paxKey = Math.min(Math.max(pax, 1), 4)
-  const rate = transportRates.find(r => r.type === vehicle && r.pax_count === paxKey)
-    ?? transportRates.find(r => normalizeTransportType(r.type) === vehicle && r.pax_count === paxKey)
-  
-  const rawTransportCostSar = includeTransport ? (rate?.rate_sar ?? 0) : 0
+
+  let rawTransportCostSar = 0
+  if (routeVehicleRates && transportVehicles && input.selectedTransportRouteIds && input.selectedTransportRouteIds.length > 0) {
+    const selectedVehicle = transportVehicles.find(v => v.name === transportType)
+    if (selectedVehicle) {
+      const activeRates = routeVehicleRates.filter(
+        r => r.vehicle_id === selectedVehicle.id && input.selectedTransportRouteIds?.includes(r.route_id)
+      )
+      rawTransportCostSar = includeTransport ? activeRates.reduce((s, r) => s + Number(r.rate_sar), 0) : 0
+    }
+  } else {
+    const vehicle = normalizeTransportType(transportType)
+    const paxKey = Math.min(Math.max(pax, 1), 4)
+    const rate = transportRates.find(r => r.type === vehicle && r.pax_count === paxKey)
+      ?? transportRates.find(r => normalizeTransportType(r.type) === vehicle && r.pax_count === paxKey)
+    rawTransportCostSar = includeTransport ? (rate?.rate_sar ?? 0) : 0
+  }
   const transportCost = currencyUnit === 'SAR' ? rawTransportCostSar : rawTransportCostSar * sarToPkr
 
   const makkahRateSar = includeMakkahHotel ? hotelRateSar(makkahHotel, makkahRoom) : 0
-  const makkahMultiplier = makkahRoom === 'room' ? 1 : (adult + child)
+  const makkahMultiplier = makkahRoom === 'room' ? 1 : Math.max(1, adult + child)
   const rawMakkahCostSar = makkahRateSar * makkahNights * makkahMultiplier
   const makkahCost = currencyUnit === 'SAR' ? rawMakkahCostSar : rawMakkahCostSar * sarToPkr
 
   const madinahRateSar = includeMadinahHotel ? hotelRateSar(madinahHotel, madinahRoom) : 0
-  const madinahMultiplier = madinahRoom === 'room' ? 1 : (adult + child)
+  const madinahMultiplier = madinahRoom === 'room' ? 1 : Math.max(1, adult + child)
   const rawMadinahCostSar = madinahRateSar * madinahNights * madinahMultiplier
   const madinahCost = currencyUnit === 'SAR' ? rawMadinahCostSar : rawMadinahCostSar * sarToPkr
 

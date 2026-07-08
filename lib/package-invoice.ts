@@ -76,6 +76,7 @@ export function parsePackageInvoiceData(raw: unknown, ziarats: ZiaratOption[] = 
     includeMadinahHotel: d.includeMadinahHotel !== false,
     includeTickets: d.includeTickets !== false,
     includeTransport: d.includeTransport !== false,
+    includeVisa: d.includeVisa !== false,
     customTicket: Boolean(d.customTicket),
     customTicketLabel: String(d.customTicketLabel ?? ''),
     customTicketAmount: Number(d.customTicketAmount ?? 0),
@@ -87,5 +88,6 @@ export function parsePackageInvoiceData(raw: unknown, ziarats: ZiaratOption[] = 
     returnCity: String(d.returnCity ?? ''),
     currencyUnit: d.currencyUnit === 'SAR' ? 'SAR' : 'PKR',
     sarToPkr: d.sarToPkr ? Number(d.sarToPkr) : undefined,
+    selectedTransportRouteIds: Array.isArray(d.selectedTransportRouteIds) ? d.selectedTransportRouteIds.map(String) : [],
   }
 }

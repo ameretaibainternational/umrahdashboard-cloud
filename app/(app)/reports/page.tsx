@@ -7,7 +7,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { DollarSign, TrendingDown, TrendingUp } from 'lucide-react'
 
 export default async function ReportsPage() {
-  const bookings = await getBookings()
+  const rawBookings = await getBookings()
+  const bookings = rawBookings.filter(b => b.source_invoice_id !== null)
 
   const revenue = bookings.reduce((s, b) => s + b.total_pkr, 0)
   const cost = bookings.reduce((s, b) => s + b.cost_pkr, 0)

@@ -9,7 +9,7 @@ import { demoStore } from './demo-store'
 import { isAdminPermission } from './permissions'
 import { hasDirectDb, isDirectDbConnectionError, isDirectDbRecoverableError, markDirectDbAuthFailed, requireSql } from './sql'
 import { parseFlightCities, DEFAULT_PK_FLIGHT_CITIES, DEFAULT_SA_FLIGHT_CITIES } from './flight-cities'
-import type { Airline, Hotel, Booking, Payment, Expense, StaffUser, VisaSettings, CurrencySettings, TransportRate, Company, InvoiceSettings, InvoiceClient, InvoicePaymentMethod, InvoiceService, CustomInvoice, HotelVoucherSettings, HotelVoucherRecord, StorageUsage, StoredFileRow, StaffActivityStats, ZiaratOption, HotelContact, TransportContact, CustomTransport } from './types'
+import type { Airline, Hotel, Booking, Payment, Expense, StaffUser, VisaSettings, CurrencySettings, TransportRate, Company, InvoiceSettings, InvoiceClient, InvoicePaymentMethod, InvoiceService, CustomInvoice, HotelVoucherSettings, HotelVoucherRecord, StorageUsage, StoredFileRow, StaffActivityStats, ZiaratOption, HotelContact, TransportContact, CustomTransport, TransportRoute, TransportVehicle, RouteVehicleRate } from './types'
 import { DEFAULT_TRANSPORT_RATE_SAR, TRANSPORT_VEHICLES, transportServiceName } from './transport'
 import { customTransportToRateRows } from './custom-transports'
 import { mergeDefaultZiarats } from './ziarats'
@@ -175,6 +175,33 @@ export async function getCustomTransports(): Promise<CustomTransport[]> {
     rate_3_sar: Number(row.rate_3_sar),
     rate_4_sar: Number(row.rate_4_sar),
   })) as CustomTransport[]
+}
+
+export async function getTransportRoutes(): Promise<TransportRoute[]> {
+  if (isDemoMode()) {
+    return [...demoStore.transportRoutes].sort((a, b) => a.sort_order - b.sort_order || a.name.localeCompare(b.name))
+  }
+  const sb = await getSupabase()
+  const { data } = await sb.from('transport_routes').select('*').order('sort_order').order('name')
+  return data ?? []
+}
+
+export async function getTransportVehicles(): Promise<TransportVehicle[]> {
+  if (isDemoMode()) {
+    return [...demoStore.transportVehicles].sort((a, b) => a.sort_order - b.sort_order || a.name.localeCompare(b.name))
+  }
+  const sb = await getSupabase()
+  const { data } = await sb.from('transport_vehicles').select('*').order('sort_order').order('name')
+  return data ?? []
+}
+
+export async function getRouteVehicleRates(): Promise<RouteVehicleRate[]> {
+  if (isDemoMode()) {
+    return [...demoStore.routeVehicleRates].map(r => ({ ...r, rate_sar: Number(r.rate_sar) }))
+  }
+  const sb = await getSupabase()
+  const { data } = await sb.from('route_vehicle_rates').select('*')
+  return (data ?? []).map(r => ({ ...r, rate_sar: Number(r.rate_sar) }))
 }
 
 export async function getZiarats(): Promise<ZiaratOption[]> {
@@ -691,5 +718,52 @@ export async function getStaffActivityStats(): Promise<StaffActivityStats[]> {
       return fetchStaffActivityStats()
     },
     async () => [],
+  )
+}
+
+export async function getBookingById(id: string): Promise<Booking | null> {
+  if (isDemoMode()) {
+    const b = demoStore.bookings.find(x => x.id === id)
+    return b ? { ...b } : null
+  }
+  return withDirectDbFallback(
+    async () => {
+      const sb = await getSupabase()
+      const { data, error } = await sb.from('bookings').select('*').eq('id', id).single()
+      if (error || !data) return null
+      return {
+        ...data,
+        total_pkr: Number(data.total_pkr),
+        cost_pkr: Number(data.cost_pkr),
+        profit_pkr: Number(data.profit_pkr),
+        advance_pkr: Number(data.advance_pkr),
+        paid_pkr: Number(data.paid_pkr),
+        remaining_pkr: Number(data.remaining_pkr),
+        adult_count: Number(data.adult_count),
+        child_count: Number(data.child_count),
+        infant_count: Number(data.infant_count),
+        makkah_nights: data.makkah_nights != null ? Number(data.makkah_nights) : null,
+        madinah_nights: data.madinah_nights != null ? Number(data.madinah_nights) : null,
+      } as Booking
+    },
+    async () => {
+      const sb = await getSupabase()
+      const { data, error } = await sb.from('bookings').select('*').eq('id', id).single()
+      if (error || !data) return null
+      return {
+        ...data,
+        total_pkr: Number(data.total_pkr),
+        cost_pkr: Number(data.cost_pkr),
+        profit_pkr: Number(data.profit_pkr),
+        advance_pkr: Number(data.advance_pkr),
+        paid_pkr: Number(data.paid_pkr),
+        remaining_pkr: Number(data.remaining_pkr),
+        adult_count: Number(data.adult_count),
+        child_count: Number(data.child_count),
+        infant_count: Number(data.infant_count),
+        makkah_nights: data.makkah_nights != null ? Number(data.makkah_nights) : null,
+        madinah_nights: data.madinah_nights != null ? Number(data.madinah_nights) : null,
+      } as Booking
+    }
   )
 }

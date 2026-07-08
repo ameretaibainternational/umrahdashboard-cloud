@@ -9,7 +9,7 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { Download, ChevronDown, ChevronUp, RotateCcw } from 'lucide-react'
 import { toast } from 'sonner'
 import { getCalc } from '@/lib/calculations'
-import type { Airline, Hotel, VisaSettings, CurrencySettings, TransportRate, RoomType, CalcInput, ZiaratOption } from '@/lib/types'
+import type { Airline, Hotel, VisaSettings, CurrencySettings, TransportRate, RoomType, CalcInput, ZiaratOption, TransportRoute, TransportVehicle, RouteVehicleRate } from '@/lib/types'
 import { DEFAULT_TRANSPORT_VEHICLE, listTransportOptions } from '@/lib/transport'
 import { ziaratBySlug } from '@/lib/ziarats'
 import {
@@ -176,8 +176,11 @@ interface Props {
   madinahHotels: Hotel[]
   visa: VisaSettings
   currency: CurrencySettings
-  transportRates: TransportRate[]
+  transportRates?: TransportRate[]
   ziarats: ZiaratOption[]
+  transportRoutes?: TransportRoute[]
+  transportVehicles?: TransportVehicle[]
+  routeVehicleRates?: RouteVehicleRate[]
 }
 
 function defaultPosterZiaratIds(ziarats: ZiaratOption[]): string[] {
@@ -192,8 +195,11 @@ export default function UmrahPosterForm({
   madinahHotels,
   visa,
   currency,
-  transportRates,
+  transportRates = [],
   ziarats,
+  transportRoutes = [],
+  transportVehicles = [],
+  routeVehicleRates = [],
 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [data, setData] = useState<UmrahPosterFormData>(DEFAULT_POSTER_DATA)
@@ -205,8 +211,17 @@ export default function UmrahPosterForm({
   const [customTicketPkr, setCustomTicketPkr] = useState(0)
   const [includeTransport, setIncludeTransport] = useState(true)
   const [airlineId, setAirlineId] = useState(airlines[0]?.id ?? '')
-  const [transportType, setTransportType] = useState<string>(DEFAULT_TRANSPORT_VEHICLE)
-  const transportOptions = useMemo(() => listTransportOptions(transportRates), [transportRates])
+  const [transportType, setTransportType] = useState<string>(transportVehicles[0]?.name || 'CAR')
+  const [selectedTransportRouteIds, setSelectedTransportRouteIds] = useState<string[]>(() => {
+    const defaultIds = transportRoutes
+      .filter(r => r.name === 'JED TO MAK' || r.name === 'MAK TO JED')
+      .map(r => r.id)
+    return defaultIds.length > 0 ? defaultIds : transportRoutes.slice(0, 2).map(r => r.id)
+  })
+  const transportOptions = useMemo(
+    () => transportVehicles.map(v => v.name),
+    [transportVehicles],
+  )
   const [makkahHotelId, setMakkahHotelId] = useState(makkahHotels[0]?.id ?? '')
   const [madinahHotelId, setMadinahHotelId] = useState(madinahHotels[0]?.id ?? '')
   const [makkahNights, setMakkahNights] = useState(10)
@@ -291,6 +306,7 @@ export default function UmrahPosterForm({
       customTicketPkr: customTicketPkr,
       includeTransport,
       customVisaPkr,
+      selectedTransportRouteIds,
     }
 
     const rooms: RoomType[] = ['sharing', 'quad', 'triple', 'double']
@@ -308,7 +324,17 @@ export default function UmrahPosterForm({
         makkahRoom: room,
         madinahRoom: room,
       }
-      prices[room] = getCalc(input, transportRates, currency.sar_to_pkr, visa, visa.transport_mode, ziarats).selling
+      prices[room] = getCalc(
+        input,
+        transportRates,
+        currency.sar_to_pkr,
+        visa,
+        visa.transport_mode,
+        ziarats,
+        routeVehicleRates,
+        transportVehicles,
+        transportRoutes
+      ).selling
     }
 
     return prices
@@ -317,6 +343,7 @@ export default function UmrahPosterForm({
     airline, transportType, makkahHotel, madinahHotel,
     makkahNights, madinahNights, selectedZiaratIds,
     transportRates, currency.sar_to_pkr, visa, ziarats,
+    selectedTransportRouteIds, routeVehicleRates, transportVehicles, transportRoutes,
   ])
 
   useEffect(() => {
@@ -721,7 +748,7 @@ export default function UmrahPosterForm({
               </select>
             </div>
           </div>
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <Label className="text-xs">Makkah Nights</Label>
               <Input type="number" min="1" value={makkahNights} onChange={e => setMakkahNights(Number(e.target.value) || 1)} className="h-9" />
@@ -730,9 +757,12 @@ export default function UmrahPosterForm({
               <Label className="text-xs">Madinah Nights</Label>
               <Input type="number" min="1" value={madinahNights} onChange={e => setMadinahNights(Number(e.target.value) || 1)} className="h-9" />
             </div>
+          </div>
+
+          <div className="space-y-3 pt-2 border-t">
             <div className="space-y-1.5">
               <div className="flex items-center justify-between">
-                <Label className="text-xs">Transport</Label>
+                <Label className="text-xs">Transport Vehicle</Label>
                 <label className="flex items-center gap-1 cursor-pointer select-none">
                   <Checkbox
                     checked={includeTransport}
@@ -752,6 +782,42 @@ export default function UmrahPosterForm({
                 ))}
               </select>
             </div>
+            {includeTransport && transportRoutes.length > 0 && (
+              <div className="space-y-2">
+                <Label className="text-xs font-semibold text-navy">Routes Included</Label>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2 border rounded-lg p-3 bg-slate-50/50">
+                  {transportRoutes.map(route => {
+                    const vObj = transportVehicles.find(v => v.name === transportType)
+                    const rateObj = routeVehicleRates.find(r => r.route_id === route.id && r.vehicle_id === vObj?.id)
+                    const rateVal = rateObj ? Number(rateObj.rate_sar) : 0
+                    const isChecked = selectedTransportRouteIds.includes(route.id)
+
+                    return (
+                      <label
+                        key={route.id}
+                        className="flex items-center gap-2 text-xs font-medium cursor-pointer p-1.5 hover:bg-slate-100 rounded-md transition"
+                      >
+                        <Checkbox
+                          id={`route-chk-${route.id}`}
+                          checked={isChecked}
+                          onCheckedChange={checked => {
+                            if (checked) {
+                              setSelectedTransportRouteIds(prev => [...prev, route.id])
+                            } else {
+                              setSelectedTransportRouteIds(prev => prev.filter(id => id !== route.id))
+                            }
+                          }}
+                        />
+                        <div className="flex justify-between w-full min-w-0 pr-1">
+                          <span className="truncate text-navy">{route.name}</span>
+                          <span className="text-muted-foreground font-semibold shrink-0 ml-1">{rateVal} SAR</span>
+                        </div>
+                      </label>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
           </div>
           <div className="flex flex-wrap gap-4 pt-1">
             {ziarats.map(z => (
@@ -911,21 +977,32 @@ export default function UmrahPosterForm({
         </Section>
 
         <Section title="Pricing">
-          <div className="flex gap-2 items-center">
-            <div className="flex-1 space-y-1">
-              <Label className="text-xs">Main Price (on tag)</Label>
+          <div className="grid grid-cols-2 gap-3 pb-2">
+            <div className="space-y-1">
+              <Label className="text-xs">Currency (on tag)</Label>
               <Input
-                value={data.price}
-                onChange={e => setField('price', e.target.value)}
-                placeholder="185,000"
+                value={data.priceCurrencyLabel !== undefined ? data.priceCurrencyLabel : 'PKR'}
+                onChange={e => setField('priceCurrencyLabel', e.target.value)}
+                placeholder="PKR"
                 className="h-9"
               />
             </div>
-            <ColorPicker
-              value={data.priceColor}
-              defaultValue="#ffffff"
-              onChange={val => setField('priceColor', val)}
-            />
+            <div className="flex gap-2 items-end">
+              <div className="flex-1 space-y-1">
+                <Label className="text-xs">Main Price (on tag)</Label>
+                <Input
+                  value={data.price}
+                  onChange={e => setField('price', e.target.value)}
+                  placeholder="185,000"
+                  className="h-9"
+                />
+              </div>
+              <ColorPicker
+                value={data.priceColor}
+                defaultValue="#ffffff"
+                onChange={val => setField('priceColor', val)}
+              />
+            </div>
           </div>
 
           <div className="flex gap-2 items-start">

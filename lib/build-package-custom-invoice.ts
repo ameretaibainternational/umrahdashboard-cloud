@@ -1,4 +1,4 @@
-import type { CalcResult, CustomInvoice, CustomInvoiceLineItem, Company, InvoiceSettings, Hotel, RoomType } from './types'
+import type { CalcResult, CustomInvoice, CustomInvoiceLineItem, Company, InvoiceSettings, Hotel, RoomType, TransportRoute } from './types'
 import { transportServiceName } from './transport'
 import { pkr } from './formatters'
 
@@ -24,8 +24,11 @@ interface BuildPackageInvoiceInput {
   includeMadinahHotel: boolean
   includeTickets: boolean
   includeTransport: boolean
+  includeVisa: boolean
   travelDate: string
   transportType: string
+  selectedTransportRouteIds?: string[]
+  transportRoutes?: TransportRoute[]
   company: Company
   invoiceSettings: InvoiceSettings
   currencyUnit: 'PKR' | 'SAR'
@@ -41,8 +44,10 @@ export function buildPackageCustomInvoice(input: BuildPackageInvoiceInput): Cust
     adult, child, infant, airlineName,
     makkahHotel, makkahRoom, makkahNights,
     madinahHotel, madinahRoom, madinahNights,
-    includeMakkahHotel, includeMadinahHotel, includeTickets, includeTransport,
+    includeMakkahHotel, includeMadinahHotel, includeTickets, includeTransport, includeVisa,
     transportType,
+    selectedTransportRouteIds = [],
+    transportRoutes = [],
     company, invoiceSettings, currencyUnit,
   } = input
 
@@ -65,8 +70,17 @@ export function buildPackageCustomInvoice(input: BuildPackageInvoiceInput): Cust
   }
 
   if (includeTickets) push(`Air Tickets — ${airlineName || 'Standard'}`, calc.ticketCost)
-  push('Visa Processing', calc.visaCost)
-  if (includeTransport && calc.transportCost > 0) push(transportServiceName(transportType), calc.transportCost)
+  if (includeVisa) push('Visa Processing', calc.visaCost)
+  if (includeTransport && calc.transportCost > 0) {
+    let serviceDesc = transportServiceName(transportType)
+    const activeNames = transportRoutes
+      .filter(r => selectedTransportRouteIds.includes(r.id))
+      .map(r => r.name)
+    if (activeNames.length > 0) {
+      serviceDesc += ` (${activeNames.join(' + ')})`
+    }
+    push(serviceDesc, calc.transportCost)
+  }
   if (includeMakkahHotel && calc.makkahCost > 0) {
     push(`Makkah Hotel — ${makkahHotel?.name ?? 'Hotel'} (${cap(makkahRoom)}, ${makkahNights}N)`, calc.makkahCost)
   }

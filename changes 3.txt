@@ -1,0 +1,4 @@
+change default x position of logo in hotel voucher only to 40px.
+
+When we click on save booking button on package calculator, then it creates a booking as well as an invoice too. make it create only booking and once the booking is created, its price or anything should not be counted in ledger or dashboard etc because customer is not final. there should be generate pdf button in bookings page in front of booking who dont have pdfs already genertaed. when we generate the pdf, then it should count the money in accounts and dashboard. and when we delete a booking, then if there is an invoice associated with that booking, then it should also be deleted too.
+

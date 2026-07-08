@@ -1,14 +1,14 @@
-import { getAirlines, getHotels, getVisa, getCurrency, getTransportRates, getCompany, getCurrentStaff, getPackageInvoiceById, getInvoiceClients, getInvoiceSettings, getAllPackageInvoiceNumbers, getZiarats } from '@/lib/db'
+import { getAirlines, getHotels, getVisa, getCurrency, getTransportRates, getCompany, getCurrentStaff, getPackageInvoiceById, getInvoiceClients, getInvoiceSettings, getAllPackageInvoiceNumbers, getZiarats, getBookingById, getTransportRoutes, getTransportVehicles, getRouteVehicleRates } from '@/lib/db'
 import { isViewerPermission } from '@/lib/permissions'
 import CalculatorForm from '@/components/calculator/CalculatorForm'
 
 export default async function CalculatorPage({
   searchParams,
 }: {
-  searchParams: Promise<{ edit?: string }>
+  searchParams: Promise<{ edit?: string; booking_id?: string }>
 }) {
-  const { edit } = await searchParams
-  const [airlines, hotels, visa, currency, transportRates, ziarats, company, staff, editInvoice, invoiceClients, invoiceSettings, packageInvoices] = await Promise.all([
+  const { edit, booking_id } = await searchParams
+  const [airlines, hotels, visa, currency, transportRates, ziarats, company, staff, editInvoice, invoiceClients, invoiceSettings, packageInvoices, bookingToFinalize, transportRoutes, transportVehicles, routeVehicleRates] = await Promise.all([
     getAirlines(),
     getHotels(),
     getVisa(),
@@ -21,6 +21,10 @@ export default async function CalculatorPage({
     getInvoiceClients(),
     getInvoiceSettings(),
     getAllPackageInvoiceNumbers(),
+    booking_id ? getBookingById(booking_id) : Promise.resolve(null),
+    getTransportRoutes(),
+    getTransportVehicles(),
+    getRouteVehicleRates(),
   ])
 
   const makkahHotels = hotels.filter(h => h.city === 'Makkah')
@@ -41,6 +45,10 @@ export default async function CalculatorPage({
       existingPackageInvoices={packageInvoices}
       canSaveBooking={!staff || !isViewerPermission(staff.permission)}
       editInvoice={editInvoice}
+      bookingToFinalize={bookingToFinalize ?? undefined}
+      transportRoutes={transportRoutes}
+      transportVehicles={transportVehicles}
+      routeVehicleRates={routeVehicleRates}
     />
   )
 }

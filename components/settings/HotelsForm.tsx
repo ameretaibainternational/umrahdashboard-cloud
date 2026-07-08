@@ -201,7 +201,7 @@ export default function HotelsForm({ hotels }: Props) {
       </Card>
 
       <Dialog open={!!editing} onOpenChange={open => !open && setEditing(null)}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle>{editing?.id ? 'Edit Hotel' : 'Add Hotel'}</DialogTitle>
           </DialogHeader>
@@ -242,12 +242,34 @@ export default function HotelsForm({ hotels }: Props) {
                 </div>
               </div>
               <div className="grid grid-cols-5 gap-3">
-                {(['room', 'sharing', 'quad', 'triple', 'double'] as const).map(r => (
+                 {(['room', 'sharing', 'quad', 'triple', 'double'] as const).map(r => (
                   <div key={r} className="space-y-1.5">
-                    <Label className="text-xs capitalize">{r} SAR</Label>
+                    <div className="flex items-center justify-between gap-1">
+                      <Label className="text-xs capitalize font-medium">{r} SAR</Label>
+                      {r === 'room' && (
+                        <span className="text-[9px] text-emerald-600 font-semibold bg-emerald-50 px-1 py-0.5 rounded border border-emerald-200/50">Auto-fills</span>
+                      )}
+                    </div>
                     <Input
-                      type="number" name={`${r}_sar`} min={0}
-                      defaultValue={Number(editing[`${r}_sar`] ?? 0)}
+                      type="number"
+                      name={`${r}_sar`}
+                      min={0}
+                      value={editing[`${r}_sar`] !== undefined ? Number(editing[`${r}_sar`]) : 0}
+                      className={r === 'room' ? 'bg-emerald-50/20 border-emerald-200/80 focus-visible:ring-emerald-500 font-semibold text-emerald-950' : ''}
+                      onChange={e => {
+                        const val = Math.max(0, Number(e.target.value) || 0)
+                        setEditing(prev => {
+                          if (!prev) return null
+                          const next = { ...prev, [`${r}_sar`]: val }
+                          if (r === 'room') {
+                            next.sharing_sar = Math.round(val / 5)
+                            next.quad_sar = Math.round(val / 4)
+                            next.triple_sar = Math.round(val / 3)
+                            next.double_sar = Math.round(val / 2)
+                          }
+                          return next
+                        })
+                      }}
                     />
                   </div>
                 ))}

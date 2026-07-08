@@ -7,7 +7,7 @@ export const VOUCHER_TEMPLATE_W = 794
 export const VOUCHER_TEMPLATE_H = 1123
 
 // Default logo placement (overridden by form sliders; intrinsic background pixels)
-export const VOUCHER_LOGO_X = 173
+export const VOUCHER_LOGO_X = 125
 export const VOUCHER_LOGO_Y = 136
 export const VOUCHER_LOGO_W = 550
 export const VOUCHER_LOGO_H = 320

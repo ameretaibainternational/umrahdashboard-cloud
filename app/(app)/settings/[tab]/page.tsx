@@ -1,5 +1,5 @@
 import { notFound, redirect } from 'next/navigation'
-import { getVisa, getCurrency, getTransportRates, getCustomTransports, getAirlines, getHotels, getCompany, getCurrentStaff, getStorageUsage, getStoredFiles, getInvoiceSettings, getInvoiceClients, getInvoicePaymentMethods, getInvoiceServices, getZiarats, getHotelContacts, getTransportContacts } from '@/lib/db'
+import { getVisa, getCurrency, getTransportRates, getCustomTransports, getAirlines, getHotels, getCompany, getCurrentStaff, getStorageUsage, getStoredFiles, getInvoiceSettings, getInvoiceClients, getInvoicePaymentMethods, getInvoiceServices, getZiarats, getHotelContacts, getTransportContacts, getTransportRoutes, getTransportVehicles, getRouteVehicleRates } from '@/lib/db'
 import { isAdminPermission } from '@/lib/permissions'
 import SettingsNav from '@/components/settings/SettingsNav'
 import VisaForm from '@/components/settings/VisaForm'
@@ -27,7 +27,7 @@ export default async function SettingsPage({ params }: { params: Promise<{ tab: 
   const current = await getCurrentStaff()
   if (!current || !isAdminPermission(current.permission)) redirect('/dashboard')
 
-  const [visa, currency, transportRates, customTransports, airlines, hotels, company, invoiceSettings, invoiceClients, invoicePaymentMethods, invoiceServices, ziarats, hotelContacts, transportContacts, storageUsage, storedFiles] = await Promise.all([
+  const [visa, currency, transportRates, customTransports, airlines, hotels, company, invoiceSettings, invoiceClients, invoicePaymentMethods, invoiceServices, ziarats, hotelContacts, transportContacts, storageUsage, storedFiles, transportRoutes, transportVehicles, routeVehicleRates] = await Promise.all([
     getVisa(),
     getCurrency(),
     getTransportRates(),
@@ -44,6 +44,9 @@ export default async function SettingsPage({ params }: { params: Promise<{ tab: 
     tab === 'transport-contacts' ? getTransportContacts() : Promise.resolve([]),
     tab === 'storage' ? getStorageUsage() : Promise.resolve({ id: '', total_bytes: 0 }),
     tab === 'storage' ? getStoredFiles() : Promise.resolve([]),
+    tab === 'transport' ? getTransportRoutes() : Promise.resolve([]),
+    tab === 'transport' ? getTransportVehicles() : Promise.resolve([]),
+    tab === 'transport' ? getRouteVehicleRates() : Promise.resolve([]),
   ])
 
   return (
@@ -51,7 +54,7 @@ export default async function SettingsPage({ params }: { params: Promise<{ tab: 
       <SettingsNav />
       {tab === 'visa'      && <VisaForm visa={visa} />}
       {tab === 'tickets'   && <AirlinesForm airlines={airlines} />}
-      {tab === 'transport' && <TransportForm rates={transportRates} customTransports={customTransports} />}
+      {tab === 'transport' && <TransportForm rates={routeVehicleRates} routes={transportRoutes} vehicles={transportVehicles} />}
       {tab === 'hotels'    && <HotelsForm hotels={hotels} />}
       {tab === 'hotel-contacts' && <HotelContactsForm contacts={hotelContacts} />}
       {tab === 'transport-contacts' && <TransportContactsForm contacts={transportContacts} />}

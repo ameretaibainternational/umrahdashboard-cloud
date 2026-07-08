@@ -4,7 +4,6 @@ import { revalidatePath } from 'next/cache'
 import { isDemoMode } from '@/lib/is-demo'
 import { demoStore } from '@/lib/demo-store'
 import { friendlyDbError } from '@/lib/friendly-db-error'
-import { TRANSPORT_VEHICLES } from '@/lib/transport'
 
 async function getSupabase() {
   const { createClient } = await import('@/lib/supabase/server')
@@ -27,6 +26,18 @@ async function requireFullAccess() {
 
 export async function updateVisa(formData: FormData) {
   const guard = await requireSettingsAccess(); if (guard) return guard
+  
+  let existingTransportMode: 'included' | 'separate' = 'separate'
+  if (isDemoMode()) {
+    existingTransportMode = demoStore.visa.transport_mode
+  } else {
+    const sb = await getSupabase()
+    const { data } = await sb.from('visa_settings').select('transport_mode').single()
+    if (data?.transport_mode) {
+      existingTransportMode = data.transport_mode as 'included' | 'separate'
+    }
+  }
+
   const payload = {
     visa_rate_1_pax:    Number(formData.get('visa_rate_1_pax')),
     visa_rate_2_pax:    Number(formData.get('visa_rate_2_pax')),
@@ -35,7 +46,7 @@ export async function updateVisa(formData: FormData) {
     visa_rate_group_pax: Number(formData.get('visa_rate_group_pax')),
     child_sar:          Number(formData.get('child_sar')),
     infant_sar:         Number(formData.get('infant_sar')),
-    transport_mode:     formData.get('transport_mode') as 'included' | 'separate',
+    transport_mode:     (formData.get('transport_mode') as 'included' | 'separate') || existingTransportMode,
   }
   if (isDemoMode()) {
     Object.assign(demoStore.visa, payload)
@@ -117,68 +128,24 @@ export async function updateCurrency(formData: FormData) {
   return { success: true }
 }
 
-export async function updateTransport(formData: FormData) {
-  const guard = await requireSettingsAccess(); if (guard) return guard
-  if (isDemoMode()) {
-    for (const type of TRANSPORT_VEHICLES) {
-      for (let pax = 1; pax <= 4; pax++) {
-        const rate = demoStore.transportRates.find(r => r.type === type && r.pax_count === pax)
-        if (rate) rate.rate_sar = Number(formData.get(`${type}_${pax}`))
-      }
-    }
-  } else {
-    const sb = await getSupabase()
-    for (const type of TRANSPORT_VEHICLES) {
-      for (let pax = 1; pax <= 4; pax++) {
-        await sb.from('transport_rates').upsert(
-          { type, pax_count: pax, rate_sar: Number(formData.get(`${type}_${pax}`)) },
-          { onConflict: 'type,pax_count' }
-        )
-      }
-    }
-  }
-  revalidatePath('/settings/transport')
-  revalidatePath('/calculator')
-  revalidatePath('/umrah-poster')
-  return { success: true }
-}
-
-export async function upsertCustomTransport(formData: FormData) {
+export async function upsertTransportRoute(formData: FormData) {
   const guard = await requireSettingsAccess(); if (guard) return guard
   const id = formData.get('id') as string | null
   const name = (formData.get('name') as string).trim()
-  if (!name) return { error: 'Transport name is required.' }
-  const payload = {
-    name,
-    rate_1_sar: Number(formData.get('rate_1_sar')) || 0,
-    rate_2_sar: Number(formData.get('rate_2_sar')) || 0,
-    rate_3_sar: Number(formData.get('rate_3_sar')) || 0,
-    rate_4_sar: Number(formData.get('rate_4_sar')) || 0,
-    sort_order: Number(formData.get('sort_order')) || 0,
-  }
+  const sort_order = Number(formData.get('sort_order')) || 0
+  if (!name) return { error: 'Route name is required.' }
 
   if (isDemoMode()) {
-    demoStore.upsertCustomTransport(id ? { ...payload, id } : payload)
+    demoStore.upsertTransportRoute(id ? { id, name, sort_order } : { name, sort_order })
   } else {
     const sb = await getSupabase()
+    const payload = { name, sort_order }
     if (id) {
-      const { error } = await sb.from('custom_transports').update(payload).eq('id', id)
-      if (error) {
-        if (error.message.includes('custom_transports') || error.code === 'PGRST204') {
-          return { error: 'Custom transports table missing. Run supabase/migrations/018_custom_transports.sql in Supabase SQL Editor, then try again.' }
-        }
-        return { error: friendlyDbError(error.message) }
-      }
+      const { error } = await sb.from('transport_routes').update(payload).eq('id', id)
+      if (error) return { error: friendlyDbError(error.message) }
     } else {
-      const { data: rows } = await sb.from('custom_transports').select('sort_order').order('sort_order', { ascending: false }).limit(1)
-      const nextOrder = (rows?.[0]?.sort_order ?? 0) + 1
-      const { error } = await sb.from('custom_transports').insert({ ...payload, sort_order: payload.sort_order || nextOrder })
-      if (error) {
-        if (error.message.includes('custom_transports') || error.code === 'PGRST204') {
-          return { error: 'Custom transports table missing. Run supabase/migrations/018_custom_transports.sql in Supabase SQL Editor, then try again.' }
-        }
-        return { error: friendlyDbError(error.message) }
-      }
+      const { error } = await sb.from('transport_routes').insert(payload)
+      if (error) return { error: friendlyDbError(error.message) }
     }
   }
   revalidatePath('/settings/transport')
@@ -187,14 +154,75 @@ export async function upsertCustomTransport(formData: FormData) {
   return { success: true as const }
 }
 
-export async function deleteCustomTransport(id: string) {
+export async function deleteTransportRoute(id: string) {
   const guard = await requireSettingsAccess(); if (guard) return guard
   if (isDemoMode()) {
-    demoStore.deleteCustomTransport(id)
+    demoStore.deleteTransportRoute(id)
   } else {
     const sb = await getSupabase()
-    const { error } = await sb.from('custom_transports').delete().eq('id', id)
+    const { error } = await sb.from('transport_routes').delete().eq('id', id)
     if (error) return { error: friendlyDbError(error.message) }
+  }
+  revalidatePath('/settings/transport')
+  revalidatePath('/calculator')
+  revalidatePath('/umrah-poster')
+  return { success: true as const }
+}
+
+export async function upsertTransportVehicle(formData: FormData) {
+  const guard = await requireSettingsAccess(); if (guard) return guard
+  const id = formData.get('id') as string | null
+  const name = (formData.get('name') as string).trim()
+  const sort_order = Number(formData.get('sort_order')) || 0
+  if (!name) return { error: 'Vehicle name is required.' }
+
+  if (isDemoMode()) {
+    demoStore.upsertTransportVehicle(id ? { id, name, sort_order } : { name, sort_order })
+  } else {
+    const sb = await getSupabase()
+    const payload = { name, sort_order }
+    if (id) {
+      const { error } = await sb.from('transport_vehicles').update(payload).eq('id', id)
+      if (error) return { error: friendlyDbError(error.message) }
+    } else {
+      const { error } = await sb.from('transport_vehicles').insert(payload)
+      if (error) return { error: friendlyDbError(error.message) }
+    }
+  }
+  revalidatePath('/settings/transport')
+  revalidatePath('/calculator')
+  revalidatePath('/umrah-poster')
+  return { success: true as const }
+}
+
+export async function deleteTransportVehicle(id: string) {
+  const guard = await requireSettingsAccess(); if (guard) return guard
+  if (isDemoMode()) {
+    demoStore.deleteTransportVehicle(id)
+  } else {
+    const sb = await getSupabase()
+    const { error } = await sb.from('transport_vehicles').delete().eq('id', id)
+    if (error) return { error: friendlyDbError(error.message) }
+  }
+  revalidatePath('/settings/transport')
+  revalidatePath('/calculator')
+  revalidatePath('/umrah-poster')
+  return { success: true as const }
+}
+
+export async function updateRouteVehicleRates(rates: { route_id: string; vehicle_id: string; rate_sar: number }[]) {
+  const guard = await requireSettingsAccess(); if (guard) return guard
+  if (isDemoMode()) {
+    demoStore.updateRouteVehicleRates(rates)
+  } else {
+    const sb = await getSupabase()
+    for (const item of rates) {
+      const { error } = await sb.from('route_vehicle_rates').upsert(
+        { route_id: item.route_id, vehicle_id: item.vehicle_id, rate_sar: item.rate_sar },
+        { onConflict: 'route_id,vehicle_id' }
+      )
+      if (error) return { error: friendlyDbError(error.message) }
+    }
   }
   revalidatePath('/settings/transport')
   revalidatePath('/calculator')
@@ -413,6 +441,19 @@ export async function deleteInvoiceClient(id: string) {
   return { success: true }
 }
 
+export async function deleteInvoiceClients(ids: string[]) {
+  const guard = await requireSettingsAccess(); if (guard) return guard
+  if (isDemoMode()) {
+    ids.forEach(id => demoStore.deleteInvoiceClient(id))
+  } else {
+    const sb = await getSupabase()
+    await sb.from('invoice_clients').delete().in('id', ids)
+  }
+  revalidatePath('/settings/invoices')
+  revalidatePath('/custom-invoices')
+  return { success: true }
+}
+
 export async function upsertInvoicePaymentMethod(formData: FormData) {
   const guard = await requireSettingsAccess(); if (guard) return guard
   const id = formData.get('id') as string | null
@@ -470,6 +511,19 @@ export async function deleteInvoiceService(id: string) {
   else {
     const sb = await getSupabase()
     await sb.from('invoice_services').delete().eq('id', id)
+  }
+  revalidatePath('/settings/invoices')
+  revalidatePath('/custom-invoices')
+  return { success: true }
+}
+
+export async function deleteInvoiceServices(ids: string[]) {
+  const guard = await requireSettingsAccess(); if (guard) return guard
+  if (isDemoMode()) {
+    ids.forEach(id => demoStore.deleteInvoiceService(id))
+  } else {
+    const sb = await getSupabase()
+    await sb.from('invoice_services').delete().in('id', ids)
   }
   revalidatePath('/settings/invoices')
   revalidatePath('/custom-invoices')

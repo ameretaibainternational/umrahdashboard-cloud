@@ -13,7 +13,7 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { Trash2, Search, Loader2, Eye, Pencil } from 'lucide-react'
+import { Trash2, Search, Loader2, Eye, Pencil, FileText } from 'lucide-react'
 
 interface Props {
   bookings: Booking[]
@@ -170,18 +170,40 @@ export default function BookingsTable({ bookings }: Props) {
                   <TableCell className="text-right text-sm text-amber-600">{pkr(b.remaining_pkr)}</TableCell>
                   <TableCell className="text-xs text-muted-foreground">{formatDate(b.booking_date)}</TableCell>
                   <TableCell>
-                    <Badge
-                      variant="outline"
-                      className={b.remaining_pkr > 0
-                        ? 'text-amber-600 border-amber-200 bg-amber-50 text-[10px]'
-                        : 'text-emerald-600 border-emerald-200 bg-emerald-50 text-[10px]'
-                      }
-                    >
-                      {b.remaining_pkr > 0 ? 'Due' : 'Paid'}
-                    </Badge>
+                    {!b.source_invoice_id ? (
+                      <Badge
+                        variant="outline"
+                        className="text-slate-500 border-slate-200 bg-slate-50 text-[10px]"
+                      >
+                        Draft
+                      </Badge>
+                    ) : (
+                      <Badge
+                        variant="outline"
+                        className={b.remaining_pkr > 0
+                          ? 'text-amber-600 border-amber-200 bg-amber-50 text-[10px]'
+                          : 'text-emerald-600 border-emerald-200 bg-emerald-50 text-[10px]'
+                        }
+                      >
+                        {b.remaining_pkr > 0 ? 'Due' : 'Paid'}
+                      </Badge>
+                    )}
                   </TableCell>
                   <TableCell>
                     <div className="flex items-center justify-end gap-1">
+                      {!b.source_invoice_id && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="h-8 text-xs px-2 text-navy hover:text-navy/80 hover:bg-navy/10 gap-1"
+                          title="Generate PDF"
+                          onClick={() => router.push(`/calculator?booking_id=${b.id}`)}
+                        >
+                          <FileText className="w-3.5 h-3.5" />
+                          <span>Generate PDF</span>
+                        </Button>
+                      )}
                       <Button
                         type="button"
                         variant="ghost"

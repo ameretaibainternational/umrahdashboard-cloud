@@ -1,4 +1,4 @@
-import type { Airline, Hotel, Booking, Payment, Expense, StaffUser, VisaSettings, CurrencySettings, TransportRate, Company, InvoiceSettings, InvoiceClient, InvoicePaymentMethod, InvoiceService, CustomInvoice, HotelVoucherSettings, HotelVoucherRecord, StorageUsage, ZiaratOption, HotelContact, TransportContact, CustomTransport } from './types'
+import type { Airline, Hotel, Booking, Payment, Expense, StaffUser, VisaSettings, CurrencySettings, TransportRate, Company, InvoiceSettings, InvoiceClient, InvoicePaymentMethod, InvoiceService, CustomInvoice, HotelVoucherSettings, HotelVoucherRecord, StorageUsage, ZiaratOption, HotelContact, TransportContact, CustomTransport, TransportRoute, TransportVehicle, RouteVehicleRate } from './types'
 import { DEFAULT_TRANSPORT_RATE_SAR, TRANSPORT_VEHICLES, transportServiceName } from './transport'
 import { DEFAULT_ZIARAT_SEED } from './ziarats'
 import { DEFAULT_URDU_FOOTER, DEFAULT_URDU_GUIDELINES } from './hotel-voucher-defaults'
@@ -75,6 +75,76 @@ const DEFAULT_ZIARATS: ZiaratOption[] = DEFAULT_ZIARAT_SEED.map((seed, i) => ({
 
 const DEFAULT_HOTEL_CONTACTS: HotelContact[] = []
 
+const DEFAULT_TRANSPORT_VEHICLES: TransportVehicle[] = [
+  { id: 'v1', name: 'CAR', sort_order: 1 },
+  { id: 'v2', name: 'H1', sort_order: 2 },
+  { id: 'v3', name: 'STARIA', sort_order: 3 },
+  { id: 'v4', name: 'GMC', sort_order: 4 },
+  { id: 'v5', name: 'HIACE', sort_order: 5 },
+  { id: 'v6', name: 'COASTER', sort_order: 6 },
+]
+
+const DEFAULT_TRANSPORT_ROUTES: TransportRoute[] = [
+  { id: 'r1', name: 'JED TO MAK', sort_order: 1 },
+  { id: 'r2', name: 'MAK TO JED', sort_order: 2 },
+  { id: 'r3', name: 'MAK TO MED / MED TO MAK', sort_order: 3 },
+  { id: 'r4', name: 'MAK ZIYARAT', sort_order: 4 },
+  { id: 'r5', name: 'MED ZIYARAT', sort_order: 5 },
+  { id: 'r6', name: 'MED HTL TO MED APT', sort_order: 6 },
+  { id: 'r7', name: 'MED HTL TO JED APT', sort_order: 7 },
+]
+
+const DEFAULT_ROUTE_VEHICLE_RATES: RouteVehicleRate[] = [
+  { id: 'rvr1', route_id: 'r1', vehicle_id: 'v1', rate_sar: 230 },
+  { id: 'rvr2', route_id: 'r1', vehicle_id: 'v2', rate_sar: 280 },
+  { id: 'rvr3', route_id: 'r1', vehicle_id: 'v3', rate_sar: 280 },
+  { id: 'rvr4', route_id: 'r1', vehicle_id: 'v4', rate_sar: 430 },
+  { id: 'rvr5', route_id: 'r1', vehicle_id: 'v5', rate_sar: 330 },
+  { id: 'rvr6', route_id: 'r1', vehicle_id: 'v6', rate_sar: 530 },
+
+  { id: 'rvr7', route_id: 'r2', vehicle_id: 'v1', rate_sar: 180 },
+  { id: 'rvr8', route_id: 'r2', vehicle_id: 'v2', rate_sar: 230 },
+  { id: 'rvr9', route_id: 'r2', vehicle_id: 'v3', rate_sar: 230 },
+  { id: 'rvr10', route_id: 'r2', vehicle_id: 'v4', rate_sar: 380 },
+  { id: 'rvr11', route_id: 'r2', vehicle_id: 'v5', rate_sar: 280 },
+  { id: 'rvr12', route_id: 'r2', vehicle_id: 'v6', rate_sar: 455 },
+
+  { id: 'rvr13', route_id: 'r3', vehicle_id: 'v1', rate_sar: 365 },
+  { id: 'rvr14', route_id: 'r3', vehicle_id: 'v2', rate_sar: 455 },
+  { id: 'rvr15', route_id: 'r3', vehicle_id: 'v3', rate_sar: 455 },
+  { id: 'rvr16', route_id: 'r3', vehicle_id: 'v4', rate_sar: 930 },
+  { id: 'rvr17', route_id: 'r3', vehicle_id: 'v5', rate_sar: 555 },
+  { id: 'rvr18', route_id: 'r3', vehicle_id: 'v6', rate_sar: 855 },
+
+  { id: 'rvr19', route_id: 'r4', vehicle_id: 'v1', rate_sar: 180 },
+  { id: 'rvr20', route_id: 'r4', vehicle_id: 'v2', rate_sar: 230 },
+  { id: 'rvr21', route_id: 'r4', vehicle_id: 'v3', rate_sar: 230 },
+  { id: 'rvr22', route_id: 'r4', vehicle_id: 'v4', rate_sar: 380 },
+  { id: 'rvr23', route_id: 'r4', vehicle_id: 'v5', rate_sar: 330 },
+  { id: 'rvr24', route_id: 'r4', vehicle_id: 'v6', rate_sar: 405 },
+
+  { id: 'rvr25', route_id: 'r5', vehicle_id: 'v1', rate_sar: 180 },
+  { id: 'rvr26', route_id: 'r5', vehicle_id: 'v2', rate_sar: 230 },
+  { id: 'rvr27', route_id: 'r5', vehicle_id: 'v3', rate_sar: 230 },
+  { id: 'rvr28', route_id: 'r5', vehicle_id: 'v4', rate_sar: 380 },
+  { id: 'rvr29', route_id: 'r5', vehicle_id: 'v5', rate_sar: 330 },
+  { id: 'rvr30', route_id: 'r5', vehicle_id: 'v6', rate_sar: 405 },
+
+  { id: 'rvr31', route_id: 'r6', vehicle_id: 'v1', rate_sar: 130 },
+  { id: 'rvr32', route_id: 'r6', vehicle_id: 'v2', rate_sar: 130 },
+  { id: 'rvr33', route_id: 'r6', vehicle_id: 'v3', rate_sar: 130 },
+  { id: 'rvr34', route_id: 'r6', vehicle_id: 'v4', rate_sar: 330 },
+  { id: 'rvr35', route_id: 'r6', vehicle_id: 'v5', rate_sar: 180 },
+  { id: 'rvr36', route_id: 'r6', vehicle_id: 'v6', rate_sar: 305 },
+
+  { id: 'rvr37', route_id: 'r7', vehicle_id: 'v1', rate_sar: 330 },
+  { id: 'rvr38', route_id: 'r7', vehicle_id: 'v2', rate_sar: 405 },
+  { id: 'rvr39', route_id: 'r7', vehicle_id: 'v3', rate_sar: 405 },
+  { id: 'rvr40', route_id: 'r7', vehicle_id: 'v4', rate_sar: 830 },
+  { id: 'rvr41', route_id: 'r7', vehicle_id: 'v5', rate_sar: 505 },
+  { id: 'rvr42', route_id: 'r7', vehicle_id: 'v6', rate_sar: 805 },
+]
+
 const DEFAULT_VISA: VisaSettings = {
   id: 'v1',
   visa_rate_1_pax: 725,
@@ -147,6 +217,9 @@ class DemoStore {
   hotels: Hotel[] = [...DEFAULT_HOTELS]
   transportRates: TransportRate[] = [...DEFAULT_TRANSPORT_RATES]
   customTransports: CustomTransport[] = []
+  transportRoutes: TransportRoute[] = [...DEFAULT_TRANSPORT_ROUTES]
+  transportVehicles: TransportVehicle[] = [...DEFAULT_TRANSPORT_VEHICLES]
+  routeVehicleRates: RouteVehicleRate[] = [...DEFAULT_ROUTE_VEHICLE_RATES]
   ziarats: ZiaratOption[] = [...DEFAULT_ZIARATS]
   hotelContacts: HotelContact[] = [...DEFAULT_HOTEL_CONTACTS]
   transportContacts: TransportContact[] = []
@@ -543,10 +616,58 @@ class DemoStore {
   }
   deleteStaff(id: string) { this.staff = this.staff.filter(s => s.id !== id) }
 
+  // Transport Routes CRUD
+  upsertTransportRoute(data: { id?: string; name: string; sort_order: number }) {
+    if (data.id) {
+      this.transportRoutes = this.transportRoutes.map(r => r.id === data.id ? { ...r, ...data } : r)
+    } else {
+      const id = uid()
+      this.transportRoutes.push({ id, ...data })
+    }
+  }
+  deleteTransportRoute(id: string) {
+    this.transportRoutes = this.transportRoutes.filter(r => r.id !== id)
+    this.routeVehicleRates = this.routeVehicleRates.filter(r => r.route_id !== id)
+  }
+
+  // Transport Vehicles CRUD
+  upsertTransportVehicle(data: { id?: string; name: string; sort_order: number }) {
+    if (data.id) {
+      this.transportVehicles = this.transportVehicles.map(v => v.id === data.id ? { ...v, ...data } : v)
+    } else {
+      const id = uid()
+      this.transportVehicles.push({ id, ...data })
+    }
+  }
+  deleteTransportVehicle(id: string) {
+    this.transportVehicles = this.transportVehicles.filter(v => v.id !== id)
+    this.routeVehicleRates = this.routeVehicleRates.filter(r => r.vehicle_id !== id)
+  }
+
+  // Route Vehicle Rates Grid Update
+  updateRouteVehicleRates(rates: { route_id: string; vehicle_id: string; rate_sar: number }[]) {
+    for (const item of rates) {
+      const idx = this.routeVehicleRates.findIndex(r => r.route_id === item.route_id && r.vehicle_id === item.vehicle_id)
+      if (idx !== -1) {
+        this.routeVehicleRates[idx].rate_sar = Number(item.rate_sar)
+      } else {
+        this.routeVehicleRates.push({
+          id: uid(),
+          route_id: item.route_id,
+          vehicle_id: item.vehicle_id,
+          rate_sar: Number(item.rate_sar)
+        })
+      }
+    }
+  }
+
   reset() {
     this.airlines = [...DEFAULT_AIRLINES]
     this.hotels = [...DEFAULT_HOTELS]
     this.transportRates = [...DEFAULT_TRANSPORT_RATES]
+    this.transportRoutes = [...DEFAULT_TRANSPORT_ROUTES]
+    this.transportVehicles = [...DEFAULT_TRANSPORT_VEHICLES]
+    this.routeVehicleRates = [...DEFAULT_ROUTE_VEHICLE_RATES]
     this.ziarats = [...DEFAULT_ZIARATS]
     this.hotelContacts = [...DEFAULT_HOTEL_CONTACTS]
     this.visa = { ...DEFAULT_VISA }
@@ -571,7 +692,7 @@ class DemoStore {
 }
 
 // Bump this whenever DemoStore gains new fields, to force recreation in dev hot-reloads
-const STORE_VERSION = 11
+const STORE_VERSION = 12
 
 const globalStore = globalThis as typeof globalThis & {
   __demoStore?: DemoStore

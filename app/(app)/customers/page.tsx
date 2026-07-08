@@ -4,7 +4,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge'
 
 export default async function CustomersPage() {
-  const bookings = await getBookings()
+  const rawBookings = await getBookings()
+  const bookings = rawBookings.filter(b => b.source_invoice_id !== null)
 
   return (
     <div className="rounded-xl border bg-white overflow-hidden shadow-sm">

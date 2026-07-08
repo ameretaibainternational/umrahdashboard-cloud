@@ -1,4 +1,4 @@
-import type { TransportVehicle } from './transport'
+// Conflicting import removed
 
 export interface VisaSettings {
   id: string
@@ -262,6 +262,7 @@ export interface PackageInvoiceData {
   includeMadinahHotel: boolean
   includeTickets: boolean
   includeTransport: boolean
+  includeVisa: boolean
   customTicket: boolean
   customTicketLabel: string
   customTicketAmount: number
@@ -273,6 +274,29 @@ export interface PackageInvoiceData {
   returnCity: string
   currencyUnit?: 'PKR' | 'SAR'
   sarToPkr?: number
+  selectedTransportRouteIds?: string[]
+}
+
+export interface TransportRoute {
+  id: string
+  name: string
+  sort_order: number
+  created_at?: string
+}
+
+export interface TransportVehicle {
+  id: string
+  name: string
+  sort_order: number
+  created_at?: string
+}
+
+export interface RouteVehicleRate {
+  id: string
+  route_id: string
+  vehicle_id: string
+  rate_sar: number
+  created_at?: string
 }
 
 export interface CustomInvoice {
@@ -365,11 +389,13 @@ export interface CalcInput {
   includeMadinahHotel: boolean
   includeTickets: boolean
   includeTransport?: boolean
+  includeVisa?: boolean
   customTicket: boolean
   customTicketLabel: string   // airline name + route entered by user
   customTicketPkr: number     // total ticket cost already converted to PKR
   currencyUnit?: 'PKR' | 'SAR'
   customVisaPkr?: number
+  selectedTransportRouteIds?: string[]
 }
 
 export interface ZiaratCalcItem {

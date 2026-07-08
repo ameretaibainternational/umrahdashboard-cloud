@@ -34,7 +34,8 @@ import { DEFAULT_TRANSPORT_VEHICLE, listTransportOptions } from '@/lib/transport
 import { resolveSelectedZiaratIds, ziaratLegacyFlags } from '@/lib/ziarats'
 import type {
   Airline, Hotel, VisaSettings, CurrencySettings, TransportRate, RoomType, CalcInput,
-  CustomInvoice, PackageInvoiceData, Company, InvoiceSettings, InvoiceClient, ZiaratOption,
+  CustomInvoice, PackageInvoiceData, Company, InvoiceSettings, InvoiceClient, ZiaratOption, Booking,
+  TransportRoute, TransportVehicle, RouteVehicleRate
 } from '@/lib/types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -64,7 +65,7 @@ interface Props {
   madinahHotels: Hotel[]
   visa: VisaSettings
   currency: CurrencySettings
-  transportRates: TransportRate[]
+  transportRates?: TransportRate[]
   ziarats: ZiaratOption[]
   company: Company
   invoiceClients: InvoiceClient[]
@@ -72,11 +73,63 @@ interface Props {
   existingPackageInvoices?: Pick<CustomInvoice, 'invoice_number'>[]
   canSaveBooking?: boolean
   editInvoice?: CustomInvoice | null
+  bookingToFinalize?: Booking
+  transportRoutes?: TransportRoute[]
+  transportVehicles?: TransportVehicle[]
+  routeVehicleRates?: RouteVehicleRate[]
 }
 
 function initialFromEdit(editInvoice?: CustomInvoice | null, ziarats: ZiaratOption[] = []): PackageInvoiceData | null {
   if (!editInvoice) return null
   return getPackageDataFromInvoice(editInvoice, ziarats)
+}
+
+function initialFromBooking(
+  booking?: Booking,
+  airlines: Airline[] = [],
+  makkahHotels: Hotel[] = [],
+  madinahHotels: Hotel[] = [],
+): PackageInvoiceData | null {
+  if (!booking) return null
+  const airlineId = airlines.find(a => a.name === booking.airline_name)?.id || ''
+  const makkahHotelId = makkahHotels.find(h => h.name === booking.makkah_hotel_name)?.id || ''
+  const madinahHotelId = madinahHotels.find(h => h.name === booking.madinah_hotel_name)?.id || ''
+
+  return {
+    adult: booking.adult_count,
+    child: booking.child_count,
+    infant: booking.infant_count,
+    airlineId,
+    transportType: DEFAULT_TRANSPORT_VEHICLE,
+    makkahHotelId,
+    makkahRoom: (booking.makkah_room_type || 'sharing') as RoomType,
+    makkahNights: booking.makkah_nights || 0,
+    madinahHotelId,
+    madinahRoom: (booking.madinah_room_type || 'sharing') as RoomType,
+    madinahNights: booking.madinah_nights || 0,
+    profitType: 'fixed',
+    profitValue: booking.profit_pkr,
+    sellingOverride: booking.total_pkr,
+    advance: booking.advance_pkr,
+    customerName: booking.customer_name,
+    selectedZiaratIds: [],
+    includeMakkahHotel: Boolean(booking.makkah_hotel_name),
+    includeMadinahHotel: Boolean(booking.madinah_hotel_name),
+    includeTickets: booking.airline_name !== 'No Flight',
+    includeTransport: false,
+    includeVisa: true,
+    customTicket: false,
+    customTicketLabel: '',
+    customTicketAmount: 0,
+    customTicketCurrency: 'SAR',
+    travelDate: booking.booking_date,
+    departureCity: '',
+    arrivalCity: '',
+    saDepartureCity: '',
+    returnCity: '',
+    currencyUnit: 'PKR',
+    sarToPkr: 75,
+  }
 }
 
 function applyClientToBilled(client: InvoiceClient) {
@@ -134,21 +187,26 @@ function ScaledPreview({ children, totalPages }: { children: React.ReactNode; to
 }
 
 export default function CalculatorForm({
-  airlines, makkahHotels, madinahHotels, visa, currency, transportRates, ziarats, company,
+  airlines, makkahHotels, madinahHotels, visa, currency, transportRates = [], ziarats, company,
   invoiceClients,
   invoiceSettings,
   existingPackageInvoices = [],
   canSaveBooking = true,
   editInvoice = null,
+  bookingToFinalize = undefined,
+  transportRoutes = [],
+  transportVehicles = [],
+  routeVehicleRates = [],
 }: Props) {
   const router = useRouter()
   const formId = useId()
   const printRef = useRef<HTMLDivElement>(null)
   const logoInputRef = useRef<HTMLInputElement>(null)
-  const initial = initialFromEdit(editInvoice, ziarats)
+  const signatureInputRef = useRef<HTMLInputElement>(null)
+  const initial = initialFromEdit(editInvoice, ziarats) || initialFromBooking(bookingToFinalize, airlines, makkahHotels, madinahHotels)
   const resolvedSettings = resolveInvoiceSettings(invoiceSettings)
   const hasSavedClients = invoiceClients.length > 0
-  const initialCustomerName = initial?.customerName ?? editInvoice?.billed_to_name ?? ''
+  const initialCustomerName = initial?.customerName ?? editInvoice?.billed_to_name ?? bookingToFinalize?.customer_name ?? ''
   const matchedClient = invoiceClients.find(c => c.name === initialCustomerName)
   const initialBilled = editInvoice
     ? {
@@ -156,9 +214,15 @@ export default function CalculatorForm({
       address: editInvoice.billed_to_address,
       phone: editInvoice.billed_to_client_number,
     }
-    : matchedClient
-      ? applyClientToBilled(matchedClient)
-      : { name: initialCustomerName, address: '', phone: '' }
+    : bookingToFinalize
+      ? {
+        name: bookingToFinalize.customer_name,
+        address: '',
+        phone: '',
+      }
+      : matchedClient
+        ? applyClientToBilled(matchedClient)
+        : { name: initialCustomerName, address: '', phone: '' }
 
   const isExplicitEdit = Boolean(editInvoice?.id)
 
@@ -175,6 +239,8 @@ export default function CalculatorForm({
   const [logoY, setLogoY] = useState(DEFAULT_LOGO_Y)
   const [invoiceBackground, setInvoiceBackground] = useState(DEFAULT_PACKAGE_INVOICE_BACKGROUND)
   const [invoiceTextColor, setInvoiceTextColor] = useState(DEFAULT_INVOICE_TEXT_COLOR)
+  const [signatureUrl, setSignatureUrl] = useState<string | null>(null)
+  const [signaturePersonName, setSignaturePersonName] = useState('')
   const [savedInvoiceId, setSavedInvoiceId] = useState<string | null>(editInvoice?.id ?? null)
   const [localSavedInvoices, setLocalSavedInvoices] = useState<Pick<CustomInvoice, 'invoice_number'>[]>(
     existingPackageInvoices ?? [],
@@ -189,7 +255,7 @@ export default function CalculatorForm({
   const [child, setChild] = useState(initial?.child ?? 0)
   const [infant, setInfant] = useState(initial?.infant ?? 0)
   const [airlineId, setAirlineId] = useState(initial?.airlineId || airlines[0]?.id || '')
-  const [transportType, setTransportType] = useState<string>(initial?.transportType ?? DEFAULT_TRANSPORT_VEHICLE)
+  const [transportType, setTransportType] = useState<string>(initial?.transportType || transportVehicles[0]?.name || 'CAR')
   const [saveCustomer, setSaveCustomer] = useState(true)
   const [makkahHotelId, setMakkahHotelId] = useState(initial?.makkahHotelId || makkahHotels[0]?.id || '')
   const [makkahRoom, setMakkahRoom] = useState<RoomType>(initial?.makkahRoom ?? 'sharing')
@@ -201,6 +267,7 @@ export default function CalculatorForm({
   const [includeMadinahHotel, setIncludeMadinahHotel] = useState(initial?.includeMadinahHotel ?? true)
   const [includeTickets, setIncludeTickets] = useState(initial?.includeTickets ?? true)
   const [includeTransport, setIncludeTransport] = useState(initial?.includeTransport ?? true)
+  const [includeVisa, setIncludeVisa] = useState(initial?.includeVisa ?? true)
   const [currencyUnit, setCurrencyUnit] = useState<'PKR' | 'SAR'>(initial?.currencyUnit ?? 'PKR')
   const [profitType, setProfitType] = useState<'percent' | 'fixed'>(initial?.profitType ?? 'percent')
   const [profitValue, setProfitValue] = useState(initial?.profitValue ?? 8)
@@ -225,6 +292,13 @@ export default function CalculatorForm({
   const [arrivalCity, setArrivalCity] = useState(initial?.arrivalCity ?? '')
   const [saDepartureCity, setSaDepartureCity] = useState(initial?.saDepartureCity ?? '')
   const [returnCity, setReturnCity] = useState(initial?.returnCity ?? '')
+  const [selectedTransportRouteIds, setSelectedTransportRouteIds] = useState<string[]>(() => {
+    if (initial?.selectedTransportRouteIds) return initial.selectedTransportRouteIds
+    const defaultIds = transportRoutes
+      .filter(r => r.name === 'JED TO MAK' || r.name === 'MAK TO JED')
+      .map(r => r.id)
+    return defaultIds.length > 0 ? defaultIds : transportRoutes.slice(0, 2).map(r => r.id)
+  })
 
   const pkCities = company.pk_flight_cities?.length ? company.pk_flight_cities : DEFAULT_PK_FLIGHT_CITIES
   const saCities = company.sa_flight_cities?.length ? company.sa_flight_cities : DEFAULT_SA_FLIGHT_CITIES
@@ -234,7 +308,7 @@ export default function CalculatorForm({
     adult, child, infant, airlineId, transportType,
     makkahHotelId, makkahRoom, makkahNights,
     madinahHotelId, madinahRoom, madinahNights,
-    includeMakkahHotel, includeMadinahHotel, includeTickets, includeTransport, currencyUnit,
+    includeMakkahHotel, includeMadinahHotel, includeTickets, includeTransport, includeVisa, currencyUnit,
     profitType, profitValue, sellingOverride, advance,
     customerName, billedAddr, billedPhone,
     selectedZiaratIds,
@@ -243,7 +317,7 @@ export default function CalculatorForm({
   }), [
     invoiceTitleText, adult, child, infant, airlineId, transportType,
     makkahHotelId, makkahRoom, makkahNights, madinahHotelId, madinahRoom, madinahNights,
-    includeMakkahHotel, includeMadinahHotel, includeTickets, includeTransport, currencyUnit, profitType, profitValue, sellingOverride, advance,
+    includeMakkahHotel, includeMadinahHotel, includeTickets, includeTransport, includeVisa, currencyUnit, profitType, profitValue, sellingOverride, advance,
     customerName, billedAddr, billedPhone,
     selectedZiaratIds,
     customTicket, customTicketLabel, customTicketAmount, customTicketCurrency,
@@ -330,6 +404,27 @@ export default function CalculatorForm({
     if (logoInputRef.current) logoInputRef.current.value = ''
   }
 
+  async function handleSignatureUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    if (file.size > LOGO_MAX_BYTES) {
+      window.alert('Signature file must be 150 KB or smaller.')
+      e.target.value = ''
+      return
+    }
+    try {
+      setSignatureUrl(await readFileAsDataUrl(file))
+    } catch {
+      window.alert('Could not read signature file.')
+      e.target.value = ''
+    }
+  }
+
+  function clearSignature() {
+    setSignatureUrl(null)
+    if (signatureInputRef.current) signatureInputRef.current.value = ''
+  }
+
   useEffect(() => {
     if (airlines.length > 0 && !airlines.some(a => a.id === airlineId)) {
       setAirlineId(airlines[0].id)
@@ -382,15 +477,29 @@ export default function CalculatorForm({
     profitType, profitValue, sellingOverride, advance,
     customerName,
     selectedZiaratIds,
-    includeMakkahHotel, includeMadinahHotel, includeTickets, includeTransport,
+    includeMakkahHotel, includeMadinahHotel, includeTickets, includeTransport, includeVisa,
     customTicket, customTicketLabel, customTicketPkr,
     currencyUnit,
+    selectedTransportRouteIds,
   }
 
-  const transportOptions = useMemo(() => listTransportOptions(transportRates), [transportRates])
+  const transportOptions = useMemo(
+    () => transportVehicles.map(v => v.name),
+    [transportVehicles],
+  )
 
   const calc = useMemo(
-    () => getCalc(input, transportRates, currency.sar_to_pkr, visa, visa.transport_mode, ziarats),
+    () => getCalc(
+      input,
+      transportRates,
+      currency.sar_to_pkr,
+      visa,
+      visa.transport_mode,
+      ziarats,
+      routeVehicleRates,
+      transportVehicles,
+      transportRoutes
+    ),
     [adult, child, infant, airlineId, transportType, makkahHotelId, makkahRoom, makkahNights,
       madinahHotelId, madinahRoom, madinahNights, profitType, profitValue, sellingOverride, advance,
       currency.sar_to_pkr,
@@ -398,9 +507,10 @@ export default function CalculatorForm({
       visa.visa_rate_4_pax, visa.visa_rate_group_pax,
       visa.infant_sar, visa.transport_mode,
       selectedZiaratIds,
-      includeMakkahHotel, includeMadinahHotel, includeTickets, includeTransport,
+      includeMakkahHotel, includeMadinahHotel, includeTickets, includeTransport, includeVisa,
       customTicket, customTicketPkr,
-      transportRates, ziarats, currencyUnit]
+      transportRates, ziarats, currencyUnit,
+      selectedTransportRouteIds, routeVehicleRates, transportVehicles, transportRoutes]
   )
 
   const fmt = useCallback((n: number) => {
@@ -412,7 +522,9 @@ export default function CalculatorForm({
     logoX,
     logoY,
     logoSize,
-  }), [logoUrl, logoX, logoY, logoSize])
+    signatureUrl,
+    signaturePersonName: signaturePersonName.trim() || undefined,
+  }), [logoUrl, logoX, logoY, logoSize, signatureUrl, signaturePersonName])
 
   const packageInvoice = useMemo(() => buildPackageCustomInvoice({
     invoiceNo: invoiceNo || 'INV-0000',
@@ -426,9 +538,11 @@ export default function CalculatorForm({
     airlineName,
     makkahHotel, makkahRoom, makkahNights,
     madinahHotel, madinahRoom, madinahNights,
-    includeMakkahHotel, includeMadinahHotel, includeTickets, includeTransport,
+    includeMakkahHotel, includeMadinahHotel, includeTickets, includeTransport, includeVisa,
     travelDate,
     transportType,
+    selectedTransportRouteIds,
+    transportRoutes,
     company,
     invoiceSettings: resolvedSettings,
     currencyUnit,
@@ -437,8 +551,8 @@ export default function CalculatorForm({
     adult, child, infant, airlineName,
     makkahHotel, makkahRoom, makkahNights,
     madinahHotel, madinahRoom, madinahNights,
-    includeMakkahHotel, includeMadinahHotel, includeTickets, includeTransport,
-    transportType,
+    includeMakkahHotel, includeMadinahHotel, includeTickets, includeTransport, includeVisa,
+    transportType, selectedTransportRouteIds, transportRoutes,
     company, resolvedSettings, currencyUnit,
   ])
 
@@ -462,11 +576,12 @@ export default function CalculatorForm({
       customerName,
       selectedZiaratIds,
       ...ziaratLegacyFlags(selectedZiaratIds, ziarats),
-      includeMakkahHotel, includeMadinahHotel, includeTickets, includeTransport,
+      includeMakkahHotel, includeMadinahHotel, includeTickets, includeTransport, includeVisa,
       customTicket, customTicketLabel, customTicketAmount, customTicketCurrency,
       travelDate, departureCity, arrivalCity, saDepartureCity, returnCity,
       currencyUnit,
       sarToPkr: currency.sar_to_pkr,
+      selectedTransportRouteIds,
     }
   }, [
     adult, child, infant, airlineId, transportType,
@@ -474,10 +589,10 @@ export default function CalculatorForm({
     madinahHotelId, madinahRoom, madinahNights,
     profitType, profitValue, sellingOverride, advance,
     customerName, selectedZiaratIds, ziarats,
-    includeMakkahHotel, includeMadinahHotel, includeTickets, includeTransport,
+    includeMakkahHotel, includeMadinahHotel, includeTickets, includeTransport, includeVisa,
     customTicket, customTicketLabel, customTicketAmount, customTicketCurrency,
     travelDate, departureCity, arrivalCity, saDepartureCity, returnCity,
-    currencyUnit, currency,
+    currencyUnit, currency, selectedTransportRouteIds,
   ])
 
   function buildBookingPayload(sourceInvoiceId?: string | null) {
@@ -599,7 +714,14 @@ export default function CalculatorForm({
         setAdvancedAfterEdit(false)
       }
 
-      if (canSaveBooking) {
+      if (bookingToFinalize) {
+        const { finalizeBookingWithInvoice } = await import('@/app/actions/bookings')
+        const finalizeResult = await finalizeBookingWithInvoice(bookingToFinalize.id, linkedInvoiceId!)
+        if ('error' in finalizeResult && finalizeResult.error) {
+          toast.error(`Invoice saved but booking finalization failed: ${finalizeResult.error}`)
+          return
+        }
+      } else if (canSaveBooking) {
         const bookingResult = await createBooking(buildBookingPayload(linkedInvoiceId ?? undefined))
         if ('error' in bookingResult && bookingResult.error) {
           toast.error(`Invoice saved but booking failed: ${bookingResult.error}`)
@@ -611,21 +733,32 @@ export default function CalculatorForm({
         const iosHint = pdfDownloadHint(downloadMethod!)
         toast.success(
           iosHint
-            ? (canSaveBooking
-              ? `Booking created and invoice saved. ${iosHint}`
-              : (isUpdate ? `Invoice updated. ${iosHint}` : `Invoice saved. ${iosHint}`))
-            : (canSaveBooking
-              ? 'Booking created, invoice saved and downloaded.'
-              : (isUpdate ? 'Invoice updated and downloaded.' : 'Invoice saved and downloaded.')),
+            ? (bookingToFinalize
+              ? `Booking confirmed and invoice saved. ${iosHint}`
+              : canSaveBooking
+                ? `Booking created and invoice saved. ${iosHint}`
+                : (isUpdate ? `Invoice updated. ${iosHint}` : `Invoice saved. ${iosHint}`))
+            : (bookingToFinalize
+              ? 'Booking confirmed, invoice saved and downloaded.'
+              : canSaveBooking
+                ? 'Booking created, invoice saved and downloaded.'
+                : (isUpdate ? 'Invoice updated and downloaded.' : 'Invoice saved and downloaded.')),
         )
       } else {
         toast.success(
-          canSaveBooking
-            ? 'Booking saved successfully!'
-            : (isUpdate ? 'Invoice updated successfully!' : 'Invoice saved successfully!'),
+          bookingToFinalize
+            ? 'Booking confirmed successfully!'
+            : canSaveBooking
+              ? 'Booking saved successfully!'
+              : (isUpdate ? 'Invoice updated successfully!' : 'Invoice saved successfully!'),
         )
         setSaved(true)
         setTimeout(() => setSaved(false), 3000)
+      }
+
+      if (bookingToFinalize) {
+        router.push('/bookings')
+        return
       }
       router.refresh()
     } catch (err) {
@@ -636,11 +769,39 @@ export default function CalculatorForm({
     }
   }
 
+  async function performSaveOnlyBooking() {
+    setIsDownloading(true)
+    try {
+      const payload = buildBookingPayload(undefined)
+      const bookingResult = await createBooking(payload)
+      if ('error' in bookingResult && bookingResult.error) {
+        toast.error(`Booking failed: ${bookingResult.error}`)
+        return
+      }
+      toast.success('Booking draft saved successfully!')
+      setSaved(true)
+      setTimeout(() => setSaved(false), 3000)
+      router.refresh()
+      router.push('/bookings')
+    } catch (err) {
+      console.error('[Booking] save failed:', err)
+      toast.error(`Could not save booking: ${err instanceof Error ? err.message : String(err)}`)
+    } finally {
+      setIsDownloading(false)
+    }
+  }
+
   async function handleDownload() {
     await performSave(true)
   }
 
   async function handleSave() {
+    startTransition(async () => {
+      await performSaveOnlyBooking()
+    })
+  }
+
+  async function handleSaveConfirmation() {
     startTransition(async () => {
       await performSave(false)
     })
@@ -742,8 +903,10 @@ export default function CalculatorForm({
     }
 
     if (includeTransport && transportType) {
+      const activeRoutes = transportRoutes.filter(r => selectedTransportRouteIds.includes(r.id)).map(r => r.name)
+      const routesStr = activeRoutes.length > 0 ? ` [${activeRoutes.join(' + ')}]` : ''
       lines.push(
-        `🚗 *Transport:* ${transportType} (Included)`,
+        `🚗 *Transport:* ${transportType}${routesStr} (Included)`,
         ``,
       )
     }
@@ -767,7 +930,7 @@ export default function CalculatorForm({
 
   const rows = [
     ...(includeTickets ? [{ label: 'Tickets', value: fmt(calc.ticketCost) }] : []),
-    { label: 'Visa', value: fmt(calc.visaCost) },
+    ...(includeVisa ? [{ label: 'Visa', value: fmt(calc.visaCost) }] : []),
     ...(includeTransport ? [{ label: `Transport (${transportType})`, value: fmt(calc.transportCost) }] : []),
     ...(includeMakkahHotel ? [{ label: `Makkah Hotel (${makkahNights}N)`, value: fmt(calc.makkahCost) }] : []),
     ...(includeMadinahHotel ? [{ label: `Madinah Hotel (${madinahNights}N)`, value: fmt(calc.madinahCost) }] : []),
@@ -811,13 +974,20 @@ export default function CalculatorForm({
                 <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
                   Flight & Transport
                 </CardTitle>
-                <div className="flex items-center gap-4">
+                <div className="flex items-center gap-4 flex-wrap">
                   <label className="flex items-center gap-2 cursor-pointer select-none">
                     <Checkbox
                       checked={includeTickets}
                       onCheckedChange={v => setIncludeTickets(Boolean(v))}
                     />
                     <span className="text-xs font-normal normal-case">Include Flight Tickets</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer select-none">
+                    <Checkbox
+                      checked={includeVisa}
+                      onCheckedChange={v => setIncludeVisa(Boolean(v))}
+                    />
+                    <span className="text-xs font-normal normal-case">Include Visa</span>
                   </label>
                   <label className="flex items-center gap-2 cursor-pointer select-none">
                     <Checkbox
@@ -952,16 +1122,54 @@ export default function CalculatorForm({
               </div>
 
               {includeTransport && (
-                <div className="space-y-1.5">
-                  <Label className="text-xs">Transport</Label>
-                  <Select value={transportType} onValueChange={v => v && setTransportType(v)}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      {transportOptions.map(vehicle => (
-                        <SelectItem key={vehicle} value={vehicle}>{vehicle}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                <div className="space-y-3 col-span-1 md:col-span-2 border-t pt-3">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-semibold text-navy">Transport Vehicle</Label>
+                    <Select value={transportType} onValueChange={v => v && setTransportType(v)}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {transportOptions.map(vehicle => (
+                          <SelectItem key={vehicle} value={vehicle}>{vehicle}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  {transportRoutes.length > 0 && (
+                    <div className="space-y-2">
+                      <Label className="text-xs font-semibold text-navy">Routes Included</Label>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-2 border rounded-lg p-3 bg-slate-50/50">
+                        {transportRoutes.map(route => {
+                          const vObj = transportVehicles.find(v => v.name === transportType)
+                          const rateObj = routeVehicleRates.find(r => r.route_id === route.id && r.vehicle_id === vObj?.id)
+                          const rateVal = rateObj ? Number(rateObj.rate_sar) : 0
+                          const isChecked = selectedTransportRouteIds.includes(route.id)
+
+                          return (
+                            <label
+                              key={route.id}
+                              className="flex items-center gap-2 text-xs font-medium cursor-pointer p-1.5 hover:bg-slate-100 rounded-md transition"
+                            >
+                              <Checkbox
+                                id={`route-chk-${route.id}`}
+                                checked={isChecked}
+                                onCheckedChange={checked => {
+                                  if (checked) {
+                                    setSelectedTransportRouteIds(prev => [...prev, route.id])
+                                  } else {
+                                    setSelectedTransportRouteIds(prev => prev.filter(id => id !== route.id))
+                                  }
+                                }}
+                              />
+                              <div className="flex justify-between w-full min-w-0 pr-1">
+                                <span className="truncate text-navy">{route.name}</span>
+                                <span className="text-muted-foreground font-semibold shrink-0 ml-1">{rateVal} SAR</span>
+                              </div>
+                            </label>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
             </CardContent>
@@ -1228,6 +1436,35 @@ export default function CalculatorForm({
                   />
                 </div>
               )}
+
+              <div className="space-y-3 pt-2 border-t border-dashed">
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Signature Name</Label>
+                  <Input
+                    placeholder="Signature Name"
+                    value={signaturePersonName}
+                    onChange={e => setSignaturePersonName(e.target.value)}
+                    className="h-9"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Signature Upload (max 150 KB PNG/JPG)</Label>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <Input
+                      ref={signatureInputRef}
+                      type="file"
+                      accept="image/*"
+                      onChange={handleSignatureUpload}
+                      className="h-9 text-xs cursor-pointer"
+                    />
+                    {signatureUrl && (
+                      <Button type="button" variant="outline" size="sm" className="h-8 text-xs" onClick={clearSignature}>
+                        Remove
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              </div>
             </CardContent>
           </Card>
 
@@ -1356,12 +1593,12 @@ export default function CalculatorForm({
               <div className="space-y-4 pt-1">
                 {canSaveBooking && (
                   <Button
-                    onClick={handleSave}
+                    onClick={bookingToFinalize ? handleSaveConfirmation : handleSave}
                     disabled={isPending || saved}
                     className="w-full bg-gold-gradient hover:brightness-110 text-navy font-semibold h-10"
                   >
                     {isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : saved ? <CheckCircle className="w-4 h-4 mr-2" /> : <BookmarkPlus className="w-4 h-4 mr-2" />}
-                    {saved ? 'Saved!' : 'Save Booking'}
+                    {saved ? 'Saved!' : bookingToFinalize ? 'Confirm & Generate PDF' : 'Save Booking'}
                   </Button>
                 )}
                 {canSaveBooking && (

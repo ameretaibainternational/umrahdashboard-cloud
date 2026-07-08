@@ -105,6 +105,7 @@ export interface UmrahPosterFormData {
   madinaHotelLabel?: string
   makkahCustomName?: boolean
   madinaCustomName?: boolean
+  priceCurrencyLabel?: string
 }
 
 
@@ -175,6 +176,7 @@ export const DEFAULT_POSTER_DATA: UmrahPosterFormData = {
   madinaHotelLabel: 'Madina Hotel:',
   makkahCustomName: false,
   madinaCustomName: false,
+  priceCurrencyLabel: 'PKR',
 }
 
 export function cm(value: number): number {
@@ -392,6 +394,7 @@ function drawRotatedPriceTag(
   x: number,
   y: number,
   color: string,
+  priceCurrencyLabel: string = 'PKR',
 ): void {
   ctx.save()
   ctx.translate(215, 940)
@@ -401,7 +404,7 @@ function drawRotatedPriceTag(
   ctx.font = '700 46px Poppins, sans-serif'
   ctx.fillStyle = color
   const lineGap = 48
-  ctx.fillText('PKR', 0, 0)
+  ctx.fillText(priceCurrencyLabel, 0, 0)
   if (price.trim()) ctx.fillText(price.trim(), 0, lineGap)
   ctx.restore()
 }
@@ -588,7 +591,14 @@ export function renderUmrahPoster(
   }
 
   if (data.price.trim()) {
-    drawRotatedPriceTag(ctx, data.price, cm(2.32), cm(23.45), data.priceColor || '#ffffff')
+    drawRotatedPriceTag(
+      ctx,
+      data.price,
+      cm(2.32),
+      cm(23.45),
+      data.priceColor || '#ffffff',
+      data.priceCurrencyLabel !== undefined ? data.priceCurrencyLabel : 'PKR'
+    )
   }
 
   drawPackagePriceList(ctx, data, hotelCenterX, cm(37.6) + 6, data.packagePricesListColor || '#12375d')

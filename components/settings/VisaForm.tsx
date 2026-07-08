@@ -79,21 +79,7 @@ export default function VisaForm({ visa }: { visa: VisaSettings }) {
             </div>
           </div>
 
-          <Separator />
 
-          {/* Transport mode */}
-          <div className="space-y-1.5 max-w-sm">
-            <Label className="text-xs">Transport Mode</Label>
-            <Select name="transport_mode" defaultValue={visa.transport_mode}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="included">Included in package (no separate transport cost)</SelectItem>
-                <SelectItem value="separate">Separate (added to package cost)</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
 
           <Button type="submit" disabled={isPending} className="bg-navy hover:bg-navy-2 text-white">
             {isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />}
