@@ -149,7 +149,8 @@ export interface Payment {
   id: string
   created_at: string
   payment_date: string
-  booking_id: string
+  booking_id: string | null
+  invoice_id?: string | null
   customer_name: string
   amount_pkr: number
   method: 'Cash' | 'Bank' | 'JazzCash' | 'EasyPaisa'

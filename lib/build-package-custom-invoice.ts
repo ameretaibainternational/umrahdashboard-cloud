@@ -91,6 +91,12 @@ export function buildPackageCustomInvoice(input: BuildPackageInvoiceInput): Cust
     push(item.name, item.cost, item.cost === 0)
   }
 
+  if (calc.profit > 0) {
+    push('Service Charges', calc.profit)
+  } else if (calc.profit < 0) {
+    push('Discount', calc.profit)
+  }
+
   if (items.length === 0) {
     items.push({
       service: `Umrah Package (${pax} Pax)`,

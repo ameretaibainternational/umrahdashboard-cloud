@@ -46,7 +46,7 @@ function buildInvoiceLedgerRows(
   }>()
 
   for (const p of payments) {
-    const key = p.booking_id
+    const key = p.booking_id || ''
     let entry = byBooking.get(key)
     if (!entry) {
       entry = {

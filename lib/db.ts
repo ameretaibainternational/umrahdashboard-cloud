@@ -379,17 +379,26 @@ export async function linkBookingToInvoice(bookingId: string, invoiceId: string)
 
 export async function getPayments(): Promise<Payment[]> {
   const ownerId = await getOwnerFilter()
-  if (isDemoMode()) return filterByOwner([...demoStore.payments], ownerId)
-  return withDirectDbFallback(
-    async () => {
-      const { fetchPayments } = await import('@/lib/crm-db')
-      return fetchPayments(ownerId)
-    },
-    async () => {
-      const rows = await supabaseSelectAll<Payment>('payments')
-      return filterByOwner(rows, ownerId)
-    },
-  )
+  let payments: Payment[]
+  if (isDemoMode()) {
+    payments = filterByOwner([...demoStore.payments], ownerId)
+  } else {
+    payments = await withDirectDbFallback(
+      async () => {
+        const { fetchPayments } = await import('@/lib/crm-db')
+        return fetchPayments(ownerId)
+      },
+      async () => {
+        const rows = await supabaseSelectAll<Payment>('payments')
+        return filterByOwner(rows, ownerId)
+      },
+    )
+  }
+  return payments.map(p => ({
+    ...p,
+    amount_pkr: Number(p.amount_pkr),
+    booking_id: p.booking_id || (p.invoice_id ? `invoice-${p.invoice_id}` : p.booking_id),
+  }))
 }
 
 // ── Expenses ──────────────────────────────────────────────────────────────────

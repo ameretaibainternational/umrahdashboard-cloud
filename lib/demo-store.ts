@@ -545,6 +545,7 @@ class DemoStore {
       this.reduceStorage(inv.file_size_bytes ?? 0)
     }
     this.customInvoices = this.customInvoices.filter(i => i.id !== id)
+    this.payments = this.payments.filter(p => (p as any).invoice_id !== id)
   }
 
   // Hotel Vouchers

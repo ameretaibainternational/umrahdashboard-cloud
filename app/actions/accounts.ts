@@ -5,7 +5,7 @@ import { isDemoMode } from '@/lib/is-demo'
 import { demoStore } from '@/lib/demo-store'
 import { friendlyDbError } from '@/lib/friendly-db-error'
 import { requireModeratorFeature } from '@/lib/permissions-server'
-import { hasDirectDb } from '@/lib/sql'
+import { hasDirectDb, requireWriteSql } from '@/lib/sql'
 
 export async function addPayment(formData: FormData) {
   const ctx = await requireModeratorFeature('accounts')
@@ -17,6 +17,134 @@ export async function addPayment(formData: FormData) {
 
   if (!Number.isFinite(amount) || amount <= 0) {
     return { error: 'Enter a valid payment amount.' }
+  }
+
+  if (bookingId.startsWith('invoice-')) {
+    const invoiceId = bookingId.replace('invoice-', '')
+    if (isDemoMode()) {
+      const inv = demoStore.customInvoices.find(i => i.id === invoiceId)
+      if (!inv) return { error: 'Invoice not found' }
+      if (!ctx.isAdmin && inv.created_by !== ctx.userId) {
+        return { error: 'You can only add payments to your own invoices.' }
+      }
+      if (amount > inv.remaining) {
+        return { error: `Payment cannot exceed the due amount (${inv.remaining.toLocaleString('en-PK')} PKR).` }
+      }
+      demoStore.addPayment({
+        booking_id: null,
+        invoice_id: invoiceId,
+        customer_name: inv.billed_to_name,
+        amount_pkr: amount,
+        method,
+        note,
+        payment_date: new Date().toISOString().split('T')[0],
+        created_by: ctx.userId,
+      } as any)
+      inv.received += amount
+      inv.remaining = Math.max(0, inv.total - inv.received)
+    } else {
+      try {
+        if (hasDirectDb()) {
+          const sql = requireWriteSql()
+          const [inv] = await sql<{ total: number; received: number; remaining: number; billed_to_name: string; created_by: string }[]>`
+            SELECT total, received, remaining, billed_to_name, created_by FROM custom_invoices WHERE id = ${invoiceId}
+          `
+          if (!inv) return { error: 'Invoice not found' }
+          if (!ctx.isAdmin && inv.created_by !== ctx.userId) {
+            return { error: 'You can only add payments to your own invoices.' }
+          }
+          const dueAmount = Number(inv.remaining)
+          if (amount > dueAmount) {
+            return { error: `Payment cannot exceed the due amount (${dueAmount.toLocaleString('en-PK')} PKR).` }
+          }
+          const paymentDate = new Date().toISOString().split('T')[0]
+          await sql`
+            INSERT INTO payments (booking_id, invoice_id, customer_name, amount_pkr, method, note, payment_date, created_by)
+            VALUES (null, ${invoiceId}, ${inv.billed_to_name}, ${amount}, ${method}, ${note}, ${paymentDate}, ${ctx.userId})
+          `
+          const newReceived = Number(inv.received) + amount
+          const newRemaining = Math.max(0, Number(inv.total) - newReceived)
+          await sql`
+            UPDATE custom_invoices SET received = ${newReceived}, remaining = ${newRemaining} WHERE id = ${invoiceId}
+          `
+        } else {
+          const { createClient } = await import('@/lib/supabase/server')
+          const supabase = await createClient()
+          const { data: inv, error: invError } = await supabase
+            .from('custom_invoices')
+            .select('billed_to_name, total, received, remaining, created_by')
+            .eq('id', invoiceId)
+            .single()
+          if (invError || !inv) return { error: 'Invoice not found' }
+          if (!ctx.isAdmin && inv.created_by !== ctx.userId) {
+            return { error: 'You can only add payments to your own invoices.' }
+          }
+          const dueAmount = Number(inv.remaining)
+          if (amount > dueAmount) {
+            return { error: `Payment cannot exceed the due amount (${dueAmount.toLocaleString('en-PK')} PKR).` }
+          }
+          let { error: payError } = await supabase.from('payments').insert({
+            booking_id: null,
+            invoice_id: invoiceId,
+            customer_name: inv.billed_to_name,
+            amount_pkr: amount,
+            method,
+            note,
+            payment_date: new Date().toISOString().split('T')[0],
+            created_by: ctx.userId,
+          })
+          if (payError && (payError.message.includes('invoice_id') || payError.message.includes('schema cache'))) {
+            try {
+              const { getSql } = await import('@/lib/sql')
+              const rawSql = getSql()
+              if (rawSql) {
+                await rawSql`NOTIFY pgrst, 'reload schema'`
+                await new Promise(resolve => setTimeout(resolve, 1000))
+                const retryResult = await supabase.from('payments').insert({
+                  booking_id: null,
+                  invoice_id: invoiceId,
+                  customer_name: inv.billed_to_name,
+                  amount_pkr: amount,
+                  method,
+                  note,
+                  payment_date: new Date().toISOString().split('T')[0],
+                  created_by: ctx.userId,
+                })
+                payError = retryResult.error
+              }
+            } catch (e) {
+              console.error('Failed to notify schema cache reload:', e)
+            }
+          }
+          if (payError) {
+            if (payError.message.includes('invoice_id') || payError.message.includes('schema cache')) {
+              const { error: fallbackError } = await supabase.from('payments').insert({
+                booking_id: null,
+                customer_name: inv.billed_to_name,
+                amount_pkr: amount,
+                method,
+                note,
+                payment_date: new Date().toISOString().split('T')[0],
+                created_by: ctx.userId,
+              })
+              if (fallbackError) return { error: fallbackError.message }
+            } else {
+              return { error: payError.message }
+            }
+          }
+          const newReceived = Number(inv.received) + amount
+          const newRemaining = Math.max(0, Number(inv.total) - newReceived)
+          await supabase.from('custom_invoices')
+            .update({ received: newReceived, remaining: newRemaining })
+            .eq('id', invoiceId)
+        }
+      } catch (e) {
+        return { error: friendlyDbError(e instanceof Error ? e.message : 'Payment failed') }
+      }
+    }
+    revalidatePath('/accounts'); revalidatePath('/bookings')
+    revalidatePath('/dashboard'); revalidatePath('/reports')
+    return { success: true }
   }
 
   if (isDemoMode()) {
@@ -227,13 +355,54 @@ export async function deleteLedgerEntry(bookingId: string) {
   const ctx = await requireModeratorFeature('accounts')
   if ('error' in ctx) return ctx
 
-  if (isDemoMode()) {
-    const booking = demoStore.bookings.find(b => b.id === bookingId)
-    if (!booking) return { error: 'Booking not found.' }
-    if (!ctx.isAdmin && booking.created_by !== ctx.userId) {
-      return { error: 'You can only delete your own ledger entries.' }
+  if (bookingId.startsWith('invoice-')) {
+    const invoiceId = bookingId.replace('invoice-', '')
+    if (isDemoMode()) {
+      const inv = demoStore.customInvoices.find(i => i.id === invoiceId)
+      if (!inv) return { error: 'Invoice not found.' }
+      if (!ctx.isAdmin && inv.created_by !== ctx.userId) {
+        return { error: 'You can only delete your own ledger entries.' }
+      }
+      demoStore.payments = demoStore.payments.filter(p => (p as any).invoice_id !== invoiceId)
+      inv.received = 0
+      inv.remaining = inv.total
+    } else {
+      try {
+        if (hasDirectDb()) {
+          const sql = requireWriteSql()
+          if (!ctx.isAdmin) {
+            const [inv] = await sql<{ created_by: string | null }[]>`
+              SELECT created_by FROM custom_invoices WHERE id = ${invoiceId}
+            `
+            if (!inv) return { error: 'Invoice not found.' }
+            if (inv.created_by !== ctx.userId) return { error: 'You can only delete your own ledger entries.' }
+          }
+          await sql`DELETE FROM payments WHERE invoice_id = ${invoiceId}`
+          await sql`UPDATE custom_invoices SET received = 0, remaining = total WHERE id = ${invoiceId}`
+        } else {
+          const { createClient } = await import('@/lib/supabase/server')
+          const supabase = await createClient()
+          const { data: inv } = await supabase
+            .from('custom_invoices')
+            .select('total, created_by')
+            .eq('id', invoiceId)
+            .single()
+          if (!inv) return { error: 'Invoice not found.' }
+          if (!ctx.isAdmin && inv.created_by !== ctx.userId) {
+            return { error: 'You can only delete your own ledger entries.' }
+          }
+          const { error: payError } = await supabase.from('payments').delete().eq('invoice_id', invoiceId)
+          if (payError) return { error: friendlyDbError(payError.message) }
+          const { error: invError } = await supabase
+            .from('custom_invoices')
+            .update({ received: 0, remaining: inv.total })
+            .eq('id', invoiceId)
+          if (invError) return { error: friendlyDbError(invError.message) }
+        }
+      } catch (e) {
+        return { error: friendlyDbError(e instanceof Error ? e.message : 'Delete failed') }
+      }
     }
-    demoStore.deletePaymentsForBooking(bookingId)
     PAYMENT_REVALIDATE_PATHS.forEach(p => revalidatePath(p))
     return { success: true }
   }

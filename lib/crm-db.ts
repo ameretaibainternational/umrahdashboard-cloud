@@ -22,9 +22,12 @@ export async function ensureOwnershipColumns(): Promise<void> {
     await sql`ALTER TABLE custom_invoices ADD COLUMN IF NOT EXISTS created_by UUID`
     await sql`ALTER TABLE hotel_vouchers ADD COLUMN IF NOT EXISTS created_by UUID`
     await sql`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS source_invoice_id UUID`
+    await sql`ALTER TABLE payments ALTER COLUMN booking_id DROP NOT NULL`
+    await sql`ALTER TABLE payments ADD COLUMN IF NOT EXISTS invoice_id UUID REFERENCES custom_invoices(id) ON DELETE CASCADE`
     await sql`CREATE INDEX IF NOT EXISTS idx_bookings_created_by ON bookings(created_by)`
     await sql`CREATE INDEX IF NOT EXISTS idx_bookings_source_invoice_id ON bookings(source_invoice_id)`
     await sql`CREATE INDEX IF NOT EXISTS idx_payments_created_by ON payments(created_by)`
+    await sql`CREATE INDEX IF NOT EXISTS idx_payments_invoice_id ON payments(invoice_id)`
     await sql`CREATE INDEX IF NOT EXISTS idx_expenses_created_by ON expenses(created_by)`
     await sql`CREATE INDEX IF NOT EXISTS idx_expenses_booking_id ON expenses(booking_id)`
     await sql`CREATE INDEX IF NOT EXISTS idx_custom_invoices_created_by ON custom_invoices(created_by)`
@@ -222,7 +225,8 @@ export async function getBookingOwner(id: string): Promise<string | null | undef
 }
 
 export async function insertPayment(row: {
-  booking_id: string
+  booking_id: string | null
+  invoice_id?: string | null
   customer_name: string
   amount_pkr: number
   method: Payment['method']
@@ -233,9 +237,9 @@ export async function insertPayment(row: {
   await ensureOwnershipColumns()
   const sql = requireWriteSql()
   await sql`
-    INSERT INTO payments (booking_id, customer_name, amount_pkr, method, note, payment_date, created_by)
+    INSERT INTO payments (booking_id, invoice_id, customer_name, amount_pkr, method, note, payment_date, created_by)
     VALUES (
-      ${row.booking_id}, ${row.customer_name}, ${row.amount_pkr},
+      ${row.booking_id ?? null}, ${row.invoice_id ?? null}, ${row.customer_name}, ${row.amount_pkr},
       ${row.method}, ${row.note}, ${row.payment_date}, ${row.created_by}
     )
   `

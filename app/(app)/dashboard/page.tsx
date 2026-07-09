@@ -31,7 +31,7 @@ export default async function DashboardPage() {
   const bookings = rawBookings.filter(b => b.source_invoice_id !== null)
 
   const bookingIds = new Set(bookings.map(b => b.id))
-  const bookingPayments = payments.filter(p => bookingIds.has(p.booking_id))
+  const bookingPayments = payments.filter(p => p.booking_id ? bookingIds.has(p.booking_id) : false)
 
   const customRevenue = customInvoices.reduce((s, inv) => s + inv.total, 0)
   const customProfit = customInvoices.reduce((s, inv) => s + (inv.profit_pkr ?? 0), 0)
