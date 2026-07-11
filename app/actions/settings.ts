@@ -43,6 +43,7 @@ export async function updateVisa(formData: FormData) {
     visa_rate_2_pax:    Number(formData.get('visa_rate_2_pax')),
     visa_rate_3_pax:    Number(formData.get('visa_rate_3_pax')),
     visa_rate_4_pax:    Number(formData.get('visa_rate_4_pax')),
+    visa_rate_5_pax:    Number(formData.get('visa_rate_5_pax')),
     visa_rate_group_pax: Number(formData.get('visa_rate_group_pax')),
     child_sar:          Number(formData.get('child_sar')),
     infant_sar:         Number(formData.get('infant_sar')),

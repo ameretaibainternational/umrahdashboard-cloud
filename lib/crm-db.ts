@@ -24,6 +24,7 @@ export async function ensureOwnershipColumns(): Promise<void> {
     await sql`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS source_invoice_id UUID`
     await sql`ALTER TABLE payments ALTER COLUMN booking_id DROP NOT NULL`
     await sql`ALTER TABLE payments ADD COLUMN IF NOT EXISTS invoice_id UUID REFERENCES custom_invoices(id) ON DELETE CASCADE`
+    await sql`ALTER TABLE visa_settings ADD COLUMN IF NOT EXISTS visa_rate_5_pax NUMERIC NOT NULL DEFAULT 625`
     await sql`CREATE INDEX IF NOT EXISTS idx_bookings_created_by ON bookings(created_by)`
     await sql`CREATE INDEX IF NOT EXISTS idx_bookings_source_invoice_id ON bookings(source_invoice_id)`
     await sql`CREATE INDEX IF NOT EXISTS idx_payments_created_by ON payments(created_by)`

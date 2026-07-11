@@ -6,6 +6,7 @@ function getAdultVisaRate(visa: VisaSettings, pax: number): number {
   if (pax === 2) return visa.visa_rate_2_pax
   if (pax === 3) return visa.visa_rate_3_pax
   if (pax === 4) return visa.visa_rate_4_pax
+  if (pax === 5) return visa.visa_rate_5_pax
   return visa.visa_rate_group_pax
 }
 

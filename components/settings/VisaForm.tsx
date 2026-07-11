@@ -17,7 +17,8 @@ const ADULT_TIERS = [
   { name: 'visa_rate_2_pax',    label: '2 PAX' },
   { name: 'visa_rate_3_pax',    label: '3 PAX' },
   { name: 'visa_rate_4_pax',    label: '4 PAX' },
-  { name: 'visa_rate_group_pax', label: '5 – 49 PAX' },
+  { name: 'visa_rate_5_pax',    label: '5 PAX' },
+  { name: 'visa_rate_group_pax', label: '6 – 59 PAX' },
 ] as const
 
 export default function VisaForm({ visa }: { visa: VisaSettings }) {

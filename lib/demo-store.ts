@@ -151,6 +151,7 @@ const DEFAULT_VISA: VisaSettings = {
   visa_rate_2_pax: 700,
   visa_rate_3_pax: 675,
   visa_rate_4_pax: 650,
+  visa_rate_5_pax: 625,
   visa_rate_group_pax: 600,
   child_sar: 600,
   infant_sar: 460,

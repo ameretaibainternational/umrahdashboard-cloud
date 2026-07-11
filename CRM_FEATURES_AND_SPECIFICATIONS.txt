@@ -61,7 +61,8 @@ C. Visa Settings Master:
      * 2 PAX visa rate (SAR)
      * 3 PAX visa rate (SAR)
      * 4 PAX visa rate (SAR)
-     * 5–49 PAX group visa rate (SAR)
+     * 5 PAX visa rate (SAR)
+     * 6–59 PAX group visa rate (SAR)
 D. Transport Vehicle Master:
    - Schema: ID, Vehicle Name, Sort order.
 E. Transport Routes Master:

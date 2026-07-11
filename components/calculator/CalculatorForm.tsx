@@ -522,7 +522,7 @@ export default function CalculatorForm({
       madinahHotelId, madinahRoom, madinahNights, profitType, profitValue, sellingOverride, advance,
       currency.sar_to_pkr,
       visa.visa_rate_1_pax, visa.visa_rate_2_pax, visa.visa_rate_3_pax,
-      visa.visa_rate_4_pax, visa.visa_rate_group_pax,
+      visa.visa_rate_4_pax, visa.visa_rate_5_pax, visa.visa_rate_group_pax,
       visa.infant_sar, visa.transport_mode,
       selectedZiaratIds,
       includeMakkahHotel, includeMadinahHotel, includeTickets, includeTransport, includeVisa,

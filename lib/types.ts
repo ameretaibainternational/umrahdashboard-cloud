@@ -6,7 +6,8 @@ export interface VisaSettings {
   visa_rate_2_pax: number      // 2 PAX
   visa_rate_3_pax: number      // 3 PAX
   visa_rate_4_pax: number      // 4 PAX
-  visa_rate_group_pax: number  // 5–49 PAX
+  visa_rate_5_pax: number      // 5 PAX
+  visa_rate_group_pax: number  // 6-59 PAX
   child_sar: number
   infant_sar: number
   transport_mode: 'included' | 'separate'
