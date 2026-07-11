@@ -123,7 +123,7 @@ function pageBgStyle(backgroundImage = '/invoice-empty.jpg'): React.CSSPropertie
 
 // ─── Shared table header row ──────────────────────────────────────────────────
 function TableHeader({
-  unitPriceLabel, qtyLabel, hdrY, hrY, ink, ruleColor,
+  unitPriceLabel, qtyLabel, hdrY, hrY, ink, ruleColor, hidePricing,
 }: {
   unitPriceLabel: string | null
   qtyLabel: string
@@ -131,15 +131,22 @@ function TableHeader({
   hrY: number
   ink: string
   ruleColor: string
+  hidePricing?: boolean
 }) {
   return (
     <>
       <T x={35.9}  y={hdrY} bold invoiceHdr color={ink}>No</T>
       <T x={76.5}  y={hdrY} bold invoiceHdr color={ink}>Service</T>
-      {unitPriceLabel && <T x={215.7} y={hdrY} bold invoiceHdr color={ink}>{unitPriceLabel}</T>}
-      <T x={318.6} y={hdrY} bold invoiceHdr color={ink}>{qtyLabel}</T>
-      <T x={439.7} y={hdrY} bold invoiceHdr color={ink}>Total</T>
-      <T x={493.3} y={hdrY} bold invoiceHdr color={ink}>Recieved</T>
+      {unitPriceLabel && !hidePricing && <T x={215.7} y={hdrY} bold invoiceHdr color={ink}>{unitPriceLabel}</T>}
+      {hidePricing ? (
+        <T x={493.3} y={hdrY} bold invoiceHdr color={ink}>{qtyLabel}</T>
+      ) : (
+        <>
+          <T x={318.6} y={hdrY} bold invoiceHdr color={ink}>{qtyLabel}</T>
+          <T x={439.7} y={hdrY} bold invoiceHdr color={ink}>Total</T>
+          <T x={493.3} y={hdrY} bold invoiceHdr color={ink}>Recieved</T>
+        </>
+      )}
       <HR x1={26} x2={547} y={hrY} color={ruleColor} />
     </>
   )
@@ -147,15 +154,16 @@ function TableHeader({
 
 // ─── Table rows ───────────────────────────────────────────────────────────────
 function TableRows({
-  items, rowOffset, unitPriceLabel, rowY0, ink,
+  items, rowOffset, unitPriceLabel, rowY0, ink, hidePricing,
 }: {
   items: CustomInvoiceLineItem[]
   rowOffset: number
   unitPriceLabel: string | null
   rowY0: number
   ink: string
+  hidePricing?: boolean
 }) {
-  const serviceMaxW = serviceColumnMaxWidth(unitPriceLabel)
+  const serviceMaxW = serviceColumnMaxWidth(hidePricing ? null : unitPriceLabel)
 
   return (
     <>
@@ -173,14 +181,20 @@ function TableRows({
             <T x={SERVICE_COL_X} y={y} maxW={serviceMaxW} invoiceRow color={ink}>
               <span style={{ lineHeight: '16px', display: 'block' }}>{item.service}</span>
             </T>
-            {unitPriceLabel && unitVal && (
+            {unitPriceLabel && !hidePricing && unitVal && (
               <T x={214.5} y={y} nowrap invoiceRow color={ink}>{unitVal}</T>
             )}
-            <T x={324.6} y={y} invoiceRow color={ink}>{item.total_pax}</T>
-            <T right={479.6} y={y} nowrap invoiceRow color={ink}>
-              {fmtNum(item.total, item.total_unit || undefined)}
-            </T>
-            <T right={557.0} y={y} nowrap invoiceRow color={ink}>{fmtNum(item.received)}</T>
+            {hidePricing ? (
+              <T right={557.0} y={y} nowrap invoiceRow color={ink}>{item.total_pax}</T>
+            ) : (
+              <>
+                <T x={324.6} y={y} invoiceRow color={ink}>{item.total_pax}</T>
+                <T right={479.6} y={y} nowrap invoiceRow color={ink}>
+                  {fmtNum(item.total, item.total_unit || undefined)}
+                </T>
+                <T right={557.0} y={y} nowrap invoiceRow color={ink}>{fmtNum(item.received)}</T>
+              </>
+            )}
           </div>
         )
       })}
@@ -322,6 +336,8 @@ interface Props {
   centerInvoiceId?: boolean
   backgroundImage?: string
   textColor?: string
+  hidePricing?: boolean
+  hideServiceCharges?: boolean
 }
 
 const CustomInvoiceTemplate = forwardRef<HTMLDivElement, Props>(
@@ -336,11 +352,21 @@ const CustomInvoiceTemplate = forwardRef<HTMLDivElement, Props>(
     centerInvoiceId = false,
     backgroundImage = '/invoice-empty.jpg',
     textColor = DEFAULT_INVOICE_TEXT_COLOR,
+    hidePricing = false,
+    hideServiceCharges = false,
   }, ref) {
     const ink = textColor
     const inkMuted = invoiceTextColorWithAlpha(ink, 0.65)
     const ruleColor = invoiceTextColorWithAlpha(ink, 0.45)
-    const items = invoice.line_items
+    
+    // Filter out Service Charges rows if hideServiceCharges is checked
+    const items = hideServiceCharges
+      ? invoice.line_items.filter(item => {
+          const name = item.service.toLowerCase().trim()
+          return name !== 'service charges' && name !== 'services charges'
+        })
+      : invoice.line_items
+
     const hasPaxPrice   = items.some(i => i.pax_price   != null && i.pax_price   > 0)
     const hasNightPrice = items.some(i => i.night_price != null && i.night_price > 0)
     // Column header for the unit-price column
@@ -431,13 +457,14 @@ const CustomInvoiceTemplate = forwardRef<HTMLDivElement, Props>(
           <T right={547} y={220.1} nowrap color={ink}>{invoice.payment_account_number}</T>
 
           {/* Table */}
-          <TableHeader unitPriceLabel={unitPriceLabel} qtyLabel={qtyLabel} hdrY={294.1} hrY={322.8} ink={ink} ruleColor={ruleColor} />
+          <TableHeader unitPriceLabel={unitPriceLabel} qtyLabel={qtyLabel} hdrY={294.1} hrY={322.8} ink={ink} ruleColor={ruleColor} hidePricing={hidePricing} />
           <TableRows
             items={page1Items}
             rowOffset={0}
             unitPriceLabel={unitPriceLabel}
             rowY0={P1_ROW_Y0}
             ink={ink}
+            hidePricing={hidePricing}
           />
 
           {/* "Continued" note on page 1 when there are more pages */}
@@ -475,7 +502,7 @@ const CustomInvoiceTemplate = forwardRef<HTMLDivElement, Props>(
               </T>
 
               {/* Table header repeated for context */}
-              <TableHeader unitPriceLabel={unitPriceLabel} qtyLabel={qtyLabel} hdrY={C_HDR_Y} hrY={C_HR_Y} ink={ink} ruleColor={ruleColor} />
+              <TableHeader unitPriceLabel={unitPriceLabel} qtyLabel={qtyLabel} hdrY={C_HDR_Y} hrY={C_HR_Y} ink={ink} ruleColor={ruleColor} hidePricing={hidePricing} />
 
               {/* Rows for this page */}
               <TableRows
@@ -484,6 +511,7 @@ const CustomInvoiceTemplate = forwardRef<HTMLDivElement, Props>(
                 unitPriceLabel={unitPriceLabel}
                 rowY0={C_ROW_Y0}
                 ink={ink}
+                hidePricing={hidePricing}
               />
 
               {/* Terms + totals + footer only on the last page */}

@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { deleteLedgerEntries } from '@/app/actions/accounts'
 import type { Payment, Booking } from '@/lib/types'
-import { pkr, formatDate, bookingInvoiceId } from '@/lib/formatters'
+import { pkr, formatDate, bookingInvoiceId, sar } from '@/lib/formatters'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Button } from '@/components/ui/button'
@@ -19,6 +19,7 @@ interface Props {
   payments: Payment[]
   bookings: Booking[]
   companyName: string
+  sarToPkrRate?: number
 }
 
 interface LedgerRow {
@@ -89,12 +90,20 @@ function buildInvoiceLedgerRows(
   return rows.sort((a, b) => b.paymentDate.localeCompare(a.paymentDate))
 }
 
-export default function ClientLedger({ payments, bookings, companyName }: Props) {
+export default function ClientLedger({ payments, bookings, companyName, sarToPkrRate = 75 }: Props) {
   const router = useRouter()
   const [selectedCustomer, setSelectedCustomer] = useState<string>('__all__')
   const [selectedBookingIds, setSelectedBookingIds] = useState<Set<string>>(new Set())
+  const [selectedCurrency, setSelectedCurrency] = useState<'PKR' | 'SAR'>('PKR')
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false)
   const [isPending, startTransition] = useTransition()
+
+  const formatVal = (valInPkr: number) => {
+    if (selectedCurrency === 'SAR') {
+      return sar(valInPkr / sarToPkrRate)
+    }
+    return pkr(valInPkr)
+  }
 
   const bookingMap = useMemo(() => {
     const m = new Map<string, Booking>()
@@ -176,9 +185,9 @@ export default function ClientLedger({ payments, bookings, companyName }: Props)
         <td>${r.paymentDate}</td>
         <td>${r.customerName}</td>
         <td>${r.invoiceId}</td>
-        <td style="text-align:right">${pkr(r.packageAmount)}</td>
-        <td style="text-align:right;color:#0b8050;font-weight:700">${pkr(r.receivedAmount)}</td>
-        <td style="text-align:right;color:#b73838">${pkr(r.balance)}</td>
+        <td style="text-align:right">${formatVal(r.packageAmount)}</td>
+        <td style="text-align:right;color:#0b8050;font-weight:700">${formatVal(r.receivedAmount)}</td>
+        <td style="text-align:right;color:#b73838">${formatVal(r.balance)}</td>
         <td>${r.method}</td>
         <td>${r.note}</td>
       </tr>
@@ -225,9 +234,9 @@ export default function ClientLedger({ payments, bookings, companyName }: Props)
     <thead>
       <tr>
         <th>#</th><th>Date</th><th>Customer</th><th>Invoice</th>
-        <th style="text-align:right">Package</th>
-        <th style="text-align:right">Received</th>
-        <th style="text-align:right">Balance</th>
+        <th style="text-align:right">Package (${selectedCurrency})</th>
+        <th style="text-align:right">Received (${selectedCurrency})</th>
+        <th style="text-align:right">Balance (${selectedCurrency})</th>
         <th>Method</th><th>Note</th>
       </tr>
     </thead>
@@ -235,9 +244,9 @@ export default function ClientLedger({ payments, bookings, companyName }: Props)
   </table>
   <div class="summary">
     <table>
-      <tr><td>Total Package Amount</td><td>${pkr(totals.totalPackage)}</td></tr>
-      <tr><td>Total Received</td><td>${pkr(totals.totalReceived)}</td></tr>
-      <tr><td><strong>Remaining Balance</strong></td><td><strong>${pkr(totals.totalBalance)}</strong></td></tr>
+      <tr><td>Total Package Amount</td><td>${formatVal(totals.totalPackage)}</td></tr>
+      <tr><td>Total Received</td><td>${formatVal(totals.totalReceived)}</td></tr>
+      <tr><td><strong>Remaining Balance</strong></td><td><strong>${formatVal(totals.totalBalance)}</strong></td></tr>
     </table>
   </div>
   <div class="footer">${companyName} · Printed on ${today}</div>
@@ -271,18 +280,18 @@ export default function ClientLedger({ payments, bookings, companyName }: Props)
       lines.push(`Date       : ${r.paymentDate}`)
       lines.push(`Customer   : ${r.customerName}`)
       lines.push(`Invoice    : ${r.invoiceId}`)
-      lines.push(`Package    : ${pkr(r.packageAmount)}`)
-      lines.push(`Received   : ${pkr(r.receivedAmount)}`)
-      lines.push(`Balance    : ${pkr(r.balance)}`)
+      lines.push(`Package    : ${formatVal(r.packageAmount)}`)
+      lines.push(`Received   : ${formatVal(r.receivedAmount)}`)
+      lines.push(`Balance    : ${formatVal(r.balance)}`)
       lines.push(`Method     : ${r.method}`)
       if (r.note) lines.push(`Note       : ${r.note}`)
       lines.push(divider)
     }
 
     lines.push('')
-    lines.push(`Total Package   : ${pkr(totals.totalPackage)}`)
-    lines.push(`Total Received  : ${pkr(totals.totalReceived)}`)
-    lines.push(`Remaining Bal   : ${pkr(totals.totalBalance)}`)
+    lines.push(`Total Package   : ${formatVal(totals.totalPackage)}`)
+    lines.push(`Total Received  : ${formatVal(totals.totalReceived)}`)
+    lines.push(`Remaining Bal   : ${formatVal(totals.totalBalance)}`)
 
     const text = lines.join('\n')
 
@@ -344,29 +353,44 @@ export default function ClientLedger({ payments, bookings, companyName }: Props)
         </CardHeader>
 
       <CardContent className="space-y-4">
-        <div className="flex items-center gap-3">
-          <label className="text-xs font-medium text-muted-foreground whitespace-nowrap">Filter by Client:</label>
-          <Select value={selectedCustomer} onValueChange={v => v && setSelectedCustomer(v)}>
-            <SelectTrigger className="w-[240px]">
-              <SelectValue>
-                {selectedCustomer === '__all__' ? 'All Clients' : selectedCustomer}
-              </SelectValue>
-            </SelectTrigger>
-            <SelectContent className="min-w-[240px] !w-auto">
-              <SelectItem value="__all__">All Clients</SelectItem>
-              {customerNames.map(name => (
-                <SelectItem key={name} value={name}>{name}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          {selectedCustomer !== '__all__' && (
-            <button
-              onClick={() => setSelectedCustomer('__all__')}
-              className="text-xs text-muted-foreground hover:text-foreground underline"
-            >
-              Clear
-            </button>
-          )}
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <label className="text-xs font-medium text-muted-foreground whitespace-nowrap">Filter by Client:</label>
+            <Select value={selectedCustomer} onValueChange={v => v && setSelectedCustomer(v)}>
+              <SelectTrigger className="w-[240px]">
+                <SelectValue>
+                  {selectedCustomer === '__all__' ? 'All Clients' : selectedCustomer}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent className="min-w-[240px] !w-auto">
+                <SelectItem value="__all__">All Clients</SelectItem>
+                {customerNames.map(name => (
+                  <SelectItem key={name} value={name}>{name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {selectedCustomer !== '__all__' && (
+              <button
+                onClick={() => setSelectedCustomer('__all__')}
+                className="text-xs text-muted-foreground hover:text-foreground underline"
+              >
+                Clear
+              </button>
+            )}
+          </div>
+
+          <div className="flex items-center gap-2">
+            <label className="text-xs font-medium text-muted-foreground whitespace-nowrap">Currency:</label>
+            <Select value={selectedCurrency} onValueChange={v => v && setSelectedCurrency(v as 'PKR' | 'SAR')}>
+              <SelectTrigger className="w-[100px]">
+                <SelectValue>{selectedCurrency}</SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="PKR">PKR</SelectItem>
+                <SelectItem value="SAR">SAR</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
         </div>
 
         <div className="rounded-lg border border-border overflow-auto">
@@ -383,9 +407,9 @@ export default function ClientLedger({ payments, bookings, companyName }: Props)
                 <TableHead className="text-xs">Date</TableHead>
                 <TableHead className="text-xs">Customer</TableHead>
                 <TableHead className="text-xs">Invoice</TableHead>
-                <TableHead className="text-xs text-right">Package</TableHead>
-                <TableHead className="text-xs text-right">Received</TableHead>
-                <TableHead className="text-xs text-right">Balance</TableHead>
+                <TableHead className="text-xs text-right">Package ({selectedCurrency})</TableHead>
+                <TableHead className="text-xs text-right">Received ({selectedCurrency})</TableHead>
+                <TableHead className="text-xs text-right">Balance ({selectedCurrency})</TableHead>
                 <TableHead className="text-xs">Method</TableHead>
                 <TableHead className="text-xs">Note</TableHead>
               </TableRow>
@@ -409,9 +433,9 @@ export default function ClientLedger({ payments, bookings, companyName }: Props)
                   <TableCell className="text-xs text-muted-foreground whitespace-nowrap">{formatDate(r.paymentDate)}</TableCell>
                   <TableCell className="text-sm font-medium whitespace-nowrap">{r.customerName}</TableCell>
                   <TableCell className="text-xs font-mono text-muted-foreground">{r.invoiceId}</TableCell>
-                  <TableCell className="text-right text-xs text-muted-foreground">{pkr(r.packageAmount)}</TableCell>
-                  <TableCell className="text-right text-sm font-semibold text-emerald-600">{pkr(r.receivedAmount)}</TableCell>
-                  <TableCell className="text-right text-sm font-semibold text-rose-600">{pkr(r.balance)}</TableCell>
+                  <TableCell className="text-right text-xs text-muted-foreground">{formatVal(r.packageAmount)}</TableCell>
+                  <TableCell className="text-right text-sm font-semibold text-emerald-600">{formatVal(r.receivedAmount)}</TableCell>
+                  <TableCell className="text-right text-sm font-semibold text-rose-600">{formatVal(r.balance)}</TableCell>
                   <TableCell><Badge variant="outline" className="text-[10px]">{r.method}</Badge></TableCell>
                   <TableCell className="text-xs text-muted-foreground">{r.note || '—'}</TableCell>
                 </TableRow>
@@ -425,15 +449,15 @@ export default function ClientLedger({ payments, bookings, companyName }: Props)
             <div className="rounded-xl bg-navy text-white p-4 w-full max-w-[360px] space-y-2.5">
               <div className="flex justify-between items-center gap-6 text-sm text-white/70">
                 <span className="shrink-0">Total Package</span>
-                <span className="font-semibold text-white tabular-nums whitespace-nowrap text-right">{pkr(totals.totalPackage)}</span>
+                <span className="font-semibold text-white tabular-nums whitespace-nowrap text-right">{formatVal(totals.totalPackage)}</span>
               </div>
               <div className="flex justify-between items-center gap-6 text-sm text-white/70">
                 <span className="shrink-0">Total Received</span>
-                <span className="font-semibold text-emerald-400 tabular-nums whitespace-nowrap text-right">{pkr(totals.totalReceived)}</span>
+                <span className="font-semibold text-emerald-400 tabular-nums whitespace-nowrap text-right">{formatVal(totals.totalReceived)}</span>
               </div>
               <div className="border-t border-white/20 pt-2.5 flex justify-between items-center gap-6">
                 <span className="text-sm font-bold shrink-0">Remaining Balance</span>
-                <span className="text-sm font-bold text-rose-300 tabular-nums whitespace-nowrap text-right">{pkr(totals.totalBalance)}</span>
+                <span className="text-sm font-bold text-rose-300 tabular-nums whitespace-nowrap text-right">{formatVal(totals.totalBalance)}</span>
               </div>
             </div>
           </div>

@@ -220,7 +220,12 @@ export default function BookingsTable({ bookings }: Props) {
                         size="sm"
                         className="h-8 w-8 p-0"
                         title="Edit"
-                        onClick={() => openDialog(b, 'edit')}
+                        onClick={() => {
+                          const target = b.source_invoice_id
+                            ? `/calculator?edit=${b.source_invoice_id}&booking_id=${b.id}`
+                            : `/calculator?booking_id=${b.id}`
+                          router.push(target)
+                        }}
                       >
                         <Pencil className="w-4 h-4" />
                       </Button>
@@ -243,12 +248,20 @@ export default function BookingsTable({ bookings }: Props) {
         </Table>
         </div>
       </div>
-
+ 
       <BookingDialog
         booking={dialogBooking}
         mode={dialogMode}
         onClose={closeDialog}
-        onEdit={() => setDialogMode('edit')}
+        onEdit={() => {
+          if (dialogBooking) {
+            closeDialog()
+            const target = dialogBooking.source_invoice_id
+              ? `/calculator?edit=${dialogBooking.source_invoice_id}&booking_id=${dialogBooking.id}`
+              : `/calculator?booking_id=${dialogBooking.id}`
+            router.push(target)
+          }
+        }}
       />
 
       <Dialog open={!!deleteId} onOpenChange={open => !open && setDeleteId(null)}>

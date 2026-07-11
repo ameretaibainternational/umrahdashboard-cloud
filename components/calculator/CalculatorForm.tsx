@@ -73,6 +73,7 @@ interface Props {
   existingPackageInvoices?: Pick<CustomInvoice, 'invoice_number'>[]
   canSaveBooking?: boolean
   editInvoice?: CustomInvoice | null
+  editBooking?: Booking | null
   bookingToFinalize?: Booking
   transportRoutes?: TransportRoute[]
   transportVehicles?: TransportVehicle[]
@@ -193,6 +194,7 @@ export default function CalculatorForm({
   existingPackageInvoices = [],
   canSaveBooking = true,
   editInvoice = null,
+  editBooking = null,
   bookingToFinalize = undefined,
   transportRoutes = [],
   transportVehicles = [],
@@ -203,16 +205,22 @@ export default function CalculatorForm({
   const printRef = useRef<HTMLDivElement>(null)
   const logoInputRef = useRef<HTMLInputElement>(null)
   const signatureInputRef = useRef<HTMLInputElement>(null)
-  const initial = initialFromEdit(editInvoice, ziarats) || initialFromBooking(bookingToFinalize, airlines, makkahHotels, madinahHotels)
+  const initial = initialFromEdit(editInvoice, ziarats) || initialFromBooking(bookingToFinalize || editBooking || undefined, airlines, makkahHotels, madinahHotels)
+  const bookingObj = bookingToFinalize || editBooking || null
+  const bookingAirlineId = bookingObj ? airlines.find(a => a.name === bookingObj.airline_name)?.id : undefined
+  const bookingMakkahHotelId = bookingObj ? makkahHotels.find(h => h.name === bookingObj.makkah_hotel_name)?.id : undefined
+  const bookingMadinahHotelId = bookingObj ? madinahHotels.find(h => h.name === bookingObj.madinah_hotel_name)?.id : undefined
+  const bookingHasNoTickets = bookingObj ? (bookingObj.airline_name === 'No Flight' || bookingObj.airline_name === '') : false
+
   const resolvedSettings = resolveInvoiceSettings(invoiceSettings)
   const hasSavedClients = invoiceClients.length > 0
-  const initialCustomerName = initial?.customerName ?? editInvoice?.billed_to_name ?? bookingToFinalize?.customer_name ?? ''
+  const initialCustomerName = initial?.customerName || editInvoice?.billed_to_name || editBooking?.customer_name || bookingToFinalize?.customer_name || ''
   const matchedClient = invoiceClients.find(c => c.name === initialCustomerName)
   const initialBilled = editInvoice
     ? {
-      name: editInvoice.billed_to_name,
-      address: editInvoice.billed_to_address,
-      phone: editInvoice.billed_to_client_number,
+      name: editInvoice.billed_to_name || editBooking?.customer_name || '',
+      address: editInvoice.billed_to_address || '',
+      phone: editInvoice.billed_to_client_number || '',
     }
     : bookingToFinalize
       ? {
@@ -220,9 +228,15 @@ export default function CalculatorForm({
         address: '',
         phone: '',
       }
-      : matchedClient
-        ? applyClientToBilled(matchedClient)
-        : { name: initialCustomerName, address: '', phone: '' }
+      : editBooking
+        ? {
+          name: editBooking.customer_name,
+          address: '',
+          phone: '',
+        }
+        : matchedClient
+          ? applyClientToBilled(matchedClient)
+          : { name: initialCustomerName, address: '', phone: '' }
 
   const isExplicitEdit = Boolean(editInvoice?.id)
 
@@ -251,28 +265,28 @@ export default function CalculatorForm({
   const [saved, setSaved] = useState(false)
   const [isDownloading, setIsDownloading] = useState(false)
 
-  const [adult, setAdult] = useState(initial?.adult ?? 1)
-  const [child, setChild] = useState(initial?.child ?? 0)
-  const [infant, setInfant] = useState(initial?.infant ?? 0)
-  const [airlineId, setAirlineId] = useState(initial?.airlineId || airlines[0]?.id || '')
+  const [adult, setAdult] = useState(initial?.adult ?? bookingObj?.adult_count ?? 1)
+  const [child, setChild] = useState(initial?.child ?? bookingObj?.child_count ?? 0)
+  const [infant, setInfant] = useState(initial?.infant ?? bookingObj?.infant_count ?? 0)
+  const [airlineId, setAirlineId] = useState(initial?.airlineId || bookingAirlineId || airlines[0]?.id || '')
   const [transportType, setTransportType] = useState<string>(initial?.transportType || transportVehicles[0]?.name || 'CAR')
   const [saveCustomer, setSaveCustomer] = useState(true)
-  const [makkahHotelId, setMakkahHotelId] = useState(initial?.makkahHotelId || makkahHotels[0]?.id || '')
-  const [makkahRoom, setMakkahRoom] = useState<RoomType>(initial?.makkahRoom ?? 'sharing')
-  const [makkahNights, setMakkahNights] = useState(initial?.makkahNights ?? 10)
-  const [madinahHotelId, setMadinahHotelId] = useState(initial?.madinahHotelId || madinahHotels[0]?.id || '')
-  const [madinahRoom, setMadinahRoom] = useState<RoomType>(initial?.madinahRoom ?? 'sharing')
-  const [madinahNights, setMadinahNights] = useState(initial?.madinahNights ?? 10)
-  const [includeMakkahHotel, setIncludeMakkahHotel] = useState(initial?.includeMakkahHotel ?? true)
-  const [includeMadinahHotel, setIncludeMadinahHotel] = useState(initial?.includeMadinahHotel ?? true)
-  const [includeTickets, setIncludeTickets] = useState(initial?.includeTickets ?? true)
+  const [makkahHotelId, setMakkahHotelId] = useState(initial?.makkahHotelId || bookingMakkahHotelId || makkahHotels[0]?.id || '')
+  const [makkahRoom, setMakkahRoom] = useState<RoomType>(initial?.makkahRoom ?? (bookingObj?.makkah_room_type as RoomType) ?? 'sharing')
+  const [makkahNights, setMakkahNights] = useState(initial?.makkahNights ?? bookingObj?.makkah_nights ?? 10)
+  const [madinahHotelId, setMadinahHotelId] = useState(initial?.madinahHotelId || bookingMadinahHotelId || madinahHotels[0]?.id || '')
+  const [madinahRoom, setMadinahRoom] = useState<RoomType>(initial?.madinahRoom ?? (bookingObj?.madinah_room_type as RoomType) ?? 'sharing')
+  const [madinahNights, setMadinahNights] = useState(initial?.madinahNights ?? bookingObj?.madinah_nights ?? 10)
+  const [includeMakkahHotel, setIncludeMakkahHotel] = useState(initial?.includeMakkahHotel ?? (bookingObj ? Boolean(bookingObj.makkah_hotel_name) : true))
+  const [includeMadinahHotel, setIncludeMadinahHotel] = useState(initial?.includeMadinahHotel ?? (bookingObj ? Boolean(bookingObj.madinah_hotel_name) : true))
+  const [includeTickets, setIncludeTickets] = useState(initial?.includeTickets ?? (bookingObj ? !bookingHasNoTickets : true))
   const [includeTransport, setIncludeTransport] = useState(initial?.includeTransport ?? true)
   const [includeVisa, setIncludeVisa] = useState(initial?.includeVisa ?? true)
   const [currencyUnit, setCurrencyUnit] = useState<'PKR' | 'SAR'>(initial?.currencyUnit ?? 'PKR')
-  const [profitType, setProfitType] = useState<'percent' | 'fixed'>(initial?.profitType ?? 'percent')
-  const [profitValue, setProfitValue] = useState(initial?.profitValue ?? 8)
-  const [sellingOverride, setSellingOverride] = useState<number | null>(initial?.sellingOverride ?? null)
-  const [advance, setAdvance] = useState(initial?.advance ?? 0)
+  const [profitType, setProfitType] = useState<'percent' | 'fixed'>(initial?.profitType ?? (bookingObj ? 'fixed' : 'percent'))
+  const [profitValue, setProfitValue] = useState(initial?.profitValue ?? (bookingObj ? bookingObj.profit_pkr : 8))
+  const [sellingOverride, setSellingOverride] = useState<number | null>(initial?.sellingOverride ?? bookingObj?.total_pkr ?? null)
+  const [advance, setAdvance] = useState(initial?.advance ?? bookingObj?.advance_pkr ?? 0)
   const [customerName, setCustomerName] = useState(initialBilled.name)
   const [billedAddr, setBilledAddr] = useState(initialBilled.address)
   const [billedPhone, setBilledPhone] = useState(initialBilled.phone)
@@ -287,11 +301,13 @@ export default function CalculatorForm({
   const [customTicketLabel, setCustomTicketLabel] = useState(initial?.customTicketLabel ?? '')
   const [customTicketAmount, setCustomTicketAmount] = useState(initial?.customTicketAmount ?? 0)
   const [customTicketCurrency, setCustomTicketCurrency] = useState<'SAR' | 'PKR'>(initial?.customTicketCurrency ?? 'SAR')
-  const [travelDate, setTravelDate] = useState(initial?.travelDate ?? editInvoice?.invoice_date ?? '')
+  const [travelDate, setTravelDate] = useState(initial?.travelDate || editInvoice?.invoice_date || editBooking?.booking_date || '')
   const [departureCity, setDepartureCity] = useState(initial?.departureCity ?? '')
   const [arrivalCity, setArrivalCity] = useState(initial?.arrivalCity ?? '')
   const [saDepartureCity, setSaDepartureCity] = useState(initial?.saDepartureCity ?? '')
   const [returnCity, setReturnCity] = useState(initial?.returnCity ?? '')
+  const [hidePricing, setHidePricing] = useState(initial?.hidePricing ?? false)
+  const [hideServiceCharges, setHideServiceCharges] = useState(initial?.hideServiceCharges ?? false)
   const [selectedTransportRouteIds, setSelectedTransportRouteIds] = useState<string[]>(() => {
     if (initial?.selectedTransportRouteIds) return initial.selectedTransportRouteIds
     const defaultIds = transportRoutes
@@ -314,6 +330,7 @@ export default function CalculatorForm({
     selectedZiaratIds,
     customTicket, customTicketLabel, customTicketAmount, customTicketCurrency,
     travelDate, departureCity, arrivalCity, saDepartureCity, returnCity,
+    hidePricing, hideServiceCharges,
   }), [
     invoiceTitleText, adult, child, infant, airlineId, transportType,
     makkahHotelId, makkahRoom, makkahNights, madinahHotelId, madinahRoom, madinahNights,
@@ -322,6 +339,7 @@ export default function CalculatorForm({
     selectedZiaratIds,
     customTicket, customTicketLabel, customTicketAmount, customTicketCurrency,
     travelDate, departureCity, arrivalCity, saDepartureCity, returnCity,
+    hidePricing, hideServiceCharges,
   ])
 
   // After a save, any form change bumps to the next invoice number (new invoice on next save).
@@ -582,6 +600,8 @@ export default function CalculatorForm({
       currencyUnit,
       sarToPkr: currency.sar_to_pkr,
       selectedTransportRouteIds,
+      hidePricing,
+      hideServiceCharges,
     }
   }, [
     adult, child, infant, airlineId, transportType,
@@ -593,6 +613,7 @@ export default function CalculatorForm({
     customTicket, customTicketLabel, customTicketAmount, customTicketCurrency,
     travelDate, departureCity, arrivalCity, saDepartureCity, returnCity,
     currencyUnit, currency, selectedTransportRouteIds,
+    hidePricing, hideServiceCharges,
   ])
 
   function buildBookingPayload(sourceInvoiceId?: string | null) {
@@ -722,9 +743,16 @@ export default function CalculatorForm({
           return
         }
       } else if (canSaveBooking) {
-        const bookingResult = await createBooking(buildBookingPayload(linkedInvoiceId ?? undefined))
+        const { updateBooking, createBooking } = await import('@/app/actions/bookings')
+        const payload = buildBookingPayload(linkedInvoiceId ?? undefined)
+        let bookingResult
+        if (isUpdate && editBooking) {
+          bookingResult = await updateBooking(editBooking.id, payload)
+        } else {
+          bookingResult = await createBooking(payload)
+        }
         if ('error' in bookingResult && bookingResult.error) {
-          toast.error(`Invoice saved but booking failed: ${bookingResult.error}`)
+          toast.error(`Invoice saved but booking update/creation failed: ${bookingResult.error}`)
           return
         }
       }
@@ -917,9 +945,11 @@ export default function CalculatorForm({
     }
     if (calc.ziaratItems.length > 0) lines.push(``)
 
+    const paxCount = calc.pax || 1
     lines.push(
-      `💰 *Package Price: ${fmt(calc.selling)}*`,
-      `💰 Per Person: ${fmt(calc.perPax)}`,
+      `💰 *Per Person: ${fmt(calc.perPax)}*`,
+      ``,
+      `💰 *Package Price Total ${paxCount} Pax: ${fmt(calc.selling)}*`,
       ``,
       ...(contact ? [contact] : []),
     )
@@ -928,15 +958,16 @@ export default function CalculatorForm({
     toast.success('WhatsApp message copied!')
   }
 
+  const paxCount = calc.pax || 1
   const rows = [
-    ...(includeTickets ? [{ label: 'Tickets', value: fmt(calc.ticketCost) }] : []),
-    ...(includeVisa ? [{ label: 'Visa', value: fmt(calc.visaCost) }] : []),
-    ...(includeTransport ? [{ label: `Transport (${transportType})`, value: fmt(calc.transportCost) }] : []),
-    ...(includeMakkahHotel ? [{ label: `Makkah Hotel (${makkahNights}N)`, value: fmt(calc.makkahCost) }] : []),
-    ...(includeMadinahHotel ? [{ label: `Madinah Hotel (${madinahNights}N)`, value: fmt(calc.madinahCost) }] : []),
+    ...(includeTickets ? [{ label: 'Tickets', value: fmt(calc.ticketCost / paxCount) }] : []),
+    ...(includeVisa ? [{ label: 'Visa', value: fmt(calc.visaCost / paxCount) }] : []),
+    ...(includeTransport ? [{ label: `Transport (${transportType})`, value: fmt(calc.transportCost / paxCount) }] : []),
+    ...(includeMakkahHotel ? [{ label: `Makkah Hotel (${makkahNights}N)`, value: fmt(calc.makkahCost / paxCount) }] : []),
+    ...(includeMadinahHotel ? [{ label: `Madinah Hotel (${madinahNights}N)`, value: fmt(calc.madinahCost / paxCount) }] : []),
     ...calc.ziaratItems.map(item => ({
       label: item.name,
-      value: item.cost > 0 ? fmt(item.cost) : 'Free',
+      value: item.cost > 0 ? fmt(item.cost / paxCount) : 'Free',
     })),
   ]
 
@@ -1369,7 +1400,7 @@ export default function CalculatorForm({
                 Invoice Appearance
               </CardTitle>
             </CardHeader>
-            <CardContent>
+            <CardContent className="space-y-4">
               <InvoiceAppearanceControls
                 backgroundSrc={invoiceBackground}
                 onBackgroundChange={setInvoiceBackground}
@@ -1377,6 +1408,30 @@ export default function CalculatorForm({
                 onTextColorChange={setInvoiceTextColor}
                 defaultBackground={DEFAULT_PACKAGE_INVOICE_BACKGROUND}
               />
+
+              <div className="pt-4 border-t border-dashed space-y-3">
+                <p className="text-xs font-semibold text-navy uppercase tracking-wide">Layout Settings</p>
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    id="hide-pricing"
+                    checked={hidePricing}
+                    onCheckedChange={(v) => setHidePricing(Boolean(v))}
+                  />
+                  <Label htmlFor="hide-pricing" className="text-xs cursor-pointer select-none font-medium">
+                    Hide pricing (hide Total & Received columns, move Pax to the right)
+                  </Label>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    id="hide-service-charges"
+                    checked={hideServiceCharges}
+                    onCheckedChange={(v) => setHideServiceCharges(Boolean(v))}
+                  />
+                  <Label htmlFor="hide-service-charges" className="text-xs cursor-pointer select-none font-medium">
+                    Hide Service Charges row
+                  </Label>
+                </div>
+              </div>
             </CardContent>
           </Card>
 
@@ -1555,10 +1610,10 @@ export default function CalculatorForm({
           <Card className="shadow-sm border-0 bg-navy text-white">
             <CardContent className="p-5 space-y-4">
               <div>
-                <p className="text-white/200 text-xs uppercase tracking-wide mb-1">Package Total</p>
-                <p className="text-3xl font-bold text-gold">{fmt(calc.selling)}</p>
+                <p className="text-white/200 text-xs uppercase tracking-wide mb-1">Package Total (Per Person)</p>
+                <p className="text-3xl font-bold text-gold">{fmt(calc.perPax)}</p>
                 <p className="text-white/100 text-xs mt-1">
-                  Per person: {fmt(calc.perPax)} · {calc.pax} pax
+                  Total for {calc.pax} pax: {fmt(calc.selling)}
                 </p>
               </div>
 
@@ -1567,26 +1622,51 @@ export default function CalculatorForm({
               <div className="space-y-2">
                 {rows.map(r => (
                   <div key={r.label} className="flex justify-between text-sm">
-                    <span className="text-white/60">{r.label}</span>
+                    <span className="text-white/60">{r.label} (1 Pax)</span>
                     <span className="font-medium">{r.value}</span>
                   </div>
                 ))}
                 <Separator className="bg-white/10" />
                 <div className="flex justify-between text-sm">
-                  <span className="text-white/60">Total Cost</span>
-                  <span className="font-medium">{fmt(calc.totalCost)}</span>
+                  <span className="text-white/60">Total Cost (1 Pax)</span>
+                  <span className="font-medium">{fmt(calc.totalCost / paxCount)}</span>
                 </div>
                 <div className="flex justify-between text-sm text-gold">
-                  <span>Profit</span>
-                  <span className="font-semibold">{fmt(calc.profit)}</span>
+                  <span>Profit (1 Pax)</span>
+                  <span className="font-semibold">{fmt(calc.profit / paxCount)}</span>
                 </div>
                 <div className="flex justify-between text-sm">
-                  <span className="text-white/60">Advance</span>
-                  <span>{fmt(advance)}</span>
+                  <span className="text-white/60">Advance (1 Pax)</span>
+                  <span>{fmt(advance / paxCount)}</span>
                 </div>
                 <div className="flex justify-between text-sm font-semibold">
-                  <span>Remaining</span>
-                  <span className="text-gold">{fmt(calc.remaining)}</span>
+                  <span>Remaining (1 Pax)</span>
+                  <span className="text-gold">{fmt(calc.remaining / paxCount)}</span>
+                </div>
+
+                <Separator className="bg-white/10" />
+                <div className="pt-2 space-y-1.5 border-t border-white/10 mt-2">
+                  <p className="text-[10px] uppercase font-bold text-white/50 tracking-wider">Totals for {paxCount} Pax</p>
+                  <div className="flex justify-between text-xs text-white/70">
+                    <span>Total Package</span>
+                    <span className="font-semibold text-white">{fmt(calc.selling)}</span>
+                  </div>
+                  <div className="flex justify-between text-xs text-white/70">
+                    <span>Total Cost</span>
+                    <span className="font-semibold text-white">{fmt(calc.totalCost)}</span>
+                  </div>
+                  <div className="flex justify-between text-xs text-gold/90">
+                    <span>Total Profit</span>
+                    <span className="font-semibold text-gold">{fmt(calc.profit)}</span>
+                  </div>
+                  <div className="flex justify-between text-xs text-white/70">
+                    <span>Total Advance</span>
+                    <span className="font-semibold text-white">{fmt(advance)}</span>
+                  </div>
+                  <div className="flex justify-between text-xs text-white/90 font-bold border-t border-white/10 pt-1 mt-1">
+                    <span>Total Remaining</span>
+                    <span className="text-gold">{fmt(calc.remaining)}</span>
+                  </div>
                 </div>
               </div>
 
@@ -1651,6 +1731,8 @@ export default function CalculatorForm({
                     centerInvoiceId
                     backgroundImage={invoiceBackground}
                     textColor={invoiceTextColor}
+                    hidePricing={hidePricing}
+                    hideServiceCharges={hideServiceCharges}
                   />
                 </ScaledPreview>
                 <p className="text-[10px] text-muted-foreground mt-3">
@@ -1705,6 +1787,8 @@ export default function CalculatorForm({
             centerInvoiceId
             backgroundImage={invoiceBackground}
             textColor={invoiceTextColor}
+            hidePricing={hidePricing}
+            hideServiceCharges={hideServiceCharges}
           />
         </div>
       )}

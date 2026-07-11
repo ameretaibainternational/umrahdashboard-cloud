@@ -56,6 +56,7 @@ async function insertCustomInvoiceDirect(row: {
   created_by?: string | null
   invoice_number?: string
   invoice_title_text?: string
+  package_data?: any
 }, options?: { force?: boolean }) {
   const sql = requireWriteSql(options)
   const baseValues = {
@@ -77,6 +78,7 @@ async function insertCustomInvoiceDirect(row: {
     profit_pkr: row.profit_pkr ?? 0,
     storage_key: row.storage_key,
     file_size_bytes: row.file_size_bytes,
+    package_data: row.package_data ? sql.json(row.package_data as unknown as postgres.JSONValue) : null,
   }
 
   try {
@@ -86,13 +88,13 @@ async function insertCustomInvoiceDirect(row: {
         payment_bank_name, payment_account_number, terms_text,
         contact_phone, contact_email, contact_location,
         line_items, total, received, remaining, profit_pkr,
-        storage_key, file_size_bytes, invoice_title_text, created_by
+        storage_key, file_size_bytes, invoice_title_text, created_by, package_data
       ) VALUES (
         ${baseValues.id}, ${row.invoice_number!}, ${baseValues.invoice_date}, ${baseValues.billed_to_name}, ${baseValues.billed_to_address}, ${baseValues.billed_to_client_number},
         ${baseValues.payment_bank_name}, ${baseValues.payment_account_number}, ${baseValues.terms_text},
         ${baseValues.contact_phone}, ${baseValues.contact_email}, ${baseValues.contact_location},
         ${baseValues.line_items}, ${baseValues.total}, ${baseValues.received}, ${baseValues.remaining}, ${baseValues.profit_pkr},
-        ${baseValues.storage_key}, ${baseValues.file_size_bytes}, ${row.invoice_title_text ?? 'INVOICE'}, ${row.created_by ?? null}
+        ${baseValues.storage_key}, ${baseValues.file_size_bytes}, ${row.invoice_title_text ?? 'INVOICE'}, ${row.created_by ?? null}, ${baseValues.package_data}
       )
       RETURNING id, invoice_number
     `
@@ -401,6 +403,7 @@ type CustomInvoiceUpdateRow = {
   storage_key: string
   file_size_bytes: number
   invoice_title_text?: string
+  package_data?: any
 }
 
 export async function updateCustomInvoiceDirect(row: CustomInvoiceUpdateRow, options?: { force?: boolean }) {
@@ -426,7 +429,8 @@ export async function updateCustomInvoiceDirect(row: CustomInvoiceUpdateRow, opt
         profit_pkr = ${row.profit_pkr ?? 0},
         storage_key = ${row.storage_key},
         file_size_bytes = ${row.file_size_bytes},
-        invoice_title_text = ${row.invoice_title_text ?? 'INVOICE'}
+        invoice_title_text = ${row.invoice_title_text ?? 'INVOICE'},
+        package_data = ${row.package_data ? sql.json(row.package_data as unknown as postgres.JSONValue) : null}
       WHERE id = ${row.id}
     `
   } catch (error) {
@@ -498,6 +502,7 @@ export async function insertCustomInvoice(row: {
   storage_key: string
   file_size_bytes: number
   created_by?: string | null
+  package_data?: any
 }) {
   return withDocumentDbFallback(
     () => insertCustomInvoiceDirect(row),

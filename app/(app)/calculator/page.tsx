@@ -1,4 +1,4 @@
-import { getAirlines, getHotels, getVisa, getCurrency, getTransportRates, getCompany, getCurrentStaff, getPackageInvoiceById, getInvoiceClients, getInvoiceSettings, getAllPackageInvoiceNumbers, getZiarats, getBookingById, getTransportRoutes, getTransportVehicles, getRouteVehicleRates } from '@/lib/db'
+import { getAirlines, getHotels, getVisa, getCurrency, getTransportRates, getCompany, getCurrentStaff, getPackageInvoiceById, getInvoiceClients, getInvoiceSettings, getAllPackageInvoiceNumbers, getZiarats, getBookingById, getTransportRoutes, getTransportVehicles, getRouteVehicleRates, findBookingForCustomInvoice } from '@/lib/db'
 import { isViewerPermission } from '@/lib/permissions'
 import CalculatorForm from '@/components/calculator/CalculatorForm'
 
@@ -8,7 +8,18 @@ export default async function CalculatorPage({
   searchParams: Promise<{ edit?: string; booking_id?: string }>
 }) {
   const { edit, booking_id } = await searchParams
-  const [airlines, hotels, visa, currency, transportRates, ziarats, company, staff, editInvoice, invoiceClients, invoiceSettings, packageInvoices, bookingToFinalize, transportRoutes, transportVehicles, routeVehicleRates] = await Promise.all([
+
+  const editInvoice = edit ? await getPackageInvoiceById(edit) : null
+  let editBooking = booking_id ? await getBookingById(booking_id) : null
+  if (editInvoice && !editBooking) {
+    editBooking = await findBookingForCustomInvoice(editInvoice.id, {
+      customer_name: editInvoice.billed_to_name,
+      booking_date: editInvoice.invoice_date,
+      total_pkr: editInvoice.total,
+    })
+  }
+
+  const [airlines, hotels, visa, currency, transportRates, ziarats, company, staff, invoiceClients, invoiceSettings, packageInvoices, bookingToFinalize, transportRoutes, transportVehicles, routeVehicleRates] = await Promise.all([
     getAirlines(),
     getHotels(),
     getVisa(),
@@ -17,7 +28,6 @@ export default async function CalculatorPage({
     getZiarats(),
     getCompany(),
     getCurrentStaff(),
-    edit ? getPackageInvoiceById(edit) : Promise.resolve(null),
     getInvoiceClients(),
     getInvoiceSettings(),
     getAllPackageInvoiceNumbers(),
@@ -45,6 +55,7 @@ export default async function CalculatorPage({
       existingPackageInvoices={packageInvoices}
       canSaveBooking={!staff || !isViewerPermission(staff.permission)}
       editInvoice={editInvoice}
+      editBooking={editBooking}
       bookingToFinalize={bookingToFinalize ?? undefined}
       transportRoutes={transportRoutes}
       transportVehicles={transportVehicles}

@@ -89,5 +89,7 @@ export function parsePackageInvoiceData(raw: unknown, ziarats: ZiaratOption[] = 
     currencyUnit: d.currencyUnit === 'SAR' ? 'SAR' : 'PKR',
     sarToPkr: d.sarToPkr ? Number(d.sarToPkr) : undefined,
     selectedTransportRouteIds: Array.isArray(d.selectedTransportRouteIds) ? d.selectedTransportRouteIds.map(String) : [],
+    hidePricing: Boolean(d.hidePricing),
+    hideServiceCharges: Boolean(d.hideServiceCharges),
   }
 }

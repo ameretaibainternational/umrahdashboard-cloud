@@ -59,7 +59,7 @@ function newRow(id: string, defaultCurrency = 'PKR'): LineItemDraft {
     id, service: '',
     use_pax_price: false, pax_price: '', pax_price_unit: defaultCurrency,
     use_night_price: false, night_price: '', night_price_unit: defaultCurrency,
-    total_pax: '1', total: '', total_unit: '', received: '0',
+    total_pax: '1', total: '', total_unit: defaultCurrency, received: '0',
   }
 }
 
@@ -90,14 +90,10 @@ function findPaymentMethodId(methods: InvoicePaymentMethod[], bankName: string, 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 function toNum(s: string) { const n = parseFloat(s.replace(/,/g, '')); return isNaN(n) ? 0 : n }
 
-// globalCurrency = locked invoice currency derived from first row with use_pax_price
-function buildLineItem(d: LineItemDraft, globalCurrency: string | null): CustomInvoiceLineItem {
+function buildLineItem(d: LineItemDraft, globalCurrency: string): CustomInvoiceLineItem {
   const pax_price = d.use_pax_price && d.pax_price !== '' ? toNum(d.pax_price) : null
   const night_price = d.use_night_price && d.night_price !== '' ? toNum(d.night_price) : null
   const qty = toNum(d.total_pax) || 1  // total_pax doubles as total_nights in night mode
-
-  const paxUnit = d.use_pax_price ? (globalCurrency ?? d.pax_price_unit) : d.pax_price_unit
-  const nightUnit = d.night_price_unit || 'PKR'
 
   let total: number
   if (d.total !== '') {
@@ -113,12 +109,12 @@ function buildLineItem(d: LineItemDraft, globalCurrency: string | null): CustomI
   return {
     service: d.service,
     pax_price,
-    pax_price_unit: paxUnit,
+    pax_price_unit: globalCurrency,
     night_price,
-    night_price_unit: nightUnit,
+    night_price_unit: globalCurrency,
     total_pax: qty,
     total,
-    total_unit: d.use_pax_price ? paxUnit : d.use_night_price ? nightUnit : d.total_unit,
+    total_unit: globalCurrency,
     received: toNum(d.received),
   }
 }
@@ -136,8 +132,8 @@ function buildInvoice(
   email: string,
   location: string,
   rows: LineItemDraft[],
-  globalCurrency: string | null,
-  profitPkr: number,
+  globalCurrency: string,
+  profit: number,
 ): CustomInvoice {
   const items = rows.map(r => buildLineItem(r, globalCurrency))
   const total = items.reduce((s, i) => s + i.total, 0)
@@ -159,7 +155,7 @@ function buildInvoice(
     total,
     received,
     remaining: total - received,
-    profit_pkr: profitPkr,
+    profit_pkr: profit,
     created_at: '',
   }
 }
@@ -217,6 +213,7 @@ interface Props {
   paymentMethods: InvoicePaymentMethod[]
   services: InvoiceService[]
   editInvoice?: CustomInvoice | null
+  sarToPkrRate?: number
 }
 
 function applyClientToBilled(client: InvoiceClient) {
@@ -234,6 +231,7 @@ export default function CustomInvoiceForm({
   paymentMethods,
   services,
   editInvoice = null,
+  sarToPkrRate = 75,
 }: Props) {
   const router = useRouter()
   const formId = useId()
@@ -302,9 +300,13 @@ export default function CustomInvoiceForm({
   const [billedAddr, setBilledAddr] = useState(initialBilled.address)
   const [billedPhone, setBilledPhone] = useState(initialBilled.phone)
   const [saveCustomer, setSaveCustomer] = useState(true)
-  const [profitPkr, setProfitPkr] = useState(() =>
-    editInvoice?.profit_pkr != null ? String(editInvoice.profit_pkr) : '',
-  )
+  const [profitInput, setProfitInput] = useState(() => {
+    if (!editInvoice) return ''
+    if (editInvoice.package_data?.currencyUnit === 'SAR') {
+      return editInvoice.package_data.profit_sar != null ? String(editInvoice.package_data.profit_sar) : ''
+    }
+    return editInvoice.profit_pkr != null ? String(editInvoice.profit_pkr) : ''
+  })
   const [selectedPaymentMethodId, setSelectedPaymentMethodId] = useState(() =>
     editInvoice
       ? findPaymentMethodId(paymentMethods, editInvoice.payment_bank_name, editInvoice.payment_account_number)
@@ -333,6 +335,8 @@ export default function CustomInvoiceForm({
   const [signaturePersonName, setSignaturePersonName] = useState('')
   const [invoiceBackground, setInvoiceBackground] = useState(DEFAULT_CUSTOM_INVOICE_BACKGROUND)
   const [invoiceTextColor, setInvoiceTextColor] = useState(DEFAULT_INVOICE_TEXT_COLOR)
+  const [hidePricing, setHidePricing] = useState(() => editInvoice?.package_data?.hidePricing ?? false)
+  const [hideServiceCharges, setHideServiceCharges] = useState(() => editInvoice?.package_data?.hideServiceCharges ?? false)
   const logoInputRef = useRef<HTMLInputElement>(null)
   const signatureInputRef = useRef<HTMLInputElement>(null)
 
@@ -506,8 +510,12 @@ export default function CustomInvoiceForm({
   // (used for saved-invoice downloads so we can capture a different invoice)
   const [captureInvoice, setCaptureInvoice] = useState<CustomInvoice | null>(null)
 
-  // Currency lock: if the first row has use_pax_price checked, its currency applies to all rows
-  const lockedCurrency = rows[0]?.use_pax_price ? (rows[0].pax_price_unit || 'PKR') : null
+  // Currency lock: lock everything to the currency of the first row
+  const lockedCurrency = rows[0] ? (
+    rows[0].use_pax_price ? (rows[0].pax_price_unit || 'PKR') :
+      rows[0].use_night_price ? (rows[0].night_price_unit || 'PKR') :
+        (rows[0].total_unit || 'PKR')
+  ) : 'PKR'
 
   // Total pages for live preview (mirrors template split logic)
   const previewTotalPages = rows.length <= 5
@@ -529,7 +537,7 @@ export default function CustomInvoiceForm({
     location,
     rows,
     lockedCurrency,
-    toNum(profitPkr),
+    toNum(profitInput),
   )
 
   // The hidden template always renders either the live preview or a saved invoice.
@@ -561,7 +569,7 @@ export default function CustomInvoiceForm({
       toast.error('Client name is required.')
       return
     }
-    const profit = toNum(profitPkr)
+    const profit = toNum(profitInput)
     setIsDownloading(true)
     try {
       const inv = buildInvoice(
@@ -598,6 +606,15 @@ export default function CustomInvoiceForm({
         }
       }
       const bytes = await generateInvoicePdfBytes(inv, false)
+
+      const isSar = lockedCurrency === 'SAR'
+      const rate = sarToPkrRate
+
+      const totalPkr = isSar ? inv.total * rate : inv.total
+      const receivedPkr = isSar ? inv.received * rate : inv.received
+      const remainingPkr = isSar ? inv.remaining * rate : inv.remaining
+      const profitPkrVal = isSar ? profit * rate : profit
+
       const payload = {
         invoice_date: inv.invoice_date,
         billed_to_name: inv.billed_to_name,
@@ -610,13 +627,20 @@ export default function CustomInvoiceForm({
         contact_email: inv.contact_email,
         contact_location: inv.contact_location,
         line_items: inv.line_items,
-        total: inv.total,
-        received: inv.received,
-        remaining: inv.remaining,
-        profit_pkr: profit,
+        total: totalPkr,
+        received: receivedPkr,
+        remaining: remainingPkr,
+        profit_pkr: profitPkrVal,
         pdf_base64: uint8ToBase64(bytes),
         invoice_number: invoiceNumber || inv.invoice_number,
         invoice_title_text: invoiceTitleText.trim() || 'INVOICE',
+        package_data: {
+          hidePricing,
+          hideServiceCharges,
+          currencyUnit: lockedCurrency,
+          sarToPkr: rate,
+          profit_sar: isSar ? profit : null,
+        },
       }
 
       const updateId = editInvoice?.id ?? editingId
@@ -640,7 +664,7 @@ export default function CustomInvoiceForm({
           resolveInvoiceSettings(settings),
           savedClients,
         )
-        setProfitPkr('')
+        setProfitInput('')
       }
       router.refresh()
     } catch (err) {
@@ -651,8 +675,8 @@ export default function CustomInvoiceForm({
     }
   }, [
     billedName, invoiceNumber, invoiceTitleText, date, billedAddr, billedPhone, bankName, accountNo,
-    terms, phone, email, location, rows, lockedCurrency, profitPkr, saveCustomer, generateInvoicePdfBytes, router,
-    existingInvoices, settings, resetForNewInvoice, savedClients, editInvoice, editingId,
+    terms, phone, email, location, rows, lockedCurrency, profitInput, saveCustomer, generateInvoicePdfBytes, router,
+    existingInvoices, settings, resetForNewInvoice, savedClients, editInvoice, editingId, sarToPkrRate,
   ])
 
   function updateRow(id: string, patch: Partial<LineItemDraft>) {
@@ -813,10 +837,13 @@ export default function CustomInvoiceForm({
 
                   <div className="space-y-3">
                     {rows.map((row, idx) => {
-                      // The effective currency for this row: locked by row 0 if it has use_pax_price, else own
-                      const isFirstPaxRow = idx === 0
-                      const rowCurrency = lockedCurrency && !isFirstPaxRow ? lockedCurrency : (row.pax_price_unit || 'PKR')
-                      const currencyLocked = !!lockedCurrency && !isFirstPaxRow
+                      const isFirstRow = idx === 0
+                      const rowCurrency = isFirstRow ? (
+                        row.use_pax_price ? (row.pax_price_unit || 'PKR') :
+                          row.use_night_price ? (row.night_price_unit || 'PKR') :
+                            (row.total_unit || 'PKR')
+                      ) : lockedCurrency
+                      const currencyLocked = !isFirstRow
 
                       return (
                         <div key={row.id} className="border rounded-lg p-3 space-y-3 bg-slate-50/50">
@@ -947,9 +974,10 @@ export default function CustomInvoiceForm({
                                       className="h-8 text-sm w-24"
                                     />
                                     <select
-                                      value={row.night_price_unit || 'PKR'}
+                                      value={isFirstRow ? (row.night_price_unit || 'PKR') : lockedCurrency}
+                                      disabled={!isFirstRow}
                                       onChange={e => updateRow(row.id, { night_price_unit: e.target.value })}
-                                      className="h-8 text-sm rounded-md border border-input bg-background px-2"
+                                      className="h-8 text-sm rounded-md border border-input bg-background px-2 disabled:cursor-not-allowed disabled:opacity-60"
                                     >
                                       <option value="PKR">PKR</option>
                                       <option value="SAR">SAR</option>
@@ -997,9 +1025,10 @@ export default function CustomInvoiceForm({
                                   <span className="text-xs text-muted-foreground font-medium w-10 shrink-0">{rowCurrency}</span>
                                 ) : (
                                   <select
-                                    value={row.total_unit || 'PKR'}
+                                    value={isFirstRow ? (row.total_unit || 'PKR') : lockedCurrency}
+                                    disabled={!isFirstRow}
                                     onChange={e => updateRow(row.id, { total_unit: e.target.value })}
-                                    className="h-8 text-sm rounded-md border border-input bg-background px-2"
+                                    className="h-8 text-sm rounded-md border border-input bg-background px-2 disabled:cursor-not-allowed disabled:opacity-60"
                                   >
                                     <option value="PKR">PKR</option>
                                     <option value="SAR">SAR</option>
@@ -1026,15 +1055,41 @@ export default function CustomInvoiceForm({
                 </div>
 
                 {/* Invoice appearance (client-side only — not saved to server) */}
-                <div>
-                  <p className="text-xs font-semibold text-navy mb-2 uppercase tracking-wide">Invoice Appearance</p>
-                  <InvoiceAppearanceControls
-                    backgroundSrc={invoiceBackground}
-                    onBackgroundChange={setInvoiceBackground}
-                    textColor={invoiceTextColor}
-                    onTextColorChange={setInvoiceTextColor}
-                    defaultBackground={DEFAULT_CUSTOM_INVOICE_BACKGROUND}
-                  />
+                <div className="space-y-4">
+                  <div>
+                    <p className="text-xs font-semibold text-navy mb-2 uppercase tracking-wide">Invoice Appearance</p>
+                    <InvoiceAppearanceControls
+                      backgroundSrc={invoiceBackground}
+                      onBackgroundChange={setInvoiceBackground}
+                      textColor={invoiceTextColor}
+                      onTextColorChange={setInvoiceTextColor}
+                      defaultBackground={DEFAULT_CUSTOM_INVOICE_BACKGROUND}
+                    />
+                  </div>
+
+                  <div className="pt-4 border-t border-dashed space-y-3">
+                    <p className="text-xs font-semibold text-navy uppercase tracking-wide">Layout Settings</p>
+                    <div className="flex items-center gap-2">
+                      <Checkbox
+                        id="hide-pricing"
+                        checked={hidePricing}
+                        onCheckedChange={(v) => setHidePricing(Boolean(v))}
+                      />
+                      <Label htmlFor="hide-pricing" className="text-xs cursor-pointer select-none font-medium">
+                        Hide pricing (hide Total & Received columns, move Pax to the right)
+                      </Label>
+                    </div>
+                    {/* <div className="flex items-center gap-2">
+                      <Checkbox
+                        id="hide-service-charges"
+                        checked={hideServiceCharges}
+                        onCheckedChange={(v) => setHideServiceCharges(Boolean(v))}
+                      />
+                      <Label htmlFor="hide-service-charges" className="text-xs cursor-pointer select-none font-medium">
+                        Hide Service Charges row
+                      </Label>
+                    </div> */}
+                  </div>
                 </div>
 
                 {/* Branding (client-side only — not saved to server) */}
@@ -1156,24 +1211,24 @@ export default function CustomInvoiceForm({
                   <p className="text-xs font-semibold text-navy mb-2 uppercase tracking-wide">Profit & Expense</p>
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                     <div className="space-y-1.5">
-                      <Label className="text-xs">Profit (PKR)</Label>
+                      <Label className="text-xs">Profit ({lockedCurrency})</Label>
                       <Input
                         type="number"
                         min={0}
-                        placeholder="e.g. 100000"
-                        value={profitPkr}
-                        onChange={e => setProfitPkr(e.target.value)}
+                        placeholder={lockedCurrency === 'SAR' ? 'e.g. 1500' : 'e.g. 100000'}
+                        value={profitInput}
+                        onChange={e => setProfitInput(e.target.value)}
                         className="h-9"
                       />
                     </div>
                     <div className="space-y-1.5">
-                      <Label className="text-xs text-muted-foreground">Invoice Total</Label>
+                      <Label className="text-xs text-muted-foreground">Invoice Total ({lockedCurrency})</Label>
                       <Input value={previewInvoice.total.toLocaleString()} readOnly className="h-9 bg-muted/40" />
                     </div>
                     <div className="space-y-1.5">
-                      <Label className="text-xs text-muted-foreground">Auto Expense (cost)</Label>
+                      <Label className="text-xs text-muted-foreground">Auto Expense (cost) ({lockedCurrency})</Label>
                       <Input
-                        value={Math.max(0, previewInvoice.total - toNum(profitPkr)).toLocaleString()}
+                        value={Math.max(0, previewInvoice.total - toNum(profitInput)).toLocaleString()}
                         readOnly
                         className="h-9 bg-muted/40"
                       />
@@ -1209,6 +1264,8 @@ export default function CustomInvoiceForm({
                     titleText={invoiceTitleText.trim() || 'INVOICE'}
                     backgroundImage={invoiceBackground}
                     textColor={invoiceTextColor}
+                    hidePricing={hidePricing}
+                    hideServiceCharges={hideServiceCharges}
                   />
                 </ScaledPreview>
               </div>
@@ -1256,6 +1313,8 @@ export default function CustomInvoiceForm({
           titleText={invoiceTitleText.trim() || 'INVOICE'}
           backgroundImage={invoiceBackground}
           textColor={invoiceTextColor}
+          hidePricing={hidePricing}
+          hideServiceCharges={hideServiceCharges}
         />
       </div>
     </div>

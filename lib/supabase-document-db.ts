@@ -53,6 +53,7 @@ export async function insertCustomInvoiceSupabase(row: {
   created_by?: string | null
   invoice_number?: string
   invoice_title_text?: string
+  package_data?: any
 }): Promise<{ id: string; invoice_number: string }> {
   const supabase = await createClient()
   const payload = {
@@ -77,6 +78,7 @@ export async function insertCustomInvoiceSupabase(row: {
     file_size_bytes: row.file_size_bytes,
     invoice_title_text: row.invoice_title_text ?? 'INVOICE',
     created_by: row.created_by ?? null,
+    package_data: row.package_data ?? null,
   }
 
   let result = await supabase.from('custom_invoices').insert(payload).select('id, invoice_number').single()
@@ -185,6 +187,7 @@ export async function updateCustomInvoiceSupabase(row: {
   file_size_bytes: number
   invoice_title_text?: string
   profit_pkr?: number
+  package_data?: any
 }): Promise<{ id: string; invoice_number: string }> {
   const supabase = await createClient()
   const payload = {
@@ -207,6 +210,7 @@ export async function updateCustomInvoiceSupabase(row: {
     file_size_bytes: row.file_size_bytes,
     invoice_title_text: row.invoice_title_text ?? 'INVOICE',
     profit_pkr: row.profit_pkr ?? 0,
+    package_data: row.package_data ?? null,
   }
   const { error } = await supabase.from('custom_invoices').update(payload).eq('id', row.id)
   if (error) throw new Error(error.message)

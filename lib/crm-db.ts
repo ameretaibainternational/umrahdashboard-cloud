@@ -209,7 +209,8 @@ export async function updateBookingById(
       madinah_hotel_location = ${payload.madinah_hotel_location},
       madinah_hotel_distance = ${payload.madinah_hotel_distance},
       madinah_room_type = ${payload.madinah_room_type},
-      madinah_nights = ${payload.madinah_nights}
+      madinah_nights = ${payload.madinah_nights},
+      source_invoice_id = ${payload.source_invoice_id ?? null}
     WHERE id = ${id}
   `
 }

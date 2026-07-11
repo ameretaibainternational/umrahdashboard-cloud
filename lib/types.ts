@@ -276,6 +276,9 @@ export interface PackageInvoiceData {
   currencyUnit?: 'PKR' | 'SAR'
   sarToPkr?: number
   selectedTransportRouteIds?: string[]
+  hidePricing?: boolean
+  hideServiceCharges?: boolean
+  profit_sar?: number
 }
 
 export interface TransportRoute {

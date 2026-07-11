@@ -269,6 +269,22 @@ export default function UmrahPosterForm({
     logoX === DEFAULT_POSTER_LOGO_X &&
     logoY === DEFAULT_POSTER_LOGO_Y
 
+  function resetAirplaneDefaults() {
+    setData(prev => ({
+      ...prev,
+      airplaneX: DEFAULT_POSTER_DATA.airplaneX,
+      airplaneY: DEFAULT_POSTER_DATA.airplaneY,
+      airplaneWidth: DEFAULT_POSTER_DATA.airplaneWidth,
+      airplaneHeight: DEFAULT_POSTER_DATA.airplaneHeight,
+    }))
+  }
+
+  const isDefaultAirplane =
+    data.airplaneX === DEFAULT_POSTER_DATA.airplaneX &&
+    data.airplaneY === DEFAULT_POSTER_DATA.airplaneY &&
+    data.airplaneWidth === DEFAULT_POSTER_DATA.airplaneWidth &&
+    data.airplaneHeight === DEFAULT_POSTER_DATA.airplaneHeight
+
   const setField = <K extends keyof UmrahPosterFormData>(key: K, value: UmrahPosterFormData[K]) => {
     setData(prev => ({ ...prev, [key]: value }))
   }
@@ -1295,6 +1311,10 @@ export default function UmrahPosterForm({
                   step={0.05}
                   unit="cm"
                   onChange={v => setField('airplaneHeight', v)}
+                />
+                <BrandingResetButton
+                  onReset={resetAirplaneDefaults}
+                  disabled={isDefaultAirplane}
                 />
               </div>
             )}

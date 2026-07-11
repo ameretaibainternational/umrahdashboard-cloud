@@ -36,6 +36,7 @@ type CustomInvoicePayload = {
   pdf_base64: string
   invoice_number?: string
   invoice_title_text?: string
+  package_data?: any
 }
 
 async function cleanupLegacyCustomBooking(

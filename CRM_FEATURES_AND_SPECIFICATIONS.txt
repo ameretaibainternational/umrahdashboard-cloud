@@ -1,0 +1,241 @@
+================================================================================
+                    FAST TRAVELS CRM - SYSTEM SPECIFICATIONS
+================================================================================
+
+This document provides a highly detailed feature and architectural specification of 
+the CRM. It describes every module, database table relation, dynamic 
+calculation formula, layout config, and copy layout. (Umrah Poster module excluded).
+
+--------------------------------------------------------------------------------
+1. SYSTEM ARCHITECTURE & FOUNDATIONS
+--------------------------------------------------------------------------------
+- Framework: Next.js App Router (React, TypeScript).
+- CSS System: Tailwind CSS.
+- Dual-Database Strategy:
+  * Supabase Client: Realtime syncing and secure database access.
+  * Direct PostgreSQL Bypass: Optimized database utility (`postgres` driver) that 
+    runs raw SQL queries directly for lightning-fast loads.
+  * Demo Mode: A client-side memory database (`demo-store.ts`) allowing 
+    fully functional operation without active database connectivity.
+- Authentication & Session State: Password hashing and session validation 
+  with custom middleware checking user roles.
+
+--------------------------------------------------------------------------------
+2. USER & PRIVILEGE MANAGEMENT
+--------------------------------------------------------------------------------
+- User Account Schema:
+  * ID (UUID)
+  * Display Name
+  * Username
+  * Email (Optional)
+  * Role (Admin, Moderator, Viewer)
+  * Permission level (Full Access, Moderator, View Only)
+  * Account Status (Active, Inactive)
+- Access Control Constraints:
+  * Admins: Full read/write access to settings, users, deletions, and billing.
+  * Moderators: Can create/edit bookings, custom/package invoices, vouchers, 
+    payments, and expenses. Denied access to app settings and master configuration.
+  * Viewers: Read-only access to dashboards, reports, ledger cards, and lists. 
+    Buttons to delete, edit, or configure are hidden or disabled.
+
+--------------------------------------------------------------------------------
+3. MASTER SETTINGS & SYSTEM CONFIGURATION
+--------------------------------------------------------------------------------
+Admins can manage the master registries that seed dropdowns and auto-calculate rates.
+
+A. Airline Registry:
+   - Schema: ID, Airline Name, Adult ticket price (PKR), Child ticket price (PKR), 
+     Infant ticket price (PKR).
+B. Hotel Registry:
+   - Schema: ID, City ("Makkah" | "Madinah"), Hotel Name, Location, Distance, 
+     Contact, Rates in SAR for:
+     * Room rate (entire room per night)
+     * Sharing bed rate (per person per night)
+     * Double bed rate (per person per night)
+     * Triple bed rate (per person per night)
+     * Quad bed rate (per person per night)
+C. Visa Settings Master:
+   - Schema: ID, transport_mode ('included' | 'separate'), child_sar, infant_sar, 
+     flat ziarat rates (Makkah, Madinah, Badr, Taif), and tiered visa rates:
+     * 1 PAX visa rate (SAR)
+     * 2 PAX visa rate (SAR)
+     * 3 PAX visa rate (SAR)
+     * 4 PAX visa rate (SAR)
+     * 5–49 PAX group visa rate (SAR)
+D. Transport Vehicle Master:
+   - Schema: ID, Vehicle Name, Sort order.
+E. Transport Routes Master:
+   - Schema: ID, Route Name, Sort order.
+F. Route-Vehicle Rates Matrix:
+   - Schema: ID, Route ID, Vehicle ID, Rate in SAR. (Allows matching specific 
+     prices for route-vehicle pairings, e.g., JED-MAK in a GMC).
+G. Ziarat Master:
+   - Schema: ID, Ziarat Name, Slug, Rate in SAR, Sort order.
+H. System Exchange Rate Settings:
+   - Schema: ID, SAR-to-PKR conversion factor (e.g., 76.50).
+I. Invoice Branding & Layout Settings:
+   - Schema: ID, Bank Name, Account Number, Terms & Conditions text, Contact 
+     Phone, Contact Email, Contact Location.
+   - Interactive configuration offsets for generated PDF invoices:
+     * Logo Width / Scale
+     * Logo X-coordinate offset
+     * Logo Y-coordinate offset
+     * Primary Background Color
+     * Primary Text Color
+     * Signature image upload and Person Name.
+
+--------------------------------------------------------------------------------
+4. INTERACTIVE PACKAGE CALCULATOR
+--------------------------------------------------------------------------------
+A core playground where staff input client requirements to dynamically build 
+package prices and instantly generate bookings or formatted invoice PDFs.
+
+A. Calculations & State Inputs:
+   - Passenger details: Adult count, Child count, Infant count. (Used to multiply 
+     ticket rates, hotels bed multipliers, and visa rates).
+   - Flight Tickets (Toggleable):
+     * Choose airline from master (calculates: adult_count * adult_rate + 
+       child_count * child_rate + infant_count * infant_rate).
+     * Custom ticket override: Specify custom airline label, custom amount in PKR 
+       or SAR, and let the system automatically convert to the invoice currency.
+   - Visa fees (Toggleable):
+     * Automatic visa fee calculation from tiered pax rates (pax count = adults 
+       + children + infants).
+     * Custom visa fee override: Let user type a custom Visa PKR value.
+   - Transport rates (Toggleable):
+     * Select Vehicle type from master.
+     * Select multiple transport routes (rates sum from Route-Vehicle Rates master).
+   - Hotel Accommodation (Toggleable for Makkah / Madinah independently):
+     * Choose Makkah / Madinah hotel from master.
+     * Select Room Type: 'sharing', 'quad', 'triple', 'double', 'room' (entire room).
+     * Input number of nights.
+     * Calculation logic: 
+       If Room Type is 'room' (entire room): 
+         hotel_rate_sar * nights
+       If Room Type is sharing/double/triple/quad: 
+         hotel_rate_sar * nights * Math.max(1, adult_count + child_count).
+   - Ziarats (Toggleable):
+     * Select checkboxes for available ziarat itineraries. Fees are calculated 
+       based on the active exchange rate.
+   - Pricing & Margin overrides:
+     * Currency Toggle: Choose to display/calculate the entire invoice in PKR or SAR.
+     * Profit Margin: Choose 'percent' (e.g., 8% profit added to calculated cost) 
+       or 'fixed' (fixed PKR/SAR margin added to calculated cost).
+     * Selling Override: Force a custom rounded price (overwrites calculated margin).
+     * Advance payment input (PKR/SAR).
+
+B. Sidebar Calculations Card Layout:
+   - **Per Person Price Focused:** The main, large price tag at the top of the 
+     card displays the price for **1 Pax** (calculated as: Total Selling / Total Pax).
+   - Sub-label displays the group totals: "Total for X pax: Y PKR".
+   - Breakdown lines: All itemized rows (Tickets, Visa, Transport, Hotels, 
+     Total Cost, Profit, Advance, Remaining) display the price divided by the 
+     passenger count (showing exactly how much 1 Pax costs).
+   - **Group Totals Section:** Below the Remaining (1 Pax) row, a clean panel 
+     displays the aggregate totals for the full group:
+     * Total Package (all pax)
+     * Total Cost (all pax)
+     * Total Profit (all pax)
+     * Total Advance (all pax)
+     * Total Remaining (all pax)
+
+C. Save Booking Actions:
+   - Saves/Updates a record in the `bookings` table.
+   - Updates the invoice layout settings on the custom invoice table.
+   - Dynamically calculates profit margins and records the initial advance payment 
+     record inside the `payments` ledger table, automatically syncing or deleting 
+     the payment record if the booking advance amount is changed.
+
+D. WhatsApp Text Generator:
+   - Generates a rich message formatted with emojis.
+   - Details: Company name, trip duration, travel date, airline & routing, 
+     passengers count, hotel names, nights, room type, transport inclusions, and ziarats.
+   - Pricing section format:
+     💰 Per Person: PKR XXX
+     
+     💰 Package Price Total X Pax: PKR YYY
+   - Copies directly to the clipboard.
+
+E. Custom PDF Document Builder:
+   - Renders a clean PDF invoice document using custom coordinates, logo margins, 
+     and bank information defined in layout settings.
+
+--------------------------------------------------------------------------------
+5. CUSTOM & PACKAGE INVOICING MODULE
+--------------------------------------------------------------------------------
+- Custom Invoices Registry:
+  * Unique invoice number sequence tracking.
+  * Form to build free-form invoice line items:
+    - Service name / Description field.
+    - Pax price (SAR or PKR) OR Night price (SAR or PKR).
+    - Pax count / Night count.
+    - Currency units selectable per line item.
+  * If the first item on a custom invoice is selected in SAR, all subsequent 
+    lines lock to SAR to maintain currency consistency.
+  * On save, the system checks if the invoice is in SAR. If so, it uses the 
+    active exchange rate to convert the SAR totals to PKR for ledger, dashboard, 
+    and profit analytics, while the printed customer receipt remains in SAR.
+
+--------------------------------------------------------------------------------
+6. BOOKINGS MANAGEMENT MODULE
+--------------------------------------------------------------------------------
+- Booking Schema: ID, booking_date, customer_name, airline_name, total_pkr, 
+  cost_pkr, profit_pkr, advance_pkr, paid_pkr, remaining_pkr, adult_count, 
+  child_count, infant_count, makkah_hotel_name, makkah_room_type, makkah_nights, 
+  madinah_hotel_name, madinah_room_type, madinah_nights, source_invoice_id.
+- Booking List: 
+  * Table displaying booking date, customer name, total price, paid amount, 
+    remaining balance, and status.
+  * Click row to open a full itinerary review popup.
+  * Edit Action: Redirects the user directly to the `/calculator` page with 
+    query parameters `edit={source_invoice_id}` and `booking_id={booking_id}`. 
+    This automatically pre-fills the entire calculator state from the database.
+
+--------------------------------------------------------------------------------
+7. ACCOUNTS & FINANCIALS (CLIENT LEDGER)
+--------------------------------------------------------------------------------
+- Client Ledger Dashboard:
+  * Search bar to query clients by name.
+  * Currency Toggle: Dropdown to view statements in PKR or SAR.
+  * Dynamically maps client payments, package invoice purchases, and running balances.
+  * If "SAR" is selected, the system dynamically divides the PKR values in the 
+    columns (Package, Received, Balance) by the active exchange rate.
+  * Statements can be printed (print layout automatically scales columns to the 
+    selected currency and appends appropriate headers) or copied to the clipboard 
+    formatted as a WhatsApp message in the active currency.
+
+--------------------------------------------------------------------------------
+8. EXPENSES MANAGEMENT
+--------------------------------------------------------------------------------
+- Expense Categories: 'Umrah Supplier', 'Airline / Ticket', 'Hotel Supplier', 
+  'Transport Supplier', 'Other Umrah Expense'.
+- Schema: ID, expense_date, expense_type, supplier, amount_pkr, method 
+  (Cash, Bank, JazzCash, EasyPaisa), note, booking_id, invoice_id.
+- Linked expenses ensure that hotel, visa, or transport costs can be associated 
+  directly to bookings for fine-grained profitability analysis.
+
+--------------------------------------------------------------------------------
+9. HOTEL VOUCHERS GENERATION WITH QR VERIFICATION
+--------------------------------------------------------------------------------
+- Voucher Schema: ID, voucher_number, voucher_date, reference_no, family_head, 
+  package_info, voucher_data (JSON storing Makkah and Madinah hotel details, 
+  room counts, night lists, passenger names, transport details, and guidelines).
+- Print layouts generate professional vouchers.
+- **Urdu Guidelines & Footer:** Displays customizable Urdu instructions for pilgrims.
+- **QR Code Verification System:**
+  * Displays a dynamic QR code on the printed/PDF voucher.
+  * Scanning the QR code points to a verification route `/verify-voucher?id={voucher_id}`.
+  * The verification landing page fetches the voucher record directly from the 
+    database, presenting a secure checklist displaying guest details, Makkah/Madinah 
+    check-in dates, room layouts, and package summaries to confirm authenticity.
+
+--------------------------------------------------------------------------------
+10. REPORTS & SYSTEM DASHBOARD
+--------------------------------------------------------------------------------
+- Performance Dashboard:
+  * Dynamic SAR-to-PKR toggle to display all figures in SAR or PKR.
+  * Main Cards: Total Bookings, Total Sales, Profit Margin, Expenses, Ledgers.
+  * Charts: Monthly Profit vs Expense trends.
+  * Staff leaderboard displaying which moderators created the most bookings.
+  * Storage consumption tracking showing the total bytes used by PDF files.
+================================================================================

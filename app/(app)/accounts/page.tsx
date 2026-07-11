@@ -1,4 +1,4 @@
-import { getBookings, getPayments, getExpenses, getCompany, getStandaloneCustomInvoices } from '@/lib/db'
+import { getBookings, getPayments, getExpenses, getCompany, getStandaloneCustomInvoices, getCurrency } from '@/lib/db'
 import { pkr } from '@/lib/formatters'
 import KpiCard from '@/components/shared/KpiCard'
 import KpiGrid, { PageContainer } from '@/components/shared/KpiGrid'
@@ -9,12 +9,13 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Wallet, TrendingDown, AlertCircle, DollarSign } from 'lucide-react'
 
 export default async function AccountsPage() {
-  const [rawBookings, payments, expenses, company, standaloneCustomInvoices] = await Promise.all([
+  const [rawBookings, payments, expenses, company, standaloneCustomInvoices, currency] = await Promise.all([
     getBookings(),
     getPayments(),
     getExpenses(),
     getCompany(),
     getStandaloneCustomInvoices(),
+    getCurrency(),
   ])
 
   const customBookings = standaloneCustomInvoices.map(inv => ({
@@ -123,6 +124,7 @@ export default async function AccountsPage() {
         payments={payments}
         bookings={bookings}
         companyName={company.name}
+        sarToPkrRate={currency?.sar_to_pkr ?? 75}
       />
 
       {/* ── Supplier / Expense Ledger ── */}

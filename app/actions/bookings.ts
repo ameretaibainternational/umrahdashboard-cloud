@@ -219,6 +219,106 @@ export async function deleteBookings(ids: string[]) {
   return { success: true, deleted }
 }
 
+async function syncBookingInitialPayment(
+  bookingId: string,
+  customerName: string,
+  advancePkr: number,
+  bookingDate: string,
+  userId: string,
+) {
+  const amount = Math.round(Number(advancePkr))
+  const paymentDate = bookingDate ?? new Date().toISOString().split('T')[0]
+
+  if (isDemoMode()) {
+    const existing = demoStore.payments.find(p => p.booking_id === bookingId && p.note === 'Advance received at booking')
+    if (existing) {
+      if (amount <= 0) {
+        demoStore.payments = demoStore.payments.filter(p => p.id !== existing.id)
+      } else {
+        existing.amount_pkr = amount
+        existing.customer_name = customerName
+        existing.payment_date = paymentDate
+      }
+    } else if (amount > 0) {
+      demoStore.addPaymentRecord({
+        booking_id: bookingId,
+        customer_name: customerName,
+        amount_pkr: amount,
+        method: 'Cash',
+        note: 'Advance received at booking',
+        payment_date: paymentDate,
+        created_by: userId,
+      })
+    }
+    return
+  }
+
+  const { createClient } = await import('@/lib/supabase/server')
+  const supabase = await createClient()
+
+  if (hasDirectDb()) {
+    try {
+      const { requireWriteSql } = await import('@/lib/sql')
+      const sql = requireWriteSql()
+      const existing = await sql<{ id: string }[]>`
+        SELECT id FROM payments WHERE booking_id = ${bookingId} AND note = 'Advance received at booking' LIMIT 1
+      `
+      if (existing.length > 0) {
+        const id = existing[0].id
+        if (amount <= 0) {
+          await sql`DELETE FROM payments WHERE id = ${id}`
+        } else {
+          await sql`
+            UPDATE payments SET
+              customer_name = ${customerName},
+              amount_pkr = ${amount},
+              payment_date = ${paymentDate}
+            WHERE id = ${id}
+          `
+        }
+      } else if (amount > 0) {
+        await recordInitialBookingPayment(bookingId, {
+          customer_name: customerName,
+          advance_pkr: amount,
+          booking_date: paymentDate,
+        }, userId)
+      }
+      return
+    } catch (error) {
+      if (!isDirectDbRecoverableError(error)) throw error
+      markDirectDbAuthFailed()
+    }
+  }
+
+  const { data: existing, error: selectError } = await supabase
+    .from('payments')
+    .select('id')
+    .eq('booking_id', bookingId)
+    .eq('note', 'Advance received at booking')
+    .maybeSingle()
+
+  if (!selectError && existing) {
+    if (amount <= 0) {
+      await supabase.from('payments').delete().eq('id', existing.id)
+    } else {
+      await supabase
+        .from('payments')
+        .update({
+          customer_name: customerName,
+          amount_pkr: amount,
+          payment_date: paymentDate,
+        })
+        .eq('id', existing.id)
+    }
+  } else if (amount > 0) {
+    await recordInitialBookingPayment(bookingId, {
+      customer_name: customerName,
+      advance_pkr: amount,
+      booking_date: paymentDate,
+    }, userId)
+  }
+}
+
 export async function updateBooking(id: string, payload: BookingPayload) {
   const ctx = await requireModeratorFeature('bookings')
   if ('error' in ctx) return ctx
@@ -239,6 +339,7 @@ export async function updateBooking(id: string, payload: BookingPayload) {
       return { error: 'You can only edit your own bookings.' }
     }
     demoStore.updateBooking(id, row)
+    await syncBookingInitialPayment(id, payload.customer_name, payload.advance_pkr, row.booking_date, ctx.userId)
     REVALIDATE_PATHS.forEach(p => revalidatePath(p))
     return { success: true as const }
   }
@@ -254,6 +355,7 @@ export async function updateBooking(id: string, payload: BookingPayload) {
         }
         const { updateBookingById } = await import('@/lib/crm-db')
         await updateBookingById(id, row)
+        await syncBookingInitialPayment(id, payload.customer_name, payload.advance_pkr, row.booking_date, ctx.userId)
         REVALIDATE_PATHS.forEach(p => revalidatePath(p))
         return { success: true as const }
       } catch (error) {
@@ -271,6 +373,7 @@ export async function updateBooking(id: string, payload: BookingPayload) {
     }
     const { error } = await supabase.from('bookings').update(row).eq('id', id)
     if (error) return { error: friendlyDbError(error.message) }
+    await syncBookingInitialPayment(id, payload.customer_name, payload.advance_pkr, row.booking_date, ctx.userId)
   } catch (e) {
     return { error: friendlyDbError(e instanceof Error ? e.message : 'Update failed') }
   }
