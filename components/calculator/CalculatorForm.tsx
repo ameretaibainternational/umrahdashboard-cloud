@@ -1061,8 +1061,8 @@ export default function CalculatorForm({
                                 type="button"
                                 onClick={() => setCustomTicketCurrency(cur)}
                                 className={`px-2.5 py-0.5 font-semibold transition-colors ${customTicketCurrency === cur
-                                    ? 'bg-navy text-white'
-                                    : 'bg-white text-muted-foreground hover:bg-muted'
+                                  ? 'bg-navy text-white'
+                                  : 'bg-white text-muted-foreground hover:bg-muted'
                                   }`}
                               >
                                 {cur}
@@ -1724,8 +1724,8 @@ export default function CalculatorForm({
                     invoice={packageInvoice}
                     branding={branding}
                     titleText={invoiceTitleText.trim() || 'INVOICE'}
-                    titleFontSize={38}
-                    titleTop={22}
+                    titleFontSize={28}
+                    titleTop={42}
                     invoiceIdY={92}
                     dateY={109.5}
                     centerInvoiceId
@@ -1780,7 +1780,7 @@ export default function CalculatorForm({
             invoice={packageInvoice}
             branding={branding}
             titleText={invoiceTitleText.trim() || 'INVOICE'}
-            titleFontSize={38}
+            titleFontSize={32}
             titleTop={22}
             invoiceIdY={92}
             dateY={109.5}

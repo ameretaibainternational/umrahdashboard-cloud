@@ -111,10 +111,11 @@ export function getCalc(
     autoSelling = Math.round(totalCost + totalCost * (profitValue / 100))
   }
 
-  const selling = sellingOverride && sellingOverride > 0 ? sellingOverride : autoSelling
+  const baseSelling = sellingOverride && sellingOverride > 0 ? sellingOverride : autoSelling
+  const perPax = Math.round(baseSelling / pax)
+  const selling = perPax * pax
   const profit = selling - totalCost
   const remaining = Math.max(0, selling - advance)
-  const perPax = Math.round(selling / pax)
 
   return {
     pax,

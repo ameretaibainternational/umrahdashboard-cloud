@@ -4,6 +4,7 @@ import {
   scaleVoucherRect,
   type VoucherBranding,
 } from '@/lib/hotel-voucher-branding-layout'
+import { invoiceBackgroundUrl } from '@/lib/invoice-backgrounds'
 
 // ─── Data types ───────────────────────────────────────────────────────────────
 export interface Pilgrim {
@@ -13,6 +14,7 @@ export interface Pilgrim {
   pax: string
   beds: string
   visaNumber: string
+  gender?: string
 }
 
 export interface Accommodation {
@@ -51,6 +53,11 @@ export interface VoucherData {
   checkInTime: string
   checkOutTime: string
   showVisaNumber: boolean
+  showPassportNumber?: boolean
+  showCompanyName?: boolean
+  showCompanyField?: boolean
+  showLogoPage1?: boolean
+  showLogoPage2?: boolean
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -84,7 +91,7 @@ const META_LABEL_FONT = 14
 // Identical strategy to GridCell — absolute line inside a fixed-height box
 const META_TOP = Math.round((META_H - META_VALUE_FONT) / 2)
 
-function MetaField({ label, value, accent }: { label: string; value: React.ReactNode; accent?: boolean }) {
+function MetaField({ label, value, accent, textColor = '#ffffff' }: { label: string; value: React.ReactNode; accent?: boolean; textColor?: string }) {
   return (
     <div
       data-meta-field
@@ -113,7 +120,7 @@ function MetaField({ label, value, accent }: { label: string; value: React.React
           fontSize: `${META_VALUE_FONT}px`,
           lineHeight: `${META_VALUE_FONT}px`,
           fontFamily: 'Arial, Helvetica, sans-serif',
-          color: '#ffffff',
+          color: textColor,
           whiteSpace: 'nowrap',
           margin: 0,
           padding: 0,
@@ -124,7 +131,7 @@ function MetaField({ label, value, accent }: { label: string; value: React.React
         </span>
         <span style={{
           fontWeight: accent ? 700 : 500,
-          color: accent ? '#ffc633' : '#ffffff',
+          color: accent ? '#ffc633' : textColor,
         }}>
           {value}
         </span>
@@ -141,11 +148,13 @@ function GridCell({
   isHeader,
   align = 'left',
   bg = GLASS_CELL,
+  textColor = '#ffffff',
   children,
 }: {
   isHeader: boolean
   align?: 'left' | 'center'
   bg?: string
+  textColor?: string
   children: React.ReactNode
 }) {
   const textStyle: React.CSSProperties = {
@@ -156,7 +165,7 @@ function GridCell({
     fontSize: `${CELL_FONT}px`,
     lineHeight: `${CELL_FONT}px`,
     fontWeight: isHeader ? 700 : 400,
-    color: '#ffffff',
+    color: textColor,
     fontFamily: 'Arial, Helvetica, sans-serif',
     whiteSpace: 'nowrap',
     margin: 0,
@@ -185,16 +194,18 @@ function GridCell({
 function GridTable({
   columns,
   rows,
+  textColor = '#ffffff',
 }: {
   columns: { label: string; width?: string; align?: 'left' | 'center' }[]
   rows: { id: string; cells: React.ReactNode[] }[]
+  textColor?: string
 }) {
   const gridCols = columns.map(c => c.width ?? '1fr').join(' ')
   return (
     <div style={{ borderLeft: GRID_BORDER, borderTop: GRID_BORDER, ...GLASS_BLUR }}>
       <div style={{ display: 'grid', gridTemplateColumns: gridCols }}>
         {columns.map((col, i) => (
-          <GridCell key={`h-${i}`} isHeader align={col.align}>{col.label}</GridCell>
+          <GridCell key={`h-${i}`} isHeader align={col.align} textColor={textColor}>{col.label}</GridCell>
         ))}
         {rows.map((row, ri) =>
           row.cells.map((cell, ci) => (
@@ -203,6 +214,7 @@ function GridTable({
               isHeader={false}
               align={columns[ci].align}
               bg={ri % 2 === 0 ? GLASS_CELL : GLASS_CELL_ALT}
+              textColor={textColor}
             >
               {cell}
             </GridCell>
@@ -217,7 +229,7 @@ const SECTION_HDR_H = 28
 const SECTION_HDR_FONT = 13
 const SECTION_HDR_TOP = Math.round((SECTION_HDR_H - SECTION_HDR_FONT) / 2)
 
-function SectionHeader({ children }: { children: React.ReactNode }) {
+function SectionHeader({ children, textColor = '#ffffff' }: { children: React.ReactNode; textColor?: string }) {
   return (
     <div
       data-section-header
@@ -244,7 +256,7 @@ function SectionHeader({ children }: { children: React.ReactNode }) {
           fontWeight: 500,
           letterSpacing: 'normal',
           wordSpacing: 'normal',
-          color: '#ffffff',
+          color: textColor,
           fontFamily: 'Arial, Helvetica, sans-serif',
           margin: 0,
           padding: 0,
@@ -295,22 +307,34 @@ const URDU_TEXT: React.CSSProperties = {
 }
 
 // ─── PAGE 1 ───────────────────────────────────────────────────────────────────
-export const VoucherPage1 = forwardRef<HTMLDivElement, { data: VoucherData; branding?: VoucherBranding }>(
-  function VoucherPage1({ data, branding }, ref) {
+export interface VoucherPage1Props {
+  data: VoucherData
+  branding?: VoucherBranding
+  backgroundImage?: string
+  textColor?: string
+}
+
+export const VoucherPage1 = forwardRef<HTMLDivElement, VoucherPage1Props>(
+  function VoucherPage1({ data, branding, backgroundImage = '/Empty-Hotel-Voucher.jpg', textColor = '#ffffff' }, ref) {
     const showVisa = data.showVisaNumber !== false
+    const showPassport = data.showPassportNumber !== false
     const pilgrimColumns = [
       { label: 'Mutamer Name' },
-      { label: 'Passport No' },
+      ...(showPassport ? [{ label: 'Passport No' }] : []),
+      { label: 'Gender', width: '50px', align: 'center' as const },
       { label: 'Pax', width: '40px', align: 'center' as const },
       { label: 'Beds', width: '40px', align: 'center' as const },
       ...(showVisa ? [{ label: 'Visa Number' }] : []),
     ]
-    const pilgrimRows = data.pilgrims.map(p => ({
-      id: p.id,
-      cells: showVisa
-        ? [p.name, p.passportNo, p.pax, p.beds, p.visaNumber]
-        : [p.name, p.passportNo, p.pax, p.beds],
-    }))
+    const pilgrimRows = data.pilgrims.map(p => {
+      const cells = [p.name]
+      if (showPassport) cells.push(p.passportNo)
+      cells.push(p.gender || 'M')
+      cells.push(p.pax)
+      cells.push(p.beds)
+      if (showVisa) cells.push(p.visaNumber)
+      return { id: p.id, cells }
+    })
     const hasContactNotes =
       data.makkahHotelContact ||
       data.madinaHotelContact ||
@@ -340,7 +364,7 @@ export const VoucherPage1 = forwardRef<HTMLDivElement, { data: VoucherData; bran
         {/* Background image — stripped in onclone during PDF capture */}
         <img
           data-bg
-          src="/Empty-Hotel-Voucher.jpg"
+          src={invoiceBackgroundUrl(backgroundImage)}
           alt=""
           style={{
             position: 'absolute', top: 0, left: 0,
@@ -351,14 +375,16 @@ export const VoucherPage1 = forwardRef<HTMLDivElement, { data: VoucherData; bran
 
         {/* All content sits above the background */}
         <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', zIndex: 10 }}>
-          {branding?.logoUrl && <VoucherBrandingLogo branding={branding} />}
+          {branding?.logoUrl && data.showLogoPage1 !== false && <VoucherBrandingLogo branding={branding} />}
 
           {/* A ── Header (centered) */}
-          <div style={{ position: 'absolute', top: '40px', left: 0, right: 0, textAlign: 'center' }}>
-            <div style={{ fontSize: '34px', fontWeight: 700, color: '#ffffff' }}>
-              {data.companyName?.trim() || 'Amere Taiba International'}
+          {data.showCompanyName !== false && (
+            <div style={{ position: 'absolute', top: '40px', left: 0, right: 0, textAlign: 'center' }}>
+              <div style={{ fontSize: '34px', fontWeight: 700, color: textColor }}>
+                {data.companyName?.trim() || 'Amere Taiba International'}
+              </div>
             </div>
-          </div>
+          )}
 
           {/* HOTEL VOUCHER — centered, slightly below header */}
           <div style={{
@@ -370,9 +396,8 @@ export const VoucherPage1 = forwardRef<HTMLDivElement, { data: VoucherData; bran
             fontSize: '28px',
             fontWeight: 700,
             textTransform: 'uppercase',
-
             letterSpacing: 'normal',
-            color: '#ffffff',
+            color: textColor,
           }}>
             HOTEL VOUCHER
           </div>
@@ -396,30 +421,33 @@ export const VoucherPage1 = forwardRef<HTMLDivElement, { data: VoucherData; bran
                 gap: '8px 12px',
               }}>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', minWidth: 0 }}>
-                  <MetaField label="Company" value={data.companyField ? data.companyField.toUpperCase() : (data.companyName ? data.companyName.toUpperCase() : 'AMERE TAIBA INTERNATIONAL')} />
-                  <MetaField label="Voucher No" value={data.voucherNo || '—'} accent />
-                  <MetaField label="Family Head" value={data.familyHead ? data.familyHead.toUpperCase() : '—'} />
+                  {data.showCompanyField !== false && (
+                    <MetaField label="Company" value={data.companyField ? data.companyField.toUpperCase() : (data.companyName ? data.companyName.toUpperCase() : 'AMERE TAIBA INTERNATIONAL')} textColor={textColor} />
+                  )}
+                  <MetaField label="Voucher No" value={data.voucherNo || '—'} accent textColor={textColor} />
+                  <MetaField label="Family Head" value={data.familyHead ? data.familyHead.toUpperCase() : '—'} textColor={textColor} />
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', minWidth: 0 }}>
-                  <MetaField label="Reference No" value={data.referenceNo || '—'} />
-                  <MetaField label="Date" value={data.date ? fmtDate(data.date) : '—'} />
-                  <MetaField label="Package" value={data.packageInfo || '—'} />
+                  <MetaField label="Reference No" value={data.referenceNo || '—'} textColor={textColor} />
+                  <MetaField label="Date" value={data.date ? fmtDate(data.date) : '—'} textColor={textColor} />
+                  <MetaField label="Package" value={data.packageInfo || '—'} textColor={textColor} />
                 </div>
               </div>
             </div>
 
             {/* C ── Pilgrims Details */}
             <div>
-              <SectionHeader>Pilgrims Details</SectionHeader>
+              <SectionHeader textColor={textColor}>Pilgrims Details</SectionHeader>
               <GridTable
                 columns={pilgrimColumns}
                 rows={pilgrimRows}
+                textColor={textColor}
               />
             </div>
 
             {/* D ── Accommodation Details */}
             <div style={{ marginTop: '30px' }}>
-              <SectionHeader>Accommodation Details</SectionHeader>
+              <SectionHeader textColor={textColor}>Accommodation Details</SectionHeader>
               <GridTable
                 columns={[
                   { label: 'Hotel Name', width: 'minmax(100px, 2.4fr)' },
@@ -438,12 +466,13 @@ export const VoucherPage1 = forwardRef<HTMLDivElement, { data: VoucherData; bran
                     fmtDate(a.checkIn), fmtDate(a.checkOut), a.nights,
                   ],
                 }))}
+                textColor={textColor}
               />
             </div>
 
             {/* E ── Contact & Timing Notes */}
             {hasContactNotes && (
-              <div style={{ marginTop: '30px', fontSize: '12px', lineHeight: 1.7, fontWeight: 400, color: '#ffffff' }}>
+              <div style={{ marginTop: '30px', fontSize: '12px', lineHeight: 1.7, fontWeight: 400, color: textColor }}>
                 {data.makkahHotelContact && (
                   <div>
                     <span style={{ fontWeight: 500 }}>Makkah Hotel Contact: </span>
@@ -493,12 +522,12 @@ export const VoucherPage1 = forwardRef<HTMLDivElement, { data: VoucherData; bran
           <div style={{ position: 'absolute', bottom: '40px', left: 0, right: 0, textAlign: 'center' }}>
             <div style={{
               display: 'inline-block',
-              borderTop: '2px solid #ffffff',
+              borderTop: '2px solid ' + textColor,
               paddingTop: '10px',
               width: '80%',
               fontSize: '14px',
               fontWeight: 600,
-              color: '#ffffff',
+              color: textColor,
               letterSpacing: 'normal',
               wordSpacing: 'normal',
             }}>
@@ -516,10 +545,13 @@ export interface VoucherPage2Props {
   urduLines: string[]
   urduFooter: string
   branding?: VoucherBranding
+  data?: VoucherData
+  backgroundImage?: string
+  textColor?: string
 }
 
 export const VoucherPage2 = forwardRef<HTMLDivElement, VoucherPage2Props>(
-  function VoucherPage2({ urduLines, urduFooter, branding }, ref) {
+  function VoucherPage2({ urduLines, urduFooter, branding, data, backgroundImage = '/Empty-Hotel-Voucher.jpg', textColor = '#ffffff' }, ref) {
     return (
       <div
         ref={ref}
@@ -536,7 +568,7 @@ export const VoucherPage2 = forwardRef<HTMLDivElement, VoucherPage2Props>(
       >
         <img
           data-bg
-          src="/Empty-Hotel-Voucher.jpg"
+          src={invoiceBackgroundUrl(backgroundImage)}
           alt=""
           style={{
             position: 'absolute', top: 0, left: 0,
@@ -545,7 +577,7 @@ export const VoucherPage2 = forwardRef<HTMLDivElement, VoucherPage2Props>(
           }}
         />
 
-        {branding?.logoUrl && <VoucherBrandingLogo branding={branding} />}
+        {branding?.logoUrl && data?.showLogoPage2 !== false && <VoucherBrandingLogo branding={branding} />}
 
         <div
           dir="rtl"
@@ -566,8 +598,7 @@ export const VoucherPage2 = forwardRef<HTMLDivElement, VoucherPage2Props>(
               fontWeight: 'normal',
               textAlign: 'center',
               marginBottom: '24px',
-
-              color: '#ffffff',
+              color: textColor,
               marginTop: 0,
             }}
           >
@@ -583,9 +614,9 @@ export const VoucherPage2 = forwardRef<HTMLDivElement, VoucherPage2Props>(
                 style={{
                   ...URDU_TEXT,
                   marginBottom: '4px',
-                  fontSize: '16px',
-                  lineHeight: 2.2,
-                  color: '#ffffff',
+                  fontSize: '15px',
+                  lineHeight: 2.1,
+                  color: textColor,
                   textAlign: 'justify',
                 }}
               >
@@ -602,7 +633,7 @@ export const VoucherPage2 = forwardRef<HTMLDivElement, VoucherPage2Props>(
               fontWeight: 'normal',
               marginTop: '24px',
               textAlign: 'center',
-              color: '#ffffff',
+              color: textColor,
             }}
           >
             {urduFooter}
@@ -613,12 +644,12 @@ export const VoucherPage2 = forwardRef<HTMLDivElement, VoucherPage2Props>(
               data-urdu-text
               style={{
                 ...URDU_TEXT,
-                borderTop: '1px solid #ffffff',
+                borderTop: '1px solid ' + textColor,
                 width: '160px',
                 paddingTop: '6px',
                 fontSize: '18px',
                 textAlign: 'center',
-                color: '#ffffff',
+                color: textColor,
               }}
             >
               دستخط / SIGN

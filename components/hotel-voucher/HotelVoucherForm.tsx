@@ -32,6 +32,8 @@ import {
   findHotelContactByNumber,
   hotelContactLabel,
 } from '@/lib/hotel-contacts'
+import { COLORFUL_INVOICE_BACKGROUNDS } from '@/lib/invoice-backgrounds'
+import InvoiceAppearanceControls from '@/components/custom-invoice/InvoiceAppearanceControls'
 import { BrandingSlider, BrandingResetButton } from '@/components/branding/BrandingSlider'
 import {
   clampVoucherLogoPosition,
@@ -52,6 +54,11 @@ import {
 } from '@/lib/hotel-voucher-branding-layout'
 
 const JAMEEL_WOFF_URL = JAMEEL_WOFF
+
+const VOUCHER_BACKGROUNDS = [
+  { id: 'classic', name: 'Classic', src: '/Empty-Hotel-Voucher.jpg', swatch: 'linear-gradient(145deg, #121117 0%, #2a2a35 100%)' },
+  ...COLORFUL_INVOICE_BACKGROUNDS,
+]
 
 function readFileAsDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -195,14 +202,14 @@ async function captureUrduPage(
 function uid() { return `${Date.now()}-${Math.random().toString(36).slice(2, 7)}` }
 
 function emptyPilgrim(): Pilgrim {
-  return { id: uid(), name: '', passportNo: '', pax: '1', beds: '1', visaNumber: '' }
+  return { id: uid(), name: '', passportNo: '', pax: '1', beds: '1', visaNumber: '', gender: 'M' }
 }
 
 function emptyAccommodation(): Accommodation {
   return { id: uid(), hotelName: '', confirmNo: '', city: 'Makkah', roomType: 'Room', mealPlan: 'BB', checkIn: '', checkOut: '', nights: '' }
 }
 
-const VOUCHER_ROOM_TYPES = ['Room', 'Sharing', 'Quad', 'Triple', 'Double'] as const
+const VOUCHER_ROOM_TYPES = ['Room', 'Sharing', 'Quad', 'Triple', 'Double', 'Quint (5 Bed)', 'Hexa (6 bed)'] as const
 
 function calcCheckOut(checkIn: string, nights: string): string {
   if (!checkIn || !nights) return ''
@@ -250,6 +257,11 @@ const DEFAULT_DATA: VoucherData = {
   checkInTime: '14:00',
   checkOutTime: '12:00',
   showVisaNumber: true,
+  showPassportNumber: true,
+  showCompanyName: true,
+  showCompanyField: true,
+  showLogoPage1: true,
+  showLogoPage2: true,
 }
 
 // ─── Scaled preview container ──────────────────────────────────────────────────
@@ -348,6 +360,8 @@ export default function HotelVoucherForm({
   const [logoX, setLogoX] = useState(DEFAULT_VOUCHER_LOGO_X)
   const [logoY, setLogoY] = useState(DEFAULT_VOUCHER_LOGO_Y)
   const logoInputRef = useRef<HTMLInputElement>(null)
+  const [voucherBackground, setVoucherBackground] = useState('/Empty-Hotel-Voucher.jpg')
+  const [voucherTextColor, setVoucherTextColor] = useState('#ffffff')
 
   const logoBox = getVoucherLogoBoxSize(logoSize)
   const logoMaxX = Math.max(0, VOUCHER_INTRINSIC_BG_W - logoBox.w)
@@ -633,7 +647,7 @@ export default function HotelVoucherForm({
     const origin = window.location.origin
     const pdf = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' })
 
-    const bgImg = await loadImage(`${origin}/Empty-Hotel-Voucher.jpg`)
+    const bgImg = await loadImage(`${origin}${voucherBackground}`)
     const logoImg = logoUrl ? await loadImage(logoUrl) : null
 
     const contentCanvas1 = await html2canvas(p1, {
@@ -654,13 +668,13 @@ export default function HotelVoucherForm({
           el.style.top = el.dataset.cellHeader === '1' ? '3px' : '1px'
           el.style.lineHeight = '11px'
           el.style.fontFamily = 'Arial, Helvetica, sans-serif'
-          el.style.color = '#ffffff'
+          el.style.color = voucherTextColor
         })
         clonedDoc.querySelectorAll<HTMLElement>('[data-section-header-text]').forEach(el => {
           el.style.top = '3px'
           el.style.lineHeight = '13px'
           el.style.fontFamily = 'Arial, Helvetica, sans-serif'
-          el.style.color = '#ffffff'
+          el.style.color = voucherTextColor
         })
         clonedDoc.querySelectorAll<HTMLElement>('[data-grid-cell]').forEach(el => {
           const isHeader = el.querySelector('[data-cell-header="1"]')
@@ -693,7 +707,7 @@ export default function HotelVoucherForm({
           el.style.lineHeight = '16px'
           el.style.fontSize = '16px'
           el.style.fontFamily = 'Arial, Helvetica, sans-serif'
-          el.style.color = '#ffffff'
+          el.style.color = voucherTextColor
           el.style.margin = '0'
           el.style.padding = '0'
           el.style.whiteSpace = 'nowrap'
@@ -709,7 +723,7 @@ export default function HotelVoucherForm({
     ctx1.imageSmoothingQuality = 'high'
     ctx1.drawImage(bgImg, 0, 0, composite1.width, composite1.height)
     ctx1.drawImage(contentCanvas1, 0, 0)
-    if (logoImg) drawVoucherLogoOnCanvas(ctx1, logoImg, branding, SCALE)
+    if (logoImg && data.showLogoPage1 !== false) drawVoucherLogoOnCanvas(ctx1, logoImg, branding, SCALE)
     pdf.addImage(composite1.toDataURL('image/jpeg', 0.93), 'JPEG', 0, 0, 210, 297)
 
     pdf.addPage()
@@ -722,11 +736,11 @@ export default function HotelVoucherForm({
     ctx2.imageSmoothingQuality = 'high'
     ctx2.drawImage(bgImg, 0, 0, composite2.width, composite2.height)
     ctx2.drawImage(contentCanvas2, 0, 0)
-    if (logoImg) drawVoucherLogoOnCanvas(ctx2, logoImg, branding, SCALE)
+    if (logoImg && data.showLogoPage2 !== false) drawVoucherLogoOnCanvas(ctx2, logoImg, branding, SCALE)
     pdf.addImage(composite2.toDataURL('image/jpeg', 0.93), 'JPEG', 0, 0, 210, 297)
 
     return new Uint8Array(pdf.output('arraybuffer') as ArrayBuffer)
-  }, [logoUrl, logoX, logoY, logoSize])
+  }, [logoUrl, logoX, logoY, logoSize, voucherBackground, voucherTextColor])
 
   const handleSaveAndDownload = useCallback(async () => {
     if (!data.familyHead.trim()) {
@@ -741,7 +755,11 @@ export default function HotelVoucherForm({
         reference_no: data.referenceNo,
         family_head: data.familyHead,
         package_info: data.packageInfo,
-        voucher_data: data,
+        voucher_data: {
+          ...data,
+          backgroundImage: voucherBackground,
+          textColor: voucherTextColor,
+        },
         pdf_base64: uint8ToBase64(bytes),
       }
       const persist = () => editingVoucherId
@@ -764,6 +782,8 @@ export default function HotelVoucherForm({
       if (editingVoucherId) {
         setEditingVoucherId(null)
         setData(DEFAULT_DATA)
+        setVoucherBackground('/Empty-Hotel-Voucher.jpg')
+        setVoucherTextColor('#ffffff')
       }
       router.refresh()
     } catch (err) {
@@ -772,7 +792,7 @@ export default function HotelVoucherForm({
     } finally {
       setIsDownloading(false)
     }
-  }, [data, generateVoucherPdfBytes, editingVoucherId, router, savedVouchers])
+  }, [data, generateVoucherPdfBytes, editingVoucherId, router, savedVouchers, voucherBackground, voucherTextColor])
 
   async function handleStoredDownload(v: HotelVoucherRecord) {
     if (v.file_deleted_at) {
@@ -794,7 +814,10 @@ export default function HotelVoucherForm({
   }
 
   function handleEdit(v: HotelVoucherRecord) {
-    setData(v.voucher_data as unknown as VoucherData)
+    const vData = v.voucher_data as any
+    setData(vData)
+    if (vData.backgroundImage) setVoucherBackground(vData.backgroundImage)
+    if (vData.textColor) setVoucherTextColor(vData.textColor)
     setEditingVoucherId(v.id)
     window.scrollTo({ top: 0, behavior: 'smooth' })
     toast.info(`Voucher ${v.voucher_number} loaded in editor.`)
@@ -803,6 +826,8 @@ export default function HotelVoucherForm({
   function handleCancelEdit() {
     setEditingVoucherId(null)
     setData(DEFAULT_DATA)
+    setVoucherBackground('/Empty-Hotel-Voucher.jpg')
+    setVoucherTextColor('#ffffff')
     toast.info('Editor reset.')
   }
 
@@ -889,14 +914,36 @@ export default function HotelVoucherForm({
                   onChange={e => setField('packageInfo', e.target.value)} className="h-8 text-sm" />
               </div>
               <div className="space-y-1 col-span-2 min-w-0">
-                <Label className="text-xs">Company Name (header on voucher)</Label>
-                <Input placeholder="Amere Taiba International" value={data.companyName}
-                  onChange={e => setField('companyName', e.target.value)} className="h-8 text-sm" />
+                <div className="flex items-center justify-between gap-2">
+                  <Label className="text-xs">Company Name (header on voucher)</Label>
+                  <label className="flex items-center gap-1.5 cursor-pointer select-none shrink-0">
+                    <Checkbox
+                      checked={data.showCompanyName !== false}
+                      onCheckedChange={v => setField('showCompanyName', Boolean(v))}
+                    />
+                    <span className="text-xs font-medium">Show</span>
+                  </label>
+                </div>
+                {data.showCompanyName !== false && (
+                  <Input placeholder="Amere Taiba International" value={data.companyName}
+                    onChange={e => setField('companyName', e.target.value)} className="h-8 text-sm" />
+                )}
               </div>
               <div className="space-y-1 col-span-2 min-w-0">
-                <Label className="text-xs">Company Name (metadata table field)</Label>
-                <Input placeholder="Amere Taiba International" value={data.companyField !== undefined ? data.companyField : 'Amere Taiba International'}
-                  onChange={e => setField('companyField', e.target.value)} className="h-8 text-sm" />
+                <div className="flex items-center justify-between gap-2">
+                  <Label className="text-xs">Company Name (metadata table field)</Label>
+                  <label className="flex items-center gap-1.5 cursor-pointer select-none shrink-0">
+                    <Checkbox
+                      checked={data.showCompanyField !== false}
+                      onCheckedChange={v => setField('showCompanyField', Boolean(v))}
+                    />
+                    <span className="text-xs font-medium">Show</span>
+                  </label>
+                </div>
+                {data.showCompanyField !== false && (
+                  <Input placeholder="Amere Taiba International" value={data.companyField !== undefined ? data.companyField : 'Amere Taiba International'}
+                    onChange={e => setField('companyField', e.target.value)} className="h-8 text-sm" />
+                )}
               </div>
             </div>
           </Section>
@@ -923,10 +970,23 @@ export default function HotelVoucherForm({
                         className="h-7 text-xs" />
                     </div>
                     <div className="space-y-1">
-                      <Label className="text-xs">Passport No</Label>
-                      <Input placeholder="AB1234567" value={p.passportNo}
-                        onChange={e => updatePilgrim(p.id, { passportNo: e.target.value })}
-                        className="h-7 text-xs" />
+                      <div className="flex items-center justify-between gap-2">
+                        <Label className="text-xs">Passport No</Label>
+                        {i === 0 && (
+                          <label className="flex items-center gap-1.5 cursor-pointer select-none shrink-0">
+                            <Checkbox
+                              checked={data.showPassportNumber !== false}
+                              onCheckedChange={v => setField('showPassportNumber', Boolean(v))}
+                            />
+                            <span className="text-xs font-medium">Show</span>
+                          </label>
+                        )}
+                      </div>
+                      {data.showPassportNumber !== false && (
+                        <Input placeholder="AB1234567" value={p.passportNo}
+                          onChange={e => updatePilgrim(p.id, { passportNo: e.target.value })}
+                          className="h-7 text-xs" />
+                      )}
                     </div>
                     <div className="space-y-1">
                       <div className="flex items-center justify-between gap-2">
@@ -947,7 +1007,7 @@ export default function HotelVoucherForm({
                           className="h-7 text-xs" />
                       )}
                     </div>
-                    <div className="grid grid-cols-2 gap-2">
+                    <div className="grid grid-cols-3 gap-2">
                       <div className="space-y-1">
                         <Label className="text-xs">Pax</Label>
                         <Input type="number" min="1" value={p.pax}
@@ -959,6 +1019,15 @@ export default function HotelVoucherForm({
                         <Input type="number" min="1" value={p.beds}
                           onChange={e => updatePilgrim(p.id, { beds: e.target.value })}
                           className="h-7 text-xs" />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs">Gender</Label>
+                        <select value={p.gender || 'M'}
+                          onChange={e => updatePilgrim(p.id, { gender: e.target.value })}
+                          className="h-7 text-xs w-full rounded-md border border-input bg-background px-2">
+                          <option value="M">M</option>
+                          <option value="F">F</option>
+                        </select>
                       </div>
                     </div>
                   </div>
@@ -1277,10 +1346,38 @@ export default function HotelVoucherForm({
             </div>
           </Section>
 
+          <Section title="Appearance">
+            <InvoiceAppearanceControls
+              backgroundSrc={voucherBackground}
+              onBackgroundChange={setVoucherBackground}
+              textColor={voucherTextColor}
+              onTextColorChange={setVoucherTextColor}
+              defaultBackground="/Empty-Hotel-Voucher.jpg"
+              defaultTextColor="#ffffff"
+              backgrounds={VOUCHER_BACKGROUNDS}
+            />
+          </Section>
+
           <Section title="Branding">
             <p className="text-[10px] text-muted-foreground mb-2">
-              Logo stays in your browser only until download — not uploaded or stored on the server. Shown on both voucher pages.
+              Logo stays in your browser only until download — not uploaded or stored on the server.
             </p>
+            <div className="flex items-center gap-4 py-2 border-b border-dashed mb-2">
+              <label className="flex items-center gap-1.5 cursor-pointer select-none">
+                <Checkbox
+                  checked={data.showLogoPage1 !== false}
+                  onCheckedChange={v => setField('showLogoPage1', Boolean(v))}
+                />
+                <span className="text-xs font-medium">Show Logo Page 1</span>
+              </label>
+              <label className="flex items-center gap-1.5 cursor-pointer select-none">
+                <Checkbox
+                  checked={data.showLogoPage2 !== false}
+                  onCheckedChange={v => setField('showLogoPage2', Boolean(v))}
+                />
+                <span className="text-xs font-medium">Show Logo Page 2</span>
+              </label>
+            </div>
             <div className="space-y-1.5">
               <Label className="text-xs">Logo Upload (max 150 KB)</Label>
               <div className="flex items-center gap-2 flex-wrap">
@@ -1404,8 +1501,8 @@ export default function HotelVoucherForm({
           <div className="border rounded-lg overflow-hidden bg-muted/20 shadow-sm">
             <ScaledPreview>
               {previewPage === 1
-                ? <VoucherPage1 data={data} branding={branding} />
-                : <VoucherPage2 urduLines={urduLines} urduFooter={urduFooter} branding={branding} />
+                ? <VoucherPage1 data={data} branding={branding} backgroundImage={voucherBackground} textColor={voucherTextColor} />
+                : <VoucherPage2 data={data} urduLines={urduLines} urduFooter={urduFooter} branding={branding} backgroundImage={voucherBackground} textColor={voucherTextColor} />
               }
             </ScaledPreview>
           </div>
@@ -1418,8 +1515,8 @@ export default function HotelVoucherForm({
         {/* ── Hidden capture targets (always in DOM, invisible) ───────────────── */}
         <div style={{ position: 'fixed', top: 0, left: 0, zIndex: -9999, pointerEvents: 'none' }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
-            <VoucherPage1 ref={page1Ref} data={data} branding={branding} />
-            <VoucherPage2 ref={page2Ref} urduLines={urduLines} urduFooter={urduFooter} branding={branding} />
+            <VoucherPage1 ref={page1Ref} data={data} branding={branding} backgroundImage={voucherBackground} textColor={voucherTextColor} />
+            <VoucherPage2 ref={page2Ref} data={data} urduLines={urduLines} urduFooter={urduFooter} branding={branding} backgroundImage={voucherBackground} textColor={voucherTextColor} />
           </div>
         </div>
 
@@ -1614,8 +1711,8 @@ export default function HotelVoucherForm({
                         <td className="p-3 text-xs text-muted-foreground">{v.voucher_date}</td>
                         <td className="p-3">
                           <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium border ${hasFile
-                              ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                              : 'bg-amber-50 text-amber-700 border-amber-200'
+                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                            : 'bg-amber-50 text-amber-700 border-amber-200'
                             }`}>
                             {hasFile ? 'Stored PDF' : 'PDF Deleted'}
                           </span>

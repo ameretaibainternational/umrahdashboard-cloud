@@ -1,6 +1,51 @@
-In the downloaded invoices, the items of rows of table are not aligned to easch other horizontally center as marked in attached screenshot with the prompt. fix it
+1- Why is it showing 1 extra SAR in total price ? Fix it:
 
-When i click on save and download invoice in package calculator, it saves the booking in bookings using invoice id starting from 15__, however, if i just click on save booking, it shows invoice id INV-D72CFBD4 like random , fix it too
+🏷️ *Amere Taiba International*
+🕋 *22 Nights Umrah Package*
 
-we have added a dropdown on Hotel Contact fields on Hotel voucer page and it gets data from settings what we feed in settings and then select. do the same for Makkah transport contact, Madina Transport contact and Jeddah transport contact, make them dropdowns and pull the data from settings just like hotel contacts.
+✈️ Route: Islamabad ➜ Madinah ➜ Riyadh ➜ Karachi
+
+👤 Passengers: 5 Adults
+
+🏨 *Makkah Hotel*
+Mayar Maysar · Shuttle Service
+🛏️ Double Room | 🌙 12 Nights
+
+🏨 *Madinah Hotel*
+Rabwa Safwa 07 · Shuttle Service · 03 Star Hotel
+🛏️ Room Room | 🌙 10 Nights
+
+💰 *Per Person: 1,200 SAR*
+
+💰 *Package Price Total 5 Pax: 6,001 SAR*
+
+🟢 Contact: +923052394810
+
+
+2- And why is pkr less in this one?
+
+🏷️ *Amere Taiba International*
+🕋 *22 Nights Umrah Package*
+
+✈️ Route: Islamabad ➜ Madinah ➜ Riyadh ➜ Karachi
+
+👤 Passengers: 5 Adults
+
+🏨 *Makkah Hotel*
+Mayar Maysar · Shuttle Service
+🛏️ Double Room | 🌙 12 Nights
+
+🏨 *Madinah Hotel*
+Rabwa Safwa 07 · Shuttle Service · 03 Star Hotel
+🛏️ Room Room | 🌙 10 Nights
+
+💰 *Per Person: PKR 91,208*
+
+💰 *Package Price Total 5 Pax: PKR 456,038*
+
+🟢 Contact: +923052394810
+
+3- Decrease font size of guidelines on hotel voucers page 2 a little bit.
+
+4- In Umrah Calculator Invoices, reduce the font size of company name that is on top center of pdf a little bit.
 
