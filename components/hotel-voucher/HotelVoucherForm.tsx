@@ -360,7 +360,7 @@ export default function HotelVoucherForm({
   const [logoX, setLogoX] = useState(DEFAULT_VOUCHER_LOGO_X)
   const [logoY, setLogoY] = useState(DEFAULT_VOUCHER_LOGO_Y)
   const logoInputRef = useRef<HTMLInputElement>(null)
-  const [voucherBackground, setVoucherBackground] = useState('/Empty-Hotel-Voucher.jpg')
+  const [voucherBgColor, setVoucherBgColor] = useState('#121117')
   const [voucherTextColor, setVoucherTextColor] = useState('#ffffff')
 
   const logoBox = getVoucherLogoBoxSize(logoSize)
@@ -647,7 +647,6 @@ export default function HotelVoucherForm({
     const origin = window.location.origin
     const pdf = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' })
 
-    const bgImg = await loadImage(`${origin}${voucherBackground}`)
     const logoImg = logoUrl ? await loadImage(logoUrl) : null
 
     const contentCanvas1 = await html2canvas(p1, {
@@ -721,7 +720,8 @@ export default function HotelVoucherForm({
     const ctx1 = composite1.getContext('2d')!
     ctx1.imageSmoothingEnabled = true
     ctx1.imageSmoothingQuality = 'high'
-    ctx1.drawImage(bgImg, 0, 0, composite1.width, composite1.height)
+    ctx1.fillStyle = voucherBgColor
+    ctx1.fillRect(0, 0, composite1.width, composite1.height)
     ctx1.drawImage(contentCanvas1, 0, 0)
     if (logoImg && data.showLogoPage1 !== false) drawVoucherLogoOnCanvas(ctx1, logoImg, branding, SCALE)
     pdf.addImage(composite1.toDataURL('image/jpeg', 0.93), 'JPEG', 0, 0, 210, 297)
@@ -734,13 +734,14 @@ export default function HotelVoucherForm({
     const ctx2 = composite2.getContext('2d')!
     ctx2.imageSmoothingEnabled = true
     ctx2.imageSmoothingQuality = 'high'
-    ctx2.drawImage(bgImg, 0, 0, composite2.width, composite2.height)
+    ctx2.fillStyle = voucherBgColor
+    ctx2.fillRect(0, 0, composite2.width, composite2.height)
     ctx2.drawImage(contentCanvas2, 0, 0)
     if (logoImg && data.showLogoPage2 !== false) drawVoucherLogoOnCanvas(ctx2, logoImg, branding, SCALE)
     pdf.addImage(composite2.toDataURL('image/jpeg', 0.93), 'JPEG', 0, 0, 210, 297)
 
     return new Uint8Array(pdf.output('arraybuffer') as ArrayBuffer)
-  }, [logoUrl, logoX, logoY, logoSize, voucherBackground, voucherTextColor])
+  }, [logoUrl, logoX, logoY, logoSize, voucherBgColor, voucherTextColor])
 
   const handleSaveAndDownload = useCallback(async () => {
     if (!data.familyHead.trim()) {
@@ -757,7 +758,7 @@ export default function HotelVoucherForm({
         package_info: data.packageInfo,
         voucher_data: {
           ...data,
-          backgroundImage: voucherBackground,
+          backgroundColor: voucherBgColor,
           textColor: voucherTextColor,
         },
         pdf_base64: uint8ToBase64(bytes),
@@ -782,7 +783,7 @@ export default function HotelVoucherForm({
       if (editingVoucherId) {
         setEditingVoucherId(null)
         setData(DEFAULT_DATA)
-        setVoucherBackground('/Empty-Hotel-Voucher.jpg')
+        setVoucherBgColor('#121117')
         setVoucherTextColor('#ffffff')
       }
       router.refresh()
@@ -792,7 +793,7 @@ export default function HotelVoucherForm({
     } finally {
       setIsDownloading(false)
     }
-  }, [data, generateVoucherPdfBytes, editingVoucherId, router, savedVouchers, voucherBackground, voucherTextColor])
+  }, [data, generateVoucherPdfBytes, editingVoucherId, router, savedVouchers, voucherBgColor, voucherTextColor])
 
   async function handleStoredDownload(v: HotelVoucherRecord) {
     if (v.file_deleted_at) {
@@ -816,7 +817,8 @@ export default function HotelVoucherForm({
   function handleEdit(v: HotelVoucherRecord) {
     const vData = v.voucher_data as any
     setData(vData)
-    if (vData.backgroundImage) setVoucherBackground(vData.backgroundImage)
+    const loadedBg = vData.backgroundColor || vData.backgroundImage
+    if (loadedBg) setVoucherBgColor(loadedBg.startsWith('#') ? loadedBg : '#121117')
     if (vData.textColor) setVoucherTextColor(vData.textColor)
     setEditingVoucherId(v.id)
     window.scrollTo({ top: 0, behavior: 'smooth' })
@@ -826,7 +828,7 @@ export default function HotelVoucherForm({
   function handleCancelEdit() {
     setEditingVoucherId(null)
     setData(DEFAULT_DATA)
-    setVoucherBackground('/Empty-Hotel-Voucher.jpg')
+    setVoucherBgColor('#121117')
     setVoucherTextColor('#ffffff')
     toast.info('Editor reset.')
   }
@@ -1347,15 +1349,57 @@ export default function HotelVoucherForm({
           </Section>
 
           <Section title="Appearance">
-            <InvoiceAppearanceControls
-              backgroundSrc={voucherBackground}
-              onBackgroundChange={setVoucherBackground}
-              textColor={voucherTextColor}
-              onTextColorChange={setVoucherTextColor}
-              defaultBackground="/Empty-Hotel-Voucher.jpg"
-              defaultTextColor="#ffffff"
-              backgrounds={VOUCHER_BACKGROUNDS}
-            />
+            <div className="space-y-4">
+              <div className="space-y-1.5">
+                <Label className="text-xs">Background Color</Label>
+                <div className="flex items-center gap-2">
+                  <Input
+                    type="color"
+                    value={voucherBgColor}
+                    onChange={e => setVoucherBgColor(e.target.value)}
+                    className="h-8 w-12 cursor-pointer p-0.5 shrink-0 border rounded"
+                  />
+                  <Input
+                    value={voucherBgColor}
+                    onChange={e => setVoucherBgColor(e.target.value)}
+                    placeholder="#121117"
+                    className="h-8 font-mono text-xs w-full"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label className="text-xs">Text Color</Label>
+                <div className="flex items-center gap-2">
+                  <Input
+                    type="color"
+                    value={voucherTextColor}
+                    onChange={e => setVoucherTextColor(e.target.value)}
+                    className="h-8 w-12 cursor-pointer p-0.5 shrink-0 border rounded"
+                  />
+                  <Input
+                    value={voucherTextColor}
+                    onChange={e => setVoucherTextColor(e.target.value)}
+                    placeholder="#ffffff"
+                    className="h-8 font-mono text-xs w-full"
+                  />
+                </div>
+              </div>
+
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-7 text-[10px] w-full"
+                disabled={voucherBgColor === '#121117' && voucherTextColor === '#ffffff'}
+                onClick={() => {
+                  setVoucherBgColor('#121117')
+                  setVoucherTextColor('#ffffff')
+                }}
+              >
+                Reset to Defaults
+              </Button>
+            </div>
           </Section>
 
           <Section title="Branding">
@@ -1501,8 +1545,8 @@ export default function HotelVoucherForm({
           <div className="border rounded-lg overflow-hidden bg-muted/20 shadow-sm">
             <ScaledPreview>
               {previewPage === 1
-                ? <VoucherPage1 data={data} branding={branding} backgroundImage={voucherBackground} textColor={voucherTextColor} />
-                : <VoucherPage2 data={data} urduLines={urduLines} urduFooter={urduFooter} branding={branding} backgroundImage={voucherBackground} textColor={voucherTextColor} />
+                ? <VoucherPage1 data={data} branding={branding} backgroundColor={voucherBgColor} textColor={voucherTextColor} />
+                : <VoucherPage2 data={data} urduLines={urduLines} urduFooter={urduFooter} branding={branding} backgroundColor={voucherBgColor} textColor={voucherTextColor} />
               }
             </ScaledPreview>
           </div>
@@ -1515,8 +1559,8 @@ export default function HotelVoucherForm({
         {/* ── Hidden capture targets (always in DOM, invisible) ───────────────── */}
         <div style={{ position: 'fixed', top: 0, left: 0, zIndex: -9999, pointerEvents: 'none' }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
-            <VoucherPage1 ref={page1Ref} data={data} branding={branding} backgroundImage={voucherBackground} textColor={voucherTextColor} />
-            <VoucherPage2 ref={page2Ref} data={data} urduLines={urduLines} urduFooter={urduFooter} branding={branding} backgroundImage={voucherBackground} textColor={voucherTextColor} />
+            <VoucherPage1 ref={page1Ref} data={data} branding={branding} backgroundColor={voucherBgColor} textColor={voucherTextColor} />
+            <VoucherPage2 ref={page2Ref} data={data} urduLines={urduLines} urduFooter={urduFooter} branding={branding} backgroundColor={voucherBgColor} textColor={voucherTextColor} />
           </div>
         </div>
 

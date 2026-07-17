@@ -4,7 +4,6 @@ import {
   scaleVoucherRect,
   type VoucherBranding,
 } from '@/lib/hotel-voucher-branding-layout'
-import { invoiceBackgroundUrl } from '@/lib/invoice-backgrounds'
 
 // ─── Data types ───────────────────────────────────────────────────────────────
 export interface Pilgrim {
@@ -310,12 +309,12 @@ const URDU_TEXT: React.CSSProperties = {
 export interface VoucherPage1Props {
   data: VoucherData
   branding?: VoucherBranding
-  backgroundImage?: string
+  backgroundColor?: string
   textColor?: string
 }
 
 export const VoucherPage1 = forwardRef<HTMLDivElement, VoucherPage1Props>(
-  function VoucherPage1({ data, branding, backgroundImage = '/Empty-Hotel-Voucher.jpg', textColor = '#ffffff' }, ref) {
+  function VoucherPage1({ data, branding, backgroundColor = '#121117', textColor = '#ffffff' }, ref) {
     const showVisa = data.showVisaNumber !== false
     const showPassport = data.showPassportNumber !== false
     const pilgrimColumns = [
@@ -356,22 +355,11 @@ export const VoucherPage1 = forwardRef<HTMLDivElement, VoucherPage1Props>(
           fontFamily: "Arial, Helvetica, sans-serif",
           letterSpacing: 'normal',
           wordSpacing: 'normal',
-          backgroundColor: '#ffffff',
+          backgroundColor: backgroundColor,
           WebkitPrintColorAdjust: 'exact',
           printColorAdjust: 'exact',
         } as React.CSSProperties}
       >
-        {/* Background image — stripped in onclone during PDF capture */}
-        <img
-          data-bg
-          src={invoiceBackgroundUrl(backgroundImage)}
-          alt=""
-          style={{
-            position: 'absolute', top: 0, left: 0,
-            width: '100%', height: '100%',
-            objectFit: 'cover', zIndex: 0,
-          }}
-        />
 
         {/* All content sits above the background */}
         <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', zIndex: 10 }}>
@@ -546,12 +534,12 @@ export interface VoucherPage2Props {
   urduFooter: string
   branding?: VoucherBranding
   data?: VoucherData
-  backgroundImage?: string
+  backgroundColor?: string
   textColor?: string
 }
 
 export const VoucherPage2 = forwardRef<HTMLDivElement, VoucherPage2Props>(
-  function VoucherPage2({ urduLines, urduFooter, branding, data, backgroundImage = '/Empty-Hotel-Voucher.jpg', textColor = '#ffffff' }, ref) {
+  function VoucherPage2({ urduLines, urduFooter, branding, data, backgroundColor = '#121117', textColor = '#ffffff' }, ref) {
     return (
       <div
         ref={ref}
@@ -561,21 +549,11 @@ export const VoucherPage2 = forwardRef<HTMLDivElement, VoucherPage2Props>(
           width: '794px',
           height: '1123px',
           overflow: 'hidden',
-          backgroundColor: '#121117',
+          backgroundColor: backgroundColor,
           WebkitPrintColorAdjust: 'exact',
           printColorAdjust: 'exact',
         } as React.CSSProperties}
       >
-        <img
-          data-bg
-          src={invoiceBackgroundUrl(backgroundImage)}
-          alt=""
-          style={{
-            position: 'absolute', top: 0, left: 0,
-            width: '100%', height: '100%',
-            objectFit: 'cover', zIndex: 0,
-          }}
-        />
 
         {branding?.logoUrl && data?.showLogoPage2 !== false && <VoucherBrandingLogo branding={branding} />}
 
