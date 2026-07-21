@@ -1,6 +1,6 @@
 import { cn } from '@/lib/utils'
 
-type KpiGridColumns = 3 | 4 | 5
+type KpiGridColumns = 3 | 4 | 5 | 6
 
 /** Responsive column caps — cards stay compact instead of stretching on wide screens. */
 const GRID_CLASSES: Record<KpiGridColumns, string> = {
@@ -12,6 +12,13 @@ const GRID_CLASSES: Record<KpiGridColumns, string> = {
     'md:grid-cols-3',
     'lg:grid-cols-4',
     'xl:grid-cols-5',
+  ].join(' '),
+  6: [
+    'grid-cols-1',
+    'sm:grid-cols-2',
+    'md:grid-cols-3',
+    'lg:grid-cols-4',
+    'xl:grid-cols-6',
   ].join(' '),
 }
 

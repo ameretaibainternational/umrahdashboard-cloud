@@ -54,23 +54,43 @@ export function buildPackageCustomInvoice(input: BuildPackageInvoiceInput): Cust
   const pax = Math.max(1, adult + child + infant)
   const items: CustomInvoiceLineItem[] = []
 
-  const push = (service: string, total: number, allowZero = false) => {
+  const push = (
+    service: string,
+    total: number,
+    linePax = pax,
+    paxPrice: number | null = null,
+    allowZero = false
+  ) => {
     if (total <= 0 && !allowZero) return
     items.push({
       service,
-      pax_price: null,
-      pax_price_unit: '',
+      pax_price: paxPrice,
+      pax_price_unit: paxPrice ? currencyUnit : '',
       night_price: null,
       night_price_unit: '',
-      total_pax: pax,
+      total_pax: linePax,
       total,
       total_unit: currencyUnit,
       received: 0,
     })
   }
 
-  if (includeTickets) push(`Air Tickets — ${airlineName || 'Standard'}`, calc.ticketCost)
-  if (includeVisa) push('Visa Processing', calc.visaCost)
+  if (includeTickets) {
+    push(
+      `Air Tickets — ${airlineName || 'Standard'}`,
+      calc.ticketCost,
+      pax,
+      Math.round(calc.ticketCost / pax)
+    )
+  }
+  if (includeVisa) {
+    push(
+      'Visa Processing',
+      calc.visaCost,
+      pax,
+      Math.round(calc.visaCost / pax)
+    )
+  }
   if (includeTransport && calc.transportCost > 0) {
     let serviceDesc = transportServiceName(transportType)
     const activeNames = transportRoutes
@@ -79,16 +99,35 @@ export function buildPackageCustomInvoice(input: BuildPackageInvoiceInput): Cust
     if (activeNames.length > 0) {
       serviceDesc += ` (${activeNames.join(' + ')})`
     }
-    push(serviceDesc, calc.transportCost)
+    // Transport is a fixed package charge (quantity = 1, unit price = total cost)
+    push(serviceDesc, calc.transportCost, 1, calc.transportCost)
   }
   if (includeMakkahHotel && calc.makkahCost > 0) {
-    push(`Makkah Hotel — ${makkahHotel?.name ?? 'Hotel'} (${cap(makkahRoom)}, ${makkahNights}N)`, calc.makkahCost)
+    const isRoom = makkahRoom === 'room'
+    push(
+      `Makkah Hotel — ${makkahHotel?.name ?? 'Hotel'} (${cap(makkahRoom)}, ${makkahNights}N)`,
+      calc.makkahCost,
+      isRoom ? 1 : pax,
+      isRoom ? calc.makkahCost : Math.round(calc.makkahCost / pax)
+    )
   }
   if (includeMadinahHotel && calc.madinahCost > 0) {
-    push(`Madinah Hotel — ${madinahHotel?.name ?? 'Hotel'} (${cap(madinahRoom)}, ${madinahNights}N)`, calc.madinahCost)
+    const isRoom = madinahRoom === 'room'
+    push(
+      `Madinah Hotel — ${madinahHotel?.name ?? 'Hotel'} (${cap(madinahRoom)}, ${madinahNights}N)`,
+      calc.madinahCost,
+      isRoom ? 1 : pax,
+      isRoom ? calc.madinahCost : Math.round(calc.madinahCost / pax)
+    )
   }
   for (const item of calc.ziaratItems) {
-    push(item.name, item.cost, item.cost === 0)
+    push(
+      item.name,
+      item.cost,
+      pax,
+      Math.round(item.cost / pax),
+      item.cost === 0
+    )
   }
 
   if (calc.profit > 0) {

@@ -29,17 +29,17 @@ function serviceColumnMaxWidth(unitPriceLabel: string | null): number {
   return Math.floor(endX - SERVICE_COL_X - SERVICE_COL_PAD)
 }
 
-// Max rows that fit per page (≤9 rows always end before y=530 where terms begin)
-const ROWS_P1 = 5   // page 1 (has full header, so less vertical room)
-const ROWS_PC = 9   // continuation pages (compact header, more room)
+// Max rows that fit per page (with safety margin for wrapped rows)
+const ROWS_P1 = 4   // page 1 (has full header, so less vertical room)
+const ROWS_PC = 5   // continuation pages (compact header, more room)
 
 // Page 1 row start positions — single Y for all columns (split Y values misalign in html2canvas PDF)
 const P1_ROW_Y0 = 337.6
 
 // Continuation page row start positions — large top padding keeps rows lower on the page
-const C_HDR_Y   = 160
-const C_HR_Y    = 188
-const C_ROW_Y0  = 203.1
+const C_HDR_Y = 300
+const C_HR_Y = 0
+const C_ROW_Y0 = 340
 
 function fmtDate(iso: string) {
   const d = new Date(iso + 'T00:00:00')
@@ -57,7 +57,7 @@ function fmtNum(n: number, unit?: string) {
 // ─── Absolutely-positioned text node ─────────────────────────────────────────
 function T({
   x, y, right: r, bold, size = 12, color = '#fefefe', children, nowrap, maxW, href,
-  invoiceRow, invoiceHdr,
+  invoiceRow, invoiceHdr, style: customStyle,
 }: {
   x?: number; y: number; right?: number
   bold?: boolean; size?: number; color?: string
@@ -65,11 +65,12 @@ function T({
   href?: string
   invoiceRow?: boolean
   invoiceHdr?: boolean
+  style?: React.CSSProperties
 }) {
   const style: React.CSSProperties = {
     position: 'absolute',
     top: `${y}px`,
-    ...(r !== undefined ? { right: `${W - r}px` } : { left: `${x}px` }),
+    ...(r !== undefined ? { right: `${W - r}px` } : x !== undefined ? { left: `${x}px` } : {}),
     fontWeight: bold ? 700 : 400,
     fontSize: `${size}px`,
     color,
@@ -80,6 +81,7 @@ function T({
     letterSpacing: 'normal',
     wordSpacing: 'normal',
     ...(invoiceRow || invoiceHdr ? { margin: 0, padding: 0 } : {}),
+    ...customStyle,
   }
   const dataProps = invoiceRow
     ? { 'data-invoice-row-text': '1' as const }
@@ -135,8 +137,8 @@ function TableHeader({
 }) {
   return (
     <>
-      <T x={35.9}  y={hdrY} bold invoiceHdr color={ink}>No</T>
-      <T x={76.5}  y={hdrY} bold invoiceHdr color={ink}>Service</T>
+      <T x={35.9} y={hdrY} bold invoiceHdr color={ink}>No</T>
+      <T x={76.5} y={hdrY} bold invoiceHdr color={ink}>Service</T>
       {unitPriceLabel && !hidePricing && <T x={215.7} y={hdrY} bold invoiceHdr color={ink}>{unitPriceLabel}</T>}
       {hidePricing ? (
         <T x={493.3} y={hdrY} bold invoiceHdr color={ink}>{qtyLabel}</T>
@@ -147,7 +149,6 @@ function TableHeader({
           <T x={493.3} y={hdrY} bold invoiceHdr color={ink}>Recieved</T>
         </>
       )}
-      <HR x1={26} x2={547} y={hrY} color={ruleColor} />
     </>
   )
 }
@@ -166,9 +167,8 @@ function TableRows({
   const serviceMaxW = serviceColumnMaxWidth(hidePricing ? null : unitPriceLabel)
 
   return (
-    <>
+    <div style={{ position: 'absolute', top: `${rowY0}px`, left: '0px', width: `${W}px`, display: 'flex', flexDirection: 'column', gap: '0px' }}>
       {items.map((item, i) => {
-        const y = rowY0 + i * ROW_H
         // Show pax_price OR night_price in the unit-price column (only one is ever set per row)
         const unitVal = item.pax_price != null
           ? fmtNum(item.pax_price, item.pax_price_unit || undefined)
@@ -176,29 +176,43 @@ function TableRows({
             ? fmtNum(item.night_price, item.night_price_unit || undefined)
             : null
         return (
-          <div key={i}>
-            <T x={30.6} y={y} invoiceRow color={ink}>{rowOffset + i + 1}</T>
-            <T x={SERVICE_COL_X} y={y} maxW={serviceMaxW} invoiceRow color={ink}>
-              <span style={{ lineHeight: '16px', display: 'block' }}>{item.service}</span>
-            </T>
+          <div key={i} style={{ position: 'relative', width: '100%', minHeight: `${ROW_H}px` }}>
+            <T x={30.6} y={0} invoiceRow color={ink}>{rowOffset + i + 1}</T>
+            <div
+              style={{
+                position: 'relative',
+                display: 'block',
+                marginLeft: `${SERVICE_COL_X}px`,
+                maxWidth: `${serviceMaxW}px`,
+                fontWeight: 400,
+                fontSize: '12px',
+                color: ink,
+                lineHeight: '16px',
+                fontFamily: PDF_FONT,
+                paddingBottom: '4px',
+              }}
+              data-invoice-row-text="1"
+            >
+              {item.service}
+            </div>
             {unitPriceLabel && !hidePricing && unitVal && (
-              <T x={214.5} y={y} nowrap invoiceRow color={ink}>{unitVal}</T>
+              <T x={214.5} y={0} nowrap invoiceRow color={ink}>{unitVal}</T>
             )}
             {hidePricing ? (
-              <T right={557.0} y={y} nowrap invoiceRow color={ink}>{item.total_pax}</T>
+              <T right={557.0} y={0} nowrap invoiceRow color={ink}>{item.total_pax}</T>
             ) : (
               <>
-                <T x={324.6} y={y} invoiceRow color={ink}>{item.total_pax}</T>
-                <T right={479.6} y={y} nowrap invoiceRow color={ink}>
+                <T x={324.6} y={0} invoiceRow color={ink}>{item.total_pax}</T>
+                <T right={479.6} y={0} nowrap invoiceRow color={ink}>
                   {fmtNum(item.total, item.total_unit || undefined)}
                 </T>
-                <T right={557.0} y={y} nowrap invoiceRow color={ink}>{fmtNum(item.received)}</T>
+                <T right={557.0} y={0} nowrap invoiceRow color={ink}>{fmtNum(item.received)}</T>
               </>
             )}
           </div>
         )
       })}
-    </>
+    </div>
   )
 }
 
@@ -358,16 +372,16 @@ const CustomInvoiceTemplate = forwardRef<HTMLDivElement, Props>(
     const ink = textColor
     const inkMuted = invoiceTextColorWithAlpha(ink, 0.65)
     const ruleColor = invoiceTextColorWithAlpha(ink, 0.45)
-    
+
     // Filter out Service Charges rows if hideServiceCharges is checked
     const items = hideServiceCharges
       ? invoice.line_items.filter(item => {
-          const name = item.service.toLowerCase().trim()
-          return name !== 'service charges' && name !== 'services charges'
-        })
+        const name = item.service.toLowerCase().trim()
+        return name !== 'service charges' && name !== 'services charges'
+      })
       : invoice.line_items
 
-    const hasPaxPrice   = items.some(i => i.pax_price   != null && i.pax_price   > 0)
+    const hasPaxPrice = items.some(i => i.pax_price != null && i.pax_price > 0)
     const hasNightPrice = items.some(i => i.night_price != null && i.night_price > 0)
     // Column header for the unit-price column
     const unitPriceLabel: string | null = hasPaxPrice && hasNightPrice
@@ -380,22 +394,22 @@ const CustomInvoiceTemplate = forwardRef<HTMLDivElement, Props>(
     // Qty column label — "Total Nights" only when ALL rows use night price
     const qtyLabel = !hasPaxPrice && hasNightPrice ? 'Total Nights' : 'Total Pax'
     const invoiceCurrency =
-      items.find(i => i.pax_price   != null && i.pax_price_unit)?.pax_price_unit ||
+      items.find(i => i.pax_price != null && i.pax_price_unit)?.pax_price_unit ||
       items.find(i => i.night_price != null && i.night_price_unit)?.night_price_unit ||
       items.find(i => i.total_unit)?.total_unit || ''
 
     // ── Split items across pages ──────────────────────────────────────────────
     const page1Items = items.slice(0, ROWS_P1)
-    const contItems  = items.slice(ROWS_P1)
+    const contItems = items.slice(ROWS_P1)
 
     const contPages: CustomInvoiceLineItem[][] = []
     for (let i = 0; i < contItems.length; i += ROWS_PC) {
       contPages.push(contItems.slice(i, i + ROWS_PC))
     }
 
-    const totalPages   = 1 + contPages.length
-    const isMultiPage  = contPages.length > 0
-    const page1IsLast  = !isMultiPage
+    const totalPages = 1 + contPages.length
+    const isMultiPage = contPages.length > 0
+    const page1IsLast = !isMultiPage
 
     return (
       // data-invoice-wrapper: flex gap visible in preview; collapsed to block in print CSS
@@ -431,7 +445,7 @@ const CustomInvoiceTemplate = forwardRef<HTMLDivElement, Props>(
               wordSpacing: 'normal',
               whiteSpace: 'nowrap',
             }}>
-            <span style={{ fontWeight: 700 }}>Invoice ID: </span>
+              <span style={{ fontWeight: 700 }}>Invoice ID: </span>
               <span style={{ fontWeight: 400 }}>{invoice.invoice_number}</span>
             </div>
           ) : (
@@ -470,7 +484,7 @@ const CustomInvoiceTemplate = forwardRef<HTMLDivElement, Props>(
           {/* "Continued" note on page 1 when there are more pages */}
           {isMultiPage && (
             <>
-              <T x={35.9}  y={557} size={9} color={inkMuted}>— Continued on next page —</T>
+              <T x={35.9} y={557} size={9} color={inkMuted}>— Continued on next page —</T>
               <T right={559} y={557} size={9} color={inkMuted} nowrap>Page 1 of {totalPages}</T>
             </>
           )}
@@ -488,15 +502,15 @@ const CustomInvoiceTemplate = forwardRef<HTMLDivElement, Props>(
 
         {/* ── CONTINUATION PAGES ─────────────────────────────────────── */}
         {contPages.map((pageItems, pi) => {
-          const pageNum  = pi + 2
-          const isLast   = pi === contPages.length - 1
+          const pageNum = pi + 2
+          const isLast = pi === contPages.length - 1
           const rowOffset = ROWS_P1 + pi * ROWS_PC
 
           return (
             <div key={pi} data-invoice-root style={pageBgStyle(backgroundImage)}>
 
               {/* Compact page indicator */}
-              
+
               <T right={559} y={28} size={9} color={inkMuted} nowrap>
                 Page {pageNum} of {totalPages}
               </T>

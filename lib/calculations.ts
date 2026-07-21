@@ -6,7 +6,7 @@ function getAdultVisaRate(visa: VisaSettings, pax: number): number {
   if (pax === 2) return visa.visa_rate_2_pax
   if (pax === 3) return visa.visa_rate_3_pax
   if (pax === 4) return visa.visa_rate_4_pax
-  if (pax === 5) return visa.visa_rate_5_pax
+  if (pax === 5) return visa.visa_rate_5_pax ?? visa.visa_rate_4_pax ?? 625
   return visa.visa_rate_group_pax
 }
 
@@ -57,7 +57,7 @@ export function getCalc(
     if (customVisaPkr && customVisaPkr > 0) {
       visaCost = currencyUnit === 'SAR' ? customVisaPkr / sarToPkr : customVisaPkr
     } else {
-      const visaAdultSar = getAdultVisaRate(visa, pax)
+      const visaAdultSar = getAdultVisaRate(visa, adult)
       const rawVisaCostSar = adult * visaAdultSar + child * visa.child_sar + infant * visa.infant_sar
       visaCost = currencyUnit === 'SAR' ? rawVisaCostSar : rawVisaCostSar * sarToPkr
     }
@@ -98,7 +98,7 @@ export function getCalc(
     .map(z => ({
       id: z.id,
       name: z.name,
-      cost: currencyUnit === 'SAR' ? z.rate_sar : z.rate_sar * sarToPkr,
+      cost: (currencyUnit === 'SAR' ? z.rate_sar : z.rate_sar * sarToPkr) * pax,
     }))
   const ziaratTotalCost = ziaratItems.reduce((sum, item) => sum + item.cost, 0)
 
@@ -111,10 +111,13 @@ export function getCalc(
     autoSelling = Math.round(totalCost + totalCost * (profitValue / 100))
   }
 
+  const intendedProfit = autoSelling - totalCost
   const baseSelling = sellingOverride && sellingOverride > 0 ? sellingOverride : autoSelling
   const perPax = Math.round(baseSelling / pax)
-  const selling = perPax * pax
+  const selling = baseSelling
+
   const profit = selling - totalCost
+  const adjustedTotalCost = totalCost
   const remaining = Math.max(0, selling - advance)
 
   return {
@@ -125,7 +128,7 @@ export function getCalc(
     makkahCost,
     madinahCost,
     ziaratItems,
-    totalCost,
+    totalCost: adjustedTotalCost,
     selling,
     profit,
     remaining,

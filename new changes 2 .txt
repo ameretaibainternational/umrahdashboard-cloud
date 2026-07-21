@@ -1,51 +1,17 @@
-1- Why is it showing 1 extra SAR in total price ? Fix it:
+1- Add Total PAX Counter on Dashboard that counts total pax made from bookings.
 
-🏷️ *Amere Taiba International*
-🕋 *22 Nights Umrah Package*
+2- VISA Pricing are not being saved like when i change prices in settings and click save, it doesnt saves.
 
-✈️ Route: Islamabad ➜ Madinah ➜ Riyadh ➜ Karachi
+3- In Hotels section in Package calculator, add a custom hotel button and when we click that , a popup opens to add a new hotel naem and its rates and distance etc. and it will not be saved in settings because it will be temporary for that specific package.
 
-👤 Passengers: 5 Adults
+4- Right now if the rate of Makkah ziarat is 12 SAR, and we add 10 pax in Package calculator, it still counts only 12sar for all 10 pax. instead make it count ziarate prices pax wise means if there are 10 pax, then it should multiply price with pax and show 120sar for 10 pax and just like this for Madinah ziarat and for everything.
 
-🏨 *Makkah Hotel*
-Mayar Maysar · Shuttle Service
-🛏️ Double Room | 🌙 12 Nights
+5- Make the transport price fixed means if there are 10 pax and we select coaster for like 530 SAR, then it should count only 530SAR for whole package. you must not multiply 530sar with 10 pax because the coaster is for whole package not for per person. same goes for all other vehocles. pricong of all should be fixed and does not depends upon pax. and in package calculator when it shows per person price, then only you have to divide the coaset price with pax and show it like that. also make sure that in total price of package calculator, the transport price should be added as fixed price not multiplied with pax.
 
-🏨 *Madinah Hotel*
-Rabwa Safwa 07 · Shuttle Service · 03 Star Hotel
-🛏️ Room Room | 🌙 10 Nights
+6- Look at the attached screenshot of package calculator. i have made a package of 14 pax that only includes transport and nothing else. I have set the profit percentage to 0% and even after that, it is still showing profit of 6rs.And if i now change the vehicle from STARIA to HIACE,it makes the profit of -6pkr. Fix it .
 
-💰 *Per Person: 1,200 SAR*
+7- i have attached another screenshot of website not opening on icognito mode and some browsers. Fix it.
 
-💰 *Package Price Total 5 Pax: 6,001 SAR*
+8- When i try to edit a booking, lets suppose i made a booking of 400000PKR and i click on edit, it opens it in package calculator and what it does it puts that price in the selling price override field. While i havent put thae pric in that field while createing that package, make it open the edit package as it was made .
 
-🟢 Contact: +923052394810
-
-
-2- And why is pkr less in this one?
-
-🏷️ *Amere Taiba International*
-🕋 *22 Nights Umrah Package*
-
-✈️ Route: Islamabad ➜ Madinah ➜ Riyadh ➜ Karachi
-
-👤 Passengers: 5 Adults
-
-🏨 *Makkah Hotel*
-Mayar Maysar · Shuttle Service
-🛏️ Double Room | 🌙 12 Nights
-
-🏨 *Madinah Hotel*
-Rabwa Safwa 07 · Shuttle Service · 03 Star Hotel
-🛏️ Room Room | 🌙 10 Nights
-
-💰 *Per Person: PKR 91,208*
-
-💰 *Package Price Total 5 Pax: PKR 456,038*
-
-🟢 Contact: +923052394810
-
-3- Decrease font size of guidelines on hotel voucers page 2 a little bit.
-
-4- In Umrah Calculator Invoices, reduce the font size of company name that is on top center of pdf a little bit.
-
+NOTE: ONly change the things i told you. do not change the other things. earlier, you fixed some things and corrupted some other things. please be careful and only do what i tell you.

@@ -72,17 +72,26 @@ export default function ExpenseLedger({ expenses, companyName }: Props) {
   }
 
   function handlePrint() {
+    function escapeHtml(str: string): string {
+      return str
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;')
+    }
+
     const today = new Date().toLocaleDateString('en-PK', { day: '2-digit', month: 'short', year: 'numeric' })
 
     const rowsHtml = sortedExpenses.map((e, i) => `
       <tr>
         <td>${i + 1}</td>
         <td>${e.expense_date}</td>
-        <td>${e.expense_type}</td>
-        <td>${e.supplier}</td>
-        <td>${e.method}</td>
+        <td>${escapeHtml(e.expense_type)}</td>
+        <td>${escapeHtml(e.supplier)}</td>
+        <td>${escapeHtml(e.method)}</td>
         <td style="text-align:right;color:#b73838;font-weight:700">${pkr(e.amount_pkr)}</td>
-        <td>${e.note || ''}</td>
+        <td>${escapeHtml(e.note || '')}</td>
       </tr>
     `).join('')
 
@@ -91,7 +100,7 @@ export default function ExpenseLedger({ expenses, companyName }: Props) {
 <html>
 <head>
   <meta charset="UTF-8"/>
-  <title>Expense Ledger — ${companyName}</title>
+  <title>Expense Ledger — ${escapeHtml(companyName)}</title>
   <style>
     @page { size: A4 landscape; margin: 10mm; }
     * { box-sizing: border-box; }
@@ -115,7 +124,7 @@ export default function ExpenseLedger({ expenses, companyName }: Props) {
 <body>
   <div class="header">
     <div>
-      <h1>${companyName}</h1>
+      <h1>${escapeHtml(companyName)}</h1>
       <p>Supplier / Expense Ledger</p>
     </div>
     <div class="meta">
@@ -137,7 +146,7 @@ export default function ExpenseLedger({ expenses, companyName }: Props) {
       <tr><td>Total Expenses</td><td>${pkr(totalAmount)}</td></tr>
     </table>
   </div>
-  <div class="footer">${companyName} · Printed on ${today}</div>
+  <div class="footer">${escapeHtml(companyName)} · Printed on ${today}</div>
   <script>window.onload = function(){ setTimeout(function(){ window.print(); }, 250); }<\/script>
 </body>
 </html>`

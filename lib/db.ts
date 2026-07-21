@@ -108,7 +108,7 @@ export async function getHotels(): Promise<Hotel[]> {
 export async function getVisa(): Promise<VisaSettings> {
   if (isDemoMode()) return { ...demoStore.visa }
   const sb = await getSupabase()
-  const { data } = await sb.from('visa_settings').select('*').single()
+  const { data } = await sb.from('visa_settings').select('*').maybeSingle()
   if (!data) return {
     id: '',
     visa_rate_1_pax: 725,
@@ -146,7 +146,7 @@ export async function getVisa(): Promise<VisaSettings> {
 export async function getCurrency(): Promise<CurrencySettings> {
   if (isDemoMode()) return { ...demoStore.currency }
   const sb = await getSupabase()
-  const { data } = await sb.from('currency_settings').select('*').single()
+  const { data } = await sb.from('currency_settings').select('*').maybeSingle()
   return data ?? { id: '', sar_to_pkr: 75 }
 }
 
@@ -238,7 +238,7 @@ export async function getTransportContacts(): Promise<TransportContact[]> {
 export async function getCompany(): Promise<Company> {
   if (isDemoMode()) return { ...demoStore.company }
   const sb = await getSupabase()
-  const { data } = await sb.from('company').select('*').single()
+  const { data } = await sb.from('company').select('*').maybeSingle()
   const base = data ?? { id: '', name: 'Fast Travels & Tours', license: 'Govt License', phone: '', website: 'fasttravels.pk', address: 'Pakistan', logo_url: '' }
   return {
     ...base,

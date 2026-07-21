@@ -26,8 +26,12 @@ export default function VisaForm({ visa }: { visa: VisaSettings }) {
 
   function handleSubmit(formData: FormData) {
     startTransition(async () => {
-      await updateVisa(formData)
-      toast.success('Visa settings saved!')
+      const res = await updateVisa(formData)
+      if (res && 'error' in res && res.error) {
+        toast.error(`Could not save visa settings: ${res.error}`)
+      } else {
+        toast.success('Visa settings saved!')
+      }
     })
   }
 
@@ -37,7 +41,7 @@ export default function VisaForm({ visa }: { visa: VisaSettings }) {
         <CardTitle className="text-base">Visa Rates (SAR)</CardTitle>
       </CardHeader>
       <CardContent>
-        <form action={handleSubmit} className="space-y-5">
+        <form key={visa ? JSON.stringify(visa) : 'empty'} action={handleSubmit} className="space-y-5">
 
           {/* Adult tier rates */}
           <div className="space-y-2">

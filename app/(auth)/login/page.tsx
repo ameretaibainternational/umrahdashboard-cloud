@@ -39,7 +39,11 @@ export default function LoginPage() {
   }, [])
 
   function handleDemoLogin() {
-    document.cookie = 'demo_session=1; path=/; max-age=86400'
+    try {
+      document.cookie = 'demo_session=1; path=/; max-age=86400'
+    } catch (e) {
+      console.warn('[login] Cookies are disabled or blocked:', e)
+    }
     router.push('/dashboard')
     router.refresh()
   }

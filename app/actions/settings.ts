@@ -26,36 +26,57 @@ async function requireFullAccess() {
 
 export async function updateVisa(formData: FormData) {
   const guard = await requireSettingsAccess(); if (guard) return guard
-  
+
   let existingTransportMode: 'included' | 'separate' = 'separate'
   if (isDemoMode()) {
     existingTransportMode = demoStore.visa.transport_mode
   } else {
     const sb = await getSupabase()
-    const { data } = await sb.from('visa_settings').select('transport_mode').single()
+    const { data } = await sb.from('visa_settings').select('transport_mode').maybeSingle()
     if (data?.transport_mode) {
       existingTransportMode = data.transport_mode as 'included' | 'separate'
     }
   }
 
   const payload = {
-    visa_rate_1_pax:    Number(formData.get('visa_rate_1_pax')),
-    visa_rate_2_pax:    Number(formData.get('visa_rate_2_pax')),
-    visa_rate_3_pax:    Number(formData.get('visa_rate_3_pax')),
-    visa_rate_4_pax:    Number(formData.get('visa_rate_4_pax')),
-    visa_rate_5_pax:    Number(formData.get('visa_rate_5_pax')),
+    visa_rate_1_pax: Number(formData.get('visa_rate_1_pax')),
+    visa_rate_2_pax: Number(formData.get('visa_rate_2_pax')),
+    visa_rate_3_pax: Number(formData.get('visa_rate_3_pax')),
+    visa_rate_4_pax: Number(formData.get('visa_rate_4_pax')),
+    visa_rate_5_pax: Number(formData.get('visa_rate_5_pax')),
     visa_rate_group_pax: Number(formData.get('visa_rate_group_pax')),
-    child_sar:          Number(formData.get('child_sar')),
-    infant_sar:         Number(formData.get('infant_sar')),
-    transport_mode:     (formData.get('transport_mode') as 'included' | 'separate') || existingTransportMode,
+    child_sar: Number(formData.get('child_sar')),
+    infant_sar: Number(formData.get('infant_sar')),
+    transport_mode: (formData.get('transport_mode') as 'included' | 'separate') || existingTransportMode,
   }
   if (isDemoMode()) {
     Object.assign(demoStore.visa, payload)
   } else {
     const sb = await getSupabase()
-    const { data: existing } = await sb.from('visa_settings').select('id').single()
-    if (existing?.id) await sb.from('visa_settings').update(payload).eq('id', existing.id)
-    else await sb.from('visa_settings').insert(payload)
+    const { data: existing } = await sb.from('visa_settings').select('id').maybeSingle()
+    const { error } = existing?.id
+      ? await sb.from('visa_settings').update(payload).eq('id', existing.id)
+      : await sb.from('visa_settings').insert(payload)
+    if (error) {
+      const isMissingColumn = error.message.includes('visa_rate_5_pax') ||
+        error.message.includes('schema cache') ||
+        error.code === '42703'
+      if (isMissingColumn) {
+        console.warn('[updateVisa] visa_rate_5_pax missing or not cached. Retrying without it.')
+        const fallbackPayload = { ...payload } as Record<string, any>
+        delete fallbackPayload.visa_rate_5_pax
+        const fallbackRes = existing?.id
+          ? await sb.from('visa_settings').update(fallbackPayload).eq('id', existing.id)
+          : await sb.from('visa_settings').insert(fallbackPayload)
+        if (fallbackRes.error) {
+          console.error('updateVisa fallback error:', fallbackRes.error)
+          return { error: fallbackRes.error.message }
+        }
+      } else {
+        console.error('updateVisa error:', error)
+        return { error: error.message }
+      }
+    }
   }
   revalidatePath('/settings/visa')
   return { success: true }
@@ -121,7 +142,7 @@ export async function updateCurrency(formData: FormData) {
     Object.assign(demoStore.currency, payload)
   } else {
     const sb = await getSupabase()
-    const { data: existing } = await sb.from('currency_settings').select('id').single()
+    const { data: existing } = await sb.from('currency_settings').select('id').maybeSingle()
     if (existing?.id) await sb.from('currency_settings').update(payload).eq('id', existing.id)
     else await sb.from('currency_settings').insert(payload)
   }
@@ -379,7 +400,7 @@ export async function updateCompany(formData: FormData) {
     Object.assign(demoStore.company, payload)
   } else {
     const sb = await getSupabase()
-    const { data: existing } = await sb.from('company').select('id').single()
+    const { data: existing } = await sb.from('company').select('id').maybeSingle()
     if (existing?.id) await sb.from('company').update(payload).eq('id', existing.id)
     else await sb.from('company').insert(payload)
   }
@@ -398,7 +419,7 @@ export async function updateFlightCities(formData: FormData) {
     Object.assign(demoStore.company, payload)
   } else {
     const sb = await getSupabase()
-    const { data: existing } = await sb.from('company').select('id').single()
+    const { data: existing } = await sb.from('company').select('id').maybeSingle()
     if (existing?.id) await sb.from('company').update(payload).eq('id', existing.id)
     else await sb.from('company').insert(payload)
   }

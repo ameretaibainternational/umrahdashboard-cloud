@@ -4,6 +4,7 @@ import { useState, useRef, useEffect, useCallback, useTransition, useMemo } from
 import { useRouter } from 'next/navigation'
 import { VoucherPage1, VoucherPage2 } from './HotelVoucherTemplate'
 import type { VoucherData, Pilgrim, Accommodation } from './HotelVoucherTemplate'
+import { normalizePilgrim } from './HotelVoucherTemplate'
 import { JAMEEL_WOFF } from './HotelVoucherTemplate'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -202,7 +203,7 @@ async function captureUrduPage(
 function uid() { return `${Date.now()}-${Math.random().toString(36).slice(2, 7)}` }
 
 function emptyPilgrim(): Pilgrim {
-  return { id: uid(), name: '', passportNo: '', pax: '1', beds: '1', visaNumber: '', gender: 'M' }
+  return { id: uid(), name: '', passportNo: '', pax: 'Adult', beds: 'Yes', visaNumber: '', gender: 'M' }
 }
 
 function emptyAccommodation(): Accommodation {
@@ -816,7 +817,10 @@ export default function HotelVoucherForm({
 
   function handleEdit(v: HotelVoucherRecord) {
     const vData = v.voucher_data as any
-    setData(vData)
+    setData({
+      ...vData,
+      pilgrims: (vData.pilgrims ?? []).map((p: Partial<Pilgrim> & { id: string }) => normalizePilgrim(p)),
+    })
     const loadedBg = vData.backgroundColor || vData.backgroundImage
     if (loadedBg) setVoucherBgColor(loadedBg.startsWith('#') ? loadedBg : '#121117')
     if (vData.textColor) setVoucherTextColor(vData.textColor)
@@ -1012,15 +1016,22 @@ export default function HotelVoucherForm({
                     <div className="grid grid-cols-3 gap-2">
                       <div className="space-y-1">
                         <Label className="text-xs">Pax</Label>
-                        <Input type="number" min="1" value={p.pax}
+                        <select value={normalizePilgrim(p).pax}
                           onChange={e => updatePilgrim(p.id, { pax: e.target.value })}
-                          className="h-7 text-xs" />
+                          className="h-7 text-xs w-full rounded-md border border-input bg-background px-2">
+                          <option value="Adult">Adult</option>
+                          <option value="Child">Child</option>
+                          <option value="Infant">Infant</option>
+                        </select>
                       </div>
                       <div className="space-y-1">
                         <Label className="text-xs">Beds</Label>
-                        <Input type="number" min="1" value={p.beds}
+                        <select value={normalizePilgrim(p).beds}
                           onChange={e => updatePilgrim(p.id, { beds: e.target.value })}
-                          className="h-7 text-xs" />
+                          className="h-7 text-xs w-full rounded-md border border-input bg-background px-2">
+                          <option value="Yes">Yes</option>
+                          <option value="No">No</option>
+                        </select>
                       </div>
                       <div className="space-y-1">
                         <Label className="text-xs">Gender</Label>

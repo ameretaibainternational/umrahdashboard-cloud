@@ -5,7 +5,7 @@ import KpiGrid, { PageContainer } from '@/components/shared/KpiGrid'
 import DashboardCharts from '@/components/dashboard/DashboardCharts'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { BookOpen, Users, TrendingUp, DollarSign, AlertCircle, Calculator, Settings } from 'lucide-react'
+import { BookOpen, Users, TrendingUp, DollarSign, AlertCircle, Calculator, Settings, User } from 'lucide-react'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 
@@ -48,6 +48,7 @@ export default async function DashboardPage() {
   const totalCost       = bookings.reduce((s, b) => s + b.cost_pkr, 0) + customCost
   const totalProfit     = bookings.reduce((s, b) => s + b.profit_pkr, 0) + customProfit
   const totalDue        = bookings.reduce((s, b) => s + b.remaining_pkr, 0) + customInvoices.reduce((s, inv) => s + inv.remaining, 0)
+  const totalPax        = bookings.reduce((s, b) => s + (b.adult_count || 0) + (b.child_count || 0) + (b.infant_count || 0), 0)
   const recent          = bookings.slice(0, 5)
 
   // ── Monthly revenue data — always 6 months grid ──────────────────────────
@@ -103,8 +104,10 @@ export default async function DashboardPage() {
 
   return (
     <PageContainer>
-      <KpiGrid columns={5}>
+      <KpiGrid columns={6}>
         <KpiCard label="Total Bookings"  value={String(totalBookings)}  icon={BookOpen}
+          iconBg="bg-amber-50" iconColor="text-gold" href="/bookings" />
+        <KpiCard label="Total PAX"       value={String(totalPax)}        icon={User}
           iconBg="bg-amber-50" iconColor="text-gold" href="/bookings" />
         <KpiCard label="Customers"       value={String(uniqueCustomers)} icon={Users}
           iconBg="bg-amber-50" iconColor="text-gold" href="/accounts" />

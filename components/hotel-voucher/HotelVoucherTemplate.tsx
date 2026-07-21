@@ -16,6 +16,38 @@ export interface Pilgrim {
   gender?: string
 }
 
+export function normalizePilgrim(p: Partial<Pilgrim> & { id: string; adult?: string; child?: string; infant?: string }): Pilgrim {
+  let beds = p.beds ?? 'Yes'
+  if (/^\d+$/.test(beds)) beds = parseInt(beds, 10) > 0 ? 'Yes' : 'No'
+  else if (beds.toLowerCase() === 'yes') beds = 'Yes'
+  else if (beds.toLowerCase() === 'no') beds = 'No'
+
+  let pax = p.pax ?? 'Adult'
+  const paxLower = pax.toLowerCase()
+  if (paxLower === 'adult' || paxLower === 'child' || paxLower === 'infant') {
+    pax = paxLower.charAt(0).toUpperCase() + paxLower.slice(1)
+  } else if (/^\d+$/.test(pax)) {
+    pax = 'Adult'
+  } else if (p.adult !== undefined || p.child !== undefined || p.infant !== undefined) {
+    const adult = parseInt(p.adult ?? '0', 10)
+    const child = parseInt(p.child ?? '0', 10)
+    const infant = parseInt(p.infant ?? '0', 10)
+    if (child > 0 && adult === 0 && infant === 0) pax = 'Child'
+    else if (infant > 0 && adult === 0 && child === 0) pax = 'Infant'
+    else pax = 'Adult'
+  }
+
+  return {
+    id: p.id,
+    name: p.name ?? '',
+    passportNo: p.passportNo ?? '',
+    pax,
+    beds,
+    visaNumber: p.visaNumber ?? '',
+    gender: p.gender ?? 'M',
+  }
+}
+
 export interface Accommodation {
   id: string
   hotelName: string
@@ -321,15 +353,16 @@ export const VoucherPage1 = forwardRef<HTMLDivElement, VoucherPage1Props>(
       { label: 'Mutamer Name' },
       ...(showPassport ? [{ label: 'Passport No' }] : []),
       { label: 'Gender', width: '50px', align: 'center' as const },
-      { label: 'Pax', width: '40px', align: 'center' as const },
-      { label: 'Beds', width: '40px', align: 'center' as const },
+      { label: 'Pax', width: '52px', align: 'center' as const },
+      { label: 'Beds', width: '44px', align: 'center' as const },
       ...(showVisa ? [{ label: 'Visa Number' }] : []),
     ]
-    const pilgrimRows = data.pilgrims.map(p => {
+    const pilgrimRows = data.pilgrims.map(raw => {
+      const p = normalizePilgrim(raw)
       const cells = [p.name]
       if (showPassport) cells.push(p.passportNo)
       cells.push(p.gender || 'M')
-      cells.push(p.pax)
+      cells.push(p.pax.toUpperCase())
       cells.push(p.beds)
       if (showVisa) cells.push(p.visaNumber)
       return { id: p.id, cells }

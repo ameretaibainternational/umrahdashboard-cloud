@@ -110,7 +110,7 @@ function initialFromBooking(
     madinahNights: booking.madinah_nights || 0,
     profitType: 'fixed',
     profitValue: booking.profit_pkr,
-    sellingOverride: booking.total_pkr,
+    sellingOverride: null,
     advance: booking.advance_pkr,
     customerName: booking.customer_name,
     selectedZiaratIds: [],
@@ -271,6 +271,8 @@ export default function CalculatorForm({
   const [airlineId, setAirlineId] = useState(initial?.airlineId || bookingAirlineId || airlines[0]?.id || '')
   const [transportType, setTransportType] = useState<string>(initial?.transportType || transportVehicles[0]?.name || 'CAR')
   const [saveCustomer, setSaveCustomer] = useState(true)
+  const [localMakkahHotels, setLocalMakkahHotels] = useState<Hotel[]>(() => makkahHotels)
+  const [localMadinahHotels, setLocalMadinahHotels] = useState<Hotel[]>(() => madinahHotels)
   const [makkahHotelId, setMakkahHotelId] = useState(initial?.makkahHotelId || bookingMakkahHotelId || makkahHotels[0]?.id || '')
   const [makkahRoom, setMakkahRoom] = useState<RoomType>(initial?.makkahRoom ?? (bookingObj?.makkah_room_type as RoomType) ?? 'sharing')
   const [makkahNights, setMakkahNights] = useState(initial?.makkahNights ?? bookingObj?.makkah_nights ?? 10)
@@ -285,8 +287,23 @@ export default function CalculatorForm({
   const [currencyUnit, setCurrencyUnit] = useState<'PKR' | 'SAR'>(initial?.currencyUnit ?? 'PKR')
   const [profitType, setProfitType] = useState<'percent' | 'fixed'>(initial?.profitType ?? (bookingObj ? 'fixed' : 'percent'))
   const [profitValue, setProfitValue] = useState(initial?.profitValue ?? (bookingObj ? bookingObj.profit_pkr : 8))
-  const [sellingOverride, setSellingOverride] = useState<number | null>(initial?.sellingOverride ?? bookingObj?.total_pkr ?? null)
+  const [sellingOverride, setSellingOverride] = useState<number | null>(() => {
+    if (initial) return initial.sellingOverride
+    if (bookingObj) return bookingObj.total_pkr
+    return null
+  })
   const [advance, setAdvance] = useState(initial?.advance ?? bookingObj?.advance_pkr ?? 0)
+
+  // Custom Temporary Hotel Dialog states
+  const [customHotelOpen, setCustomHotelOpen] = useState(false)
+  const [customHotelCity, setCustomHotelCity] = useState<'Makkah' | 'Madinah'>('Makkah')
+  const [customHotelName, setCustomHotelName] = useState('')
+  const [customHotelDistance, setCustomHotelDistance] = useState('')
+  const [customHotelRoomSar, setCustomHotelRoomSar] = useState('')
+  const [customHotelDoubleSar, setCustomHotelDoubleSar] = useState('')
+  const [customHotelTripleSar, setCustomHotelTripleSar] = useState('')
+  const [customHotelQuadSar, setCustomHotelQuadSar] = useState('')
+  const [customHotelSharingSar, setCustomHotelSharingSar] = useState('')
   const [customerName, setCustomerName] = useState(initialBilled.name)
   const [billedAddr, setBilledAddr] = useState(initialBilled.address)
   const [billedPhone, setBilledPhone] = useState(initialBilled.phone)
@@ -469,12 +486,12 @@ export default function CalculatorForm({
     [airlines],
   )
   const makkahHotelItems = useMemo(
-    () => makkahHotels.map(h => ({ value: h.id, label: `${h.name} · ${h.distance}` })),
-    [makkahHotels],
+    () => localMakkahHotels.map(h => ({ value: h.id, label: `${h.name} · ${h.distance}` })),
+    [localMakkahHotels],
   )
   const madinahHotelItems = useMemo(
-    () => madinahHotels.map(h => ({ value: h.id, label: `${h.name} · ${h.distance}` })),
-    [madinahHotels],
+    () => localMadinahHotels.map(h => ({ value: h.id, label: `${h.name} · ${h.distance}` })),
+    [localMadinahHotels],
   )
 
   const customTicketPkr = customTicketCurrency === 'SAR'
@@ -482,8 +499,8 @@ export default function CalculatorForm({
     : customTicketAmount
 
   const airline = airlines.find(a => a.id === airlineId) ?? null
-  const makkahHotel = makkahHotels.find(h => h.id === makkahHotelId) ?? null
-  const madinahHotel = madinahHotels.find(h => h.id === madinahHotelId) ?? null
+  const makkahHotel = localMakkahHotels.find(h => h.id === makkahHotelId) ?? null
+  const madinahHotel = localMadinahHotels.find(h => h.id === madinahHotelId) ?? null
   const airlineName = customTicket ? (customTicketLabel || 'Custom Ticket') : (airline?.name ?? '')
 
   const input: CalcInput = {
@@ -576,7 +593,7 @@ export default function CalculatorForm({
 
   const previewTotalPages = useMemo(() => {
     const count = packageInvoice.line_items.length
-    return count <= 5 ? 1 : 1 + Math.ceil((count - 5) / 9)
+    return count <= 4 ? 1 : 1 + Math.ceil((count - 4) / 5)
   }, [packageInvoice.line_items.length])
 
   const generatePdfBytes = useCallback(async (): Promise<Uint8Array> => {
@@ -859,6 +876,42 @@ export default function CalculatorForm({
     }
   }
 
+  function handleAddCustomHotel() {
+    if (!customHotelName.trim()) {
+      toast.error('Hotel name is required.')
+      return
+    }
+    const tempId = `temp-${Date.now()}`
+    const newHotel: Hotel = {
+      id: tempId,
+      city: customHotelCity,
+      name: `${customHotelName.trim()} [Custom]`,
+      location: 'Temporary',
+      distance: customHotelDistance.trim() || 'N/A',
+      double_sar: Number(customHotelDoubleSar) || 0,
+      triple_sar: Number(customHotelTripleSar) || 0,
+      quad_sar: Number(customHotelQuadSar) || 0,
+      sharing_sar: Number(customHotelSharingSar) || 0,
+      room_sar: Number(customHotelRoomSar) || 0,
+    }
+    if (customHotelCity === 'Makkah') {
+      setLocalMakkahHotels(prev => [newHotel, ...prev])
+      setMakkahHotelId(tempId)
+    } else {
+      setLocalMadinahHotels(prev => [newHotel, ...prev])
+      setMadinahHotelId(tempId)
+    }
+    setCustomHotelOpen(false)
+    setCustomHotelName('')
+    setCustomHotelDistance('')
+    setCustomHotelRoomSar('')
+    setCustomHotelDoubleSar('')
+    setCustomHotelTripleSar('')
+    setCustomHotelQuadSar('')
+    setCustomHotelSharingSar('')
+    toast.success(`Custom hotel "${customHotelName}" added temporarily to ${customHotelCity}.`)
+  }
+
   async function handleSaveNewCustomer(formData: FormData) {
     setNewCustomerSaving(true)
     try {
@@ -900,9 +953,53 @@ export default function CalculatorForm({
         : ''
     const route = formatRoute(departureCity, arrivalCity, saDepartureCity, returnCity)
 
+    const hasTickets = includeTickets
+    const hasHotel = includeMakkahHotel || includeMadinahHotel
+    const hasTransport = includeTransport
+    const hasVisa = includeVisa
+
+    let packageTitle = ''
+    if (hasTickets && hasHotel) {
+      packageTitle = `${totalNights} Days Umrah Package`
+    } else {
+      const services: string[] = []
+      if (hasTickets) services.push('Ticket')
+      if (hasVisa) services.push('Visa')
+      if (hasTransport) services.push('Transport')
+
+      if (hasHotel) {
+        const hotelLabel = `${totalNights} Days Hotel`
+        if (services.length === 0) {
+          packageTitle = `${hotelLabel} Package`
+        } else if (services.length === 1) {
+          packageTitle = `${hotelLabel} & ${services[0]} Package`
+        } else {
+          packageTitle = `${hotelLabel}, ${services.slice(0, -1).join(', ')} & ${services[services.length - 1]} Package`
+        }
+      } else {
+        if (services.length === 1) {
+          packageTitle = `${services[0]} Package`
+        } else if (services.length === 2) {
+          if (hasTickets && hasVisa) {
+            packageTitle = 'Ticket and Visa Package'
+          } else if (hasVisa && hasTransport) {
+            packageTitle = 'Visa & Transport Package'
+          } else if (hasTransport && hasTickets) {
+            packageTitle = 'Ticket & Transport Package'
+          } else {
+            packageTitle = `${services[0]} & ${services[1]} Package`
+          }
+        } else if (services.length === 3) {
+          packageTitle = 'Ticket, Transport & Visa Package'
+        } else {
+          packageTitle = 'Umrah Package'
+        }
+      }
+    }
+
     const lines: string[] = [
       `🏷️ *${company.name}*`,
-      `🕋 *${totalNights || makkahNights + madinahNights} Nights Umrah Package*`,
+      `🕋 *${packageTitle}*`,
       ``,
       ...(formattedDate ? [`📅 Travel Date: ${formattedDate}`] : []),
       ...(route !== '—' ? [`✈️ Route: ${route}`] : []),
@@ -990,8 +1087,8 @@ export default function CalculatorForm({
                 <div key={label} className="space-y-1.5">
                   <Label className="text-xs">{label}</Label>
                   <Input
-                    type="number" min={0} max={20} value={value}
-                    onChange={e => set(Math.max(0, parseInt(e.target.value) || 0))}
+                    type="number" min={0} max={100} value={value}
+                    onChange={e => set(Math.min(100, Math.max(0, parseInt(e.target.value) || 0)))}
                     className="text-center font-semibold"
                   />
                 </div>
@@ -1214,7 +1311,7 @@ export default function CalculatorForm({
             const setRoom = isM ? setMakkahRoom : setMadinahRoom
             const nights = isM ? makkahNights : madinahNights
             const setNights = isM ? setMakkahNights : setMadinahNights
-            const hotels = isM ? makkahHotels : madinahHotels
+            const hotels = isM ? localMakkahHotels : localMadinahHotels
             const hotelItems = isM ? makkahHotelItems : madinahHotelItems
             const included = isM ? includeMakkahHotel : includeMadinahHotel
             const setIncluded = isM ? setIncludeMakkahHotel : setIncludeMadinahHotel
@@ -1238,7 +1335,20 @@ export default function CalculatorForm({
                 {included && (
                   <CardContent className="grid grid-cols-3 gap-4">
                     <div className="col-span-3 space-y-1.5">
-                      <Label className="text-xs">Hotel</Label>
+                      <div className="flex items-center justify-between">
+                        <Label className="text-xs">Hotel</Label>
+                        <Button
+                          type="button"
+                          variant="link"
+                          className="h-auto p-0 text-xs text-gold hover:text-gold/80 font-normal"
+                          onClick={() => {
+                            setCustomHotelCity(city)
+                            setCustomHotelOpen(true)
+                          }}
+                        >
+                          + Custom Hotel
+                        </Button>
+                      </div>
                       <Select
                         items={hotelItems}
                         value={resolveOptionValue(hotelId, hotels)}
@@ -1770,6 +1880,85 @@ export default function CalculatorForm({
               </Button>
             </DialogFooter>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={customHotelOpen} onOpenChange={setCustomHotelOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Add Temporary Custom Hotel ({customHotelCity})</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-1.5">
+              <Label className="text-xs">Hotel Name *</Label>
+              <Input
+                value={customHotelName}
+                onChange={e => setCustomHotelName(e.target.value)}
+                placeholder="e.g. Hilton Suites Makkah"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Distance *</Label>
+              <Input
+                value={customHotelDistance}
+                onChange={e => setCustomHotelDistance(e.target.value)}
+                placeholder="e.g. 50-100 MTR or Shuttle Service"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5 col-span-2">
+                <Label className="text-xs">Full Room Rate (SAR) [Room]</Label>
+                <Input
+                  type="number"
+                  value={customHotelRoomSar}
+                  onChange={e => setCustomHotelRoomSar(e.target.value)}
+                  placeholder="0"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs">Double Room Rate (SAR)</Label>
+                <Input
+                  type="number"
+                  value={customHotelDoubleSar}
+                  onChange={e => setCustomHotelDoubleSar(e.target.value)}
+                  placeholder="0"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs">Triple Room Rate (SAR)</Label>
+                <Input
+                  type="number"
+                  value={customHotelTripleSar}
+                  onChange={e => setCustomHotelTripleSar(e.target.value)}
+                  placeholder="0"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs">Quad Room Rate (SAR)</Label>
+                <Input
+                  type="number"
+                  value={customHotelQuadSar}
+                  onChange={e => setCustomHotelQuadSar(e.target.value)}
+                  placeholder="0"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs">Sharing Bed Rate (SAR)</Label>
+                <Input
+                  type="number"
+                  value={customHotelSharingSar}
+                  onChange={e => setCustomHotelSharingSar(e.target.value)}
+                  placeholder="0"
+                />
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setCustomHotelOpen(false)}>Cancel</Button>
+            <Button type="button" onClick={handleAddCustomHotel} className="bg-navy hover:bg-navy-2 text-white font-semibold">
+              Add Hotel
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 
