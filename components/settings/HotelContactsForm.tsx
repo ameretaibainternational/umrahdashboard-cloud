@@ -4,7 +4,7 @@ import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { upsertHotelContact, deleteHotelContact } from '@/app/actions/settings'
-import type { HotelContact } from '@/lib/types'
+import type { Hotel, HotelContact } from '@/lib/types'
 import { HOTEL_CONTACT_CITIES } from '@/lib/hotel-contacts'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -15,20 +15,31 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Pencil, Trash2, Plus, Loader2 } from 'lucide-react'
 
-interface Props { contacts: HotelContact[] }
+interface Props { contacts: HotelContact[]; hotels: Hotel[] }
 
 const empty: Partial<HotelContact> = { name: '', city: 'Makkah', contact_number: '' }
 
-export default function HotelContactsForm({ contacts }: Props) {
+export default function HotelContactsForm({ contacts, hotels }: Props) {
   const router = useRouter()
   const [editing, setEditing] = useState<Partial<HotelContact> | null>(null)
   const [editCity, setEditCity] = useState('Makkah')
+  const [editHotelName, setEditHotelName] = useState('')
   const [deleteId, setDeleteId] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
 
+  const hotelsForCity = hotels.filter(h => h.city === editCity)
+
   function openEditor(contact: Partial<HotelContact>) {
     setEditCity(contact.city ?? 'Makkah')
+    setEditHotelName(contact.name ?? '')
     setEditing(contact)
+  }
+
+  function handleCityChange(city: string) {
+    setEditCity(city)
+    if (editHotelName && !hotels.some(h => h.city === city && h.name === editHotelName)) {
+      setEditHotelName('')
+    }
   }
 
   function handleUpsert(formData: FormData) {
@@ -119,13 +130,27 @@ export default function HotelContactsForm({ contacts }: Props) {
           <form action={handleUpsert} className="space-y-4">
             {editing?.id && <input type="hidden" name="id" value={editing.id} />}
             <input type="hidden" name="city" value={editCity} />
+            <input type="hidden" name="name" value={editHotelName} />
             <div className="space-y-1.5">
               <Label className="text-xs">Hotel Name *</Label>
-              <Input name="name" defaultValue={editing?.name ?? ''} required placeholder="Hilton Suites Makkah" />
+              {hotelsForCity.length === 0 ? (
+                <p className="text-xs text-muted-foreground py-2">
+                  No hotels in {editCity} yet — add hotels in Settings → Hotels first.
+                </p>
+              ) : (
+                <Select value={editHotelName || null} onValueChange={v => v && setEditHotelName(v)}>
+                  <SelectTrigger className="w-full"><SelectValue placeholder="Select hotel" /></SelectTrigger>
+                  <SelectContent>
+                    {hotelsForCity.map(h => (
+                      <SelectItem key={h.id} value={h.name}>{h.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs">City *</Label>
-              <Select value={editCity} onValueChange={v => v && setEditCity(v)}>
+              <Select value={editCity} onValueChange={v => v && handleCityChange(v)}>
                 <SelectTrigger><SelectValue placeholder="Select city" /></SelectTrigger>
                 <SelectContent>
                   {HOTEL_CONTACT_CITIES.map(city => (
@@ -140,7 +165,7 @@ export default function HotelContactsForm({ contacts }: Props) {
             </div>
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setEditing(null)}>Cancel</Button>
-              <Button type="submit" disabled={isPending} className="bg-navy hover:bg-navy-2 text-white">
+              <Button type="submit" disabled={isPending || !editHotelName} className="bg-navy hover:bg-navy-2 text-white">
                 {isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
                 {editing?.id ? 'Update' : 'Add'}
               </Button>

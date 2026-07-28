@@ -56,7 +56,7 @@ export default async function SettingsPage({ params }: { params: Promise<{ tab: 
       {tab === 'tickets'   && <AirlinesForm airlines={airlines} />}
       {tab === 'transport' && <TransportForm rates={routeVehicleRates} routes={transportRoutes} vehicles={transportVehicles} />}
       {tab === 'hotels'    && <HotelsForm hotels={hotels} />}
-      {tab === 'hotel-contacts' && <HotelContactsForm contacts={hotelContacts} />}
+      {tab === 'hotel-contacts' && <HotelContactsForm contacts={hotelContacts} hotels={hotels} />}
       {tab === 'transport-contacts' && <TransportContactsForm contacts={transportContacts} />}
       {tab === 'ziarats'   && <ZiaratsForm ziarats={ziarats} />}
       {tab === 'flight-cities' && <FlightCitiesForm company={company} />}

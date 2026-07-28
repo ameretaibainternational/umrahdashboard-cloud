@@ -8,6 +8,7 @@ import { Download, Pencil, Trash2, Loader2, Plus } from 'lucide-react'
 import { deleteCustomInvoice, deleteCustomInvoices } from '@/app/actions/custom-invoices'
 import { downloadStoredPdf } from '@/lib/storage-client'
 import { pkr, formatDate } from '@/lib/formatters'
+import { getInvoiceEditHref } from '@/lib/package-invoice'
 import type { CustomInvoice } from '@/lib/types'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -184,7 +185,7 @@ export default function CustomInvoicesTable({ invoices, canManage = true }: Prop
                     <div className="flex items-center justify-end gap-1">
                       {canManage && (
                         <Link
-                          href={`/custom-invoices?edit=${inv.id}`}
+                          href={getInvoiceEditHref(inv)}
                           className="inline-flex items-center justify-center h-7 w-7 rounded-md border border-input bg-background hover:bg-accent"
                         >
                           <Pencil className="w-3 h-3" />

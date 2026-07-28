@@ -8,7 +8,7 @@ import { Download, Pencil, Trash2, Loader2, Calculator } from 'lucide-react'
 import { deleteCustomInvoice, deleteCustomInvoices } from '@/app/actions/custom-invoices'
 import { downloadStoredPdf } from '@/lib/storage-client'
 import { pkr, formatDate } from '@/lib/formatters'
-import { getPackageDataFromInvoice } from '@/lib/package-invoice'
+import { getPackageDataFromInvoice, getInvoiceEditHref, isPackageInvoice } from '@/lib/package-invoice'
 import type { CustomInvoice } from '@/lib/types'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -213,9 +213,9 @@ export default function PackageInvoicesTable({ invoices, canManage = true }: Pro
                           {downloadingId === inv.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
                         </Button>
                         <Link
-                          href={`/calculator?edit=${inv.id}`}
+                          href={getInvoiceEditHref(inv)}
                           className="inline-flex items-center justify-center h-7 w-7 rounded-md hover:bg-accent"
-                          title="Edit in calculator"
+                          title={isPackageInvoice(inv) ? 'Edit in calculator' : 'Edit custom invoice'}
                         >
                           <Pencil className="w-3.5 h-3.5" />
                         </Link>

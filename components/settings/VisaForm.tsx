@@ -18,7 +18,7 @@ const ADULT_TIERS = [
   { name: 'visa_rate_3_pax',    label: '3 PAX' },
   { name: 'visa_rate_4_pax',    label: '4 PAX' },
   { name: 'visa_rate_5_pax',    label: '5 PAX' },
-  { name: 'visa_rate_group_pax', label: '6 – 59 PAX' },
+  { name: 'visa_rate_group_pax', label: '6 – 49 PAX' },
 ] as const
 
 export default function VisaForm({ visa }: { visa: VisaSettings }) {
@@ -66,21 +66,16 @@ export default function VisaForm({ visa }: { visa: VisaSettings }) {
 
           <Separator />
 
-          {/* Child & infant */}
+          {/* Infant */}
           <div className="space-y-2">
             <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
               Standard Rates
             </p>
-            <div className="grid grid-cols-2 gap-4 max-w-xs">
-              {[
-                { name: 'child_sar',  label: 'Child',  defaultValue: visa.child_sar },
-                { name: 'infant_sar', label: 'Infant', defaultValue: visa.infant_sar },
-              ].map(f => (
-                <div key={f.name} className="space-y-1.5">
-                  <Label className="text-xs">{f.label} (SAR)</Label>
-                  <Input type="number" name={f.name} defaultValue={f.defaultValue} min={0} required />
-                </div>
-              ))}
+            <div className="max-w-xs">
+              <div className="space-y-1.5">
+                <Label className="text-xs">Infant (SAR)</Label>
+                <Input type="number" name="infant_sar" defaultValue={visa.infant_sar} min={0} required />
+              </div>
             </div>
           </div>
 

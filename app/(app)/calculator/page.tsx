@@ -1,6 +1,7 @@
-import { getAirlines, getHotels, getVisa, getCurrency, getTransportRates, getCompany, getCurrentStaff, getPackageInvoiceById, getInvoiceClients, getInvoiceSettings, getAllPackageInvoiceNumbers, getZiarats, getBookingById, getTransportRoutes, getTransportVehicles, getRouteVehicleRates, findBookingForCustomInvoice } from '@/lib/db'
+import { getAirlines, getHotels, getVisa, getCurrency, getTransportRates, getCompany, getCurrentStaff, getPackageInvoiceById, getCustomInvoiceById, getInvoiceClients, getInvoiceSettings, getAllPackageInvoiceNumbers, getZiarats, getBookingById, getTransportRoutes, getTransportVehicles, getRouteVehicleRates, findBookingForCustomInvoice } from '@/lib/db'
 import { isViewerPermission } from '@/lib/permissions'
 import CalculatorForm from '@/components/calculator/CalculatorForm'
+import { redirect } from 'next/navigation'
 
 export default async function CalculatorPage({
   searchParams,
@@ -10,6 +11,11 @@ export default async function CalculatorPage({
   const { edit, booking_id } = await searchParams
 
   const editInvoice = edit ? await getPackageInvoiceById(edit) : null
+  if (edit && !editInvoice) {
+    const customInvoice = await getCustomInvoiceById(edit)
+    if (customInvoice) redirect(`/custom-invoices?edit=${edit}`)
+  }
+
   let editBooking = booking_id ? await getBookingById(booking_id) : null
   if (editInvoice && !editBooking) {
     editBooking = await findBookingForCustomInvoice(editInvoice.id, {

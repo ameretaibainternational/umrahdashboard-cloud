@@ -87,6 +87,7 @@ export async function createCustomInvoiceWithPdf(payload: CustomInvoicePayload) 
       file_size_bytes: upload.file_size_bytes,
       file_deleted_at: null,
       created_by: ctx.userId,
+      invoice_kind: 'custom',
     })
     await syncCustomInvoiceFinancials(id, inv.invoice_number, invoicePayload, ctx.userId)
     PATHS.forEach(p => revalidatePath(p))
@@ -149,7 +150,7 @@ export async function updateCustomInvoiceWithPdf(payload: CustomInvoicePayload &
   }
 
   if (isDemoMode()) {
-    demoStore.updateCustomInvoice(payload.id, row)
+    demoStore.updateCustomInvoice(payload.id, { ...row, invoice_kind: 'custom' })
     await cleanupLegacyCustomBooking(payload.id, existing)
     await syncCustomInvoiceFinancials(payload.id, payload.invoice_number, invoiceFields, ctx.userId)
     PATHS.forEach(p => revalidatePath(p))

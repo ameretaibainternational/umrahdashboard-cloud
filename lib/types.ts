@@ -7,7 +7,7 @@ export interface VisaSettings {
   visa_rate_3_pax: number      // 3 PAX
   visa_rate_4_pax: number      // 4 PAX
   visa_rate_5_pax: number      // 5 PAX
-  visa_rate_group_pax: number  // 6-59 PAX
+  visa_rate_group_pax: number  // 6-49 PAX
   child_sar: number
   infant_sar: number
   transport_mode: 'included' | 'separate'
@@ -21,7 +21,7 @@ export interface ZiaratOption {
   id: string
   name: string
   slug: string | null
-  rate_sar: number
+  rate_sar: number  // per-person rate (SAR); total = rate_sar × pax in calculator
   sort_order: number
   created_at?: string
 }
@@ -397,7 +397,7 @@ export interface CalcInput {
   includeVisa?: boolean
   customTicket: boolean
   customTicketLabel: string   // airline name + route entered by user
-  customTicketPkr: number     // total ticket cost already converted to PKR
+  customTicketPkr: number     // per-pax ticket cost in PKR (multiplied by pax in getCalc)
   currencyUnit?: 'PKR' | 'SAR'
   customVisaPkr?: number
   selectedTransportRouteIds?: string[]

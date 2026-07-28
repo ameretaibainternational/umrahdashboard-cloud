@@ -79,9 +79,14 @@ export async function insertCustomInvoiceSupabase(row: {
     invoice_title_text: row.invoice_title_text ?? 'INVOICE',
     created_by: row.created_by ?? null,
     package_data: row.package_data ?? null,
+    invoice_kind: 'custom' as const,
   }
 
   let result = await supabase.from('custom_invoices').insert(payload).select('id, invoice_number').single()
+  if (result.error && isPackageColumnError(result.error.message)) {
+    const { invoice_kind: _, ...withoutKind } = payload
+    result = await supabase.from('custom_invoices').insert(withoutKind).select('id, invoice_number').single()
+  }
   if (result.error && isCreatedBySchemaError(result.error.message)) {
     const { created_by: _, ...withoutOwner } = payload
     result = await supabase.from('custom_invoices').insert(withoutOwner).select('id, invoice_number').single()
@@ -211,8 +216,13 @@ export async function updateCustomInvoiceSupabase(row: {
     invoice_title_text: row.invoice_title_text ?? 'INVOICE',
     profit_pkr: row.profit_pkr ?? 0,
     package_data: row.package_data ?? null,
+    invoice_kind: 'custom' as const,
   }
-  const { error } = await supabase.from('custom_invoices').update(payload).eq('id', row.id)
+  let { error } = await supabase.from('custom_invoices').update(payload).eq('id', row.id)
+  if (error && isPackageColumnError(error.message)) {
+    const { invoice_kind: _, ...withoutKind } = payload
+    ;({ error } = await supabase.from('custom_invoices').update(withoutKind).eq('id', row.id))
+  }
   if (error) throw new Error(error.message)
   return { id: row.id, invoice_number: row.invoice_number }
 }

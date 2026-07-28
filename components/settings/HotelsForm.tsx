@@ -17,7 +17,7 @@ import { Pencil, Trash2, Plus, Loader2 } from 'lucide-react'
 
 interface Props { hotels: Hotel[] }
 
-const empty: Partial<Hotel> = { name: '', city: 'Makkah', location: '', distance: '', contact_number: '', sharing_sar: 0, quad_sar: 0, triple_sar: 0, double_sar: 0, room_sar: 0 }
+const empty: Partial<Hotel> = { name: '', city: 'Makkah', location: '', distance: '', sharing_sar: 0, quad_sar: 0, triple_sar: 0, double_sar: 0, room_sar: 0 }
 
 export default function HotelsForm({ hotels }: Props) {
   const router = useRouter()
@@ -56,7 +56,6 @@ export default function HotelsForm({ hotels }: Props) {
     setEditing({
       ...empty,
       ...hotel,
-      contact_number: hotel.contact_number ?? '',
     })
   }
 
@@ -150,7 +149,6 @@ export default function HotelsForm({ hotels }: Props) {
                   <TableHead className="text-xs">Hotel</TableHead>
                   <TableHead className="text-xs">Location</TableHead>
                   <TableHead className="text-xs">Distance</TableHead>
-                  <TableHead className="text-xs">Contact</TableHead>
                   <TableHead className="text-xs text-right">Room</TableHead>
                   <TableHead className="text-xs text-right">Sharing</TableHead>
                   <TableHead className="text-xs text-right">Quad</TableHead>
@@ -162,7 +160,7 @@ export default function HotelsForm({ hotels }: Props) {
               <TableBody>
                 {filtered.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={11} className="text-center text-muted-foreground py-8 text-sm">No hotels in {cityFilter}</TableCell>
+                    <TableCell colSpan={10} className="text-center text-muted-foreground py-8 text-sm">No hotels in {cityFilter}</TableCell>
                   </TableRow>
                 ) : filtered.map(h => (
                   <TableRow key={h.id} className="hover:bg-muted/20">
@@ -176,7 +174,6 @@ export default function HotelsForm({ hotels }: Props) {
                     <TableCell className="font-medium text-xs">{h.name}</TableCell>
                     <TableCell className="text-xs text-muted-foreground">{h.location}</TableCell>
                     <TableCell className="text-xs text-muted-foreground">{h.distance}</TableCell>
-                    <TableCell className="text-xs text-muted-foreground">{h.contact_number || '—'}</TableCell>
                     <TableCell className="text-right text-xs">{h.room_sar ?? 0}</TableCell>
                     <TableCell className="text-right text-xs">{h.sharing_sar}</TableCell>
                     <TableCell className="text-right text-xs">{h.quad_sar}</TableCell>
@@ -231,14 +228,6 @@ export default function HotelsForm({ hotels }: Props) {
                 <div className="space-y-1.5">
                   <Label className="text-xs">Distance</Label>
                   <Input name="distance" defaultValue={editing.distance ?? ''} placeholder="e.g. 200 MTR" />
-                </div>
-                <div className="space-y-1.5 col-span-2">
-                  <Label className="text-xs">Contact Number</Label>
-                  <Input
-                    name="contact_number"
-                    defaultValue={editing.contact_number ?? ''}
-                    placeholder="+966 12 000 0000"
-                  />
                 </div>
               </div>
               <div className="grid grid-cols-5 gap-3">

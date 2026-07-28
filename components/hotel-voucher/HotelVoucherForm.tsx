@@ -355,6 +355,9 @@ export default function HotelVoucherForm({
   const [isSavingGuidelines, setIsSavingGuidelines] = useState(false)
   const [hotelSelections, setHotelSelections] = useState<Record<string, string>>({})
   const [newHotelForAccommodationId, setNewHotelForAccommodationId] = useState<string | null>(null)
+  const [newHotelRates, setNewHotelRates] = useState({
+    room_sar: 0, sharing_sar: 0, quad_sar: 0, triple_sar: 0, double_sar: 0,
+  })
   const [isSavingHotel, startHotelTransition] = useTransition()
   const [logoUrl, setLogoUrl] = useState<string | null>('/logo-for-invoice.png')
   const [logoSize, setLogoSize] = useState(DEFAULT_VOUCHER_LOGO_SIZE)
@@ -401,6 +404,12 @@ export default function HotelVoucherForm({
   const page1Ref = useRef<HTMLDivElement>(null)
   const page2Ref = useRef<HTMLDivElement>(null)
 
+  useEffect(() => {
+    if (newHotelForAccommodationId) {
+      setNewHotelRates({ room_sar: 0, sharing_sar: 0, quad_sar: 0, triple_sar: 0, double_sar: 0 })
+    }
+  }, [newHotelForAccommodationId])
+
   const makkahContactOptions = useMemo(
     () => filterHotelContactsByCity(hotelContacts, 'makkah'),
     [hotelContacts],
@@ -422,6 +431,22 @@ export default function HotelVoucherForm({
     () => filterHotelContactsByCity(transportContacts as HotelContact[], 'jeddah'),
     [transportContacts],
   )
+
+  function clearMakkahHotelContact() {
+    setData(prev => ({
+      ...prev,
+      makkahHotelContactId: undefined,
+      makkahHotelContact: '',
+    }))
+  }
+
+  function clearMadinaHotelContact() {
+    setData(prev => ({
+      ...prev,
+      madinaHotelContactId: undefined,
+      madinaHotelContact: '',
+    }))
+  }
 
   function selectMakkahHotelContact(contactId: string) {
     const contact = makkahContactOptions.find(c => c.id === contactId)
@@ -1085,7 +1110,7 @@ export default function HotelVoucherForm({
                         </select>
                       </div>
                       <div className="space-y-1">
-                        <Label className="text-xs">Confirmation No</Label>
+                        <Label className="text-xs">QTY</Label>
                         <Input placeholder="CONF-001" value={a.confirmNo}
                           onChange={e => updateAccommodation(a.id, { confirmNo: e.target.value })}
                           className="h-7 text-xs" />
@@ -1192,7 +1217,18 @@ export default function HotelVoucherForm({
           <Section title="Contact &amp; Timing Notes">
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1 col-span-2">
-                <Label className="text-xs">Makkah Hotel Contact</Label>
+                <div className="flex items-center justify-between gap-2">
+                  <Label className="text-xs">Makkah Hotel Contact</Label>
+                  {resolvedMakkahContactId && (
+                    <button
+                      type="button"
+                      onClick={clearMakkahHotelContact}
+                      className="text-[10px] text-muted-foreground hover:text-navy underline"
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
                 {makkahContactOptions.length === 0 ? (
                   <p className="text-xs text-muted-foreground py-2">
                     Add contacts in Settings → Hotel Contacts.
@@ -1223,7 +1259,18 @@ export default function HotelVoucherForm({
                 )}
               </div>
               <div className="space-y-1 col-span-2">
-                <Label className="text-xs">Madina Hotel Contact</Label>
+                <div className="flex items-center justify-between gap-2">
+                  <Label className="text-xs">Madina Hotel Contact</Label>
+                  {resolvedMadinaContactId && (
+                    <button
+                      type="button"
+                      onClick={clearMadinaHotelContact}
+                      className="text-[10px] text-muted-foreground hover:text-navy underline"
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
                 {madinahContactOptions.length === 0 ? (
                   <p className="text-xs text-muted-foreground py-2">
                     Add contacts in Settings → Hotel Contacts.
@@ -1576,7 +1623,7 @@ export default function HotelVoucherForm({
         </div>
 
         <Dialog open={!!newHotelForAccommodationId} onOpenChange={open => !open && setNewHotelForAccommodationId(null)}>
-          <DialogContent className="max-w-lg">
+          <DialogContent className="sm:max-w-2xl">
             <DialogHeader>
               <DialogTitle>New Hotel</DialogTitle>
             </DialogHeader>
@@ -1609,10 +1656,34 @@ export default function HotelVoucherForm({
                     </div>
                   </div>
                   <div className="grid grid-cols-5 gap-3">
-                    {['room', 'sharing', 'quad', 'triple', 'double'].map(r => (
+                    {(['room', 'sharing', 'quad', 'triple', 'double'] as const).map(r => (
                       <div key={r} className="space-y-1.5">
-                        <Label className="text-xs capitalize">{r} SAR</Label>
-                        <Input type="number" name={`${r}_sar`} min={0} defaultValue={0} />
+                        <div className="flex items-center justify-between gap-1">
+                          <Label className="text-xs capitalize">{r} SAR</Label>
+                          {r === 'room' && (
+                            <span className="text-[9px] text-emerald-600 font-semibold bg-emerald-50 px-1 py-0.5 rounded border border-emerald-200/50">Auto-fills</span>
+                          )}
+                        </div>
+                        <Input
+                          type="number"
+                          name={`${r}_sar`}
+                          min={0}
+                          value={newHotelRates[`${r}_sar`]}
+                          className={r === 'room' ? 'bg-emerald-50/20 border-emerald-200/80 focus-visible:ring-emerald-500 font-semibold text-emerald-950' : ''}
+                          onChange={e => {
+                            const val = Math.max(0, Number(e.target.value) || 0)
+                            setNewHotelRates(prev => {
+                              const next = { ...prev, [`${r}_sar`]: val }
+                              if (r === 'room') {
+                                next.sharing_sar = Math.round(val / 5)
+                                next.quad_sar = Math.round(val / 4)
+                                next.triple_sar = Math.round(val / 3)
+                                next.double_sar = Math.round(val / 2)
+                              }
+                              return next
+                            })
+                          }}
+                        />
                       </div>
                     ))}
                   </div>

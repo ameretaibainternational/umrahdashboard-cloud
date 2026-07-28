@@ -1,13 +1,14 @@
 import type { CalcInput, CalcResult, TransportRate, VisaSettings, ZiaratOption, RouteVehicleRate, TransportRoute, TransportVehicle } from './types'
 import { normalizeTransportType } from './transport'
 
-function getAdultVisaRate(visa: VisaSettings, pax: number): number {
-  if (pax <= 1) return visa.visa_rate_1_pax
-  if (pax === 2) return visa.visa_rate_2_pax
-  if (pax === 3) return visa.visa_rate_3_pax
-  if (pax === 4) return visa.visa_rate_4_pax
-  if (pax === 5) return visa.visa_rate_5_pax ?? visa.visa_rate_4_pax ?? 625
-  return visa.visa_rate_group_pax
+function getAdultVisaRate(visa: VisaSettings, adultCount: number): number {
+  if (adultCount <= 1) return visa.visa_rate_1_pax
+  if (adultCount === 2) return visa.visa_rate_2_pax
+  if (adultCount === 3) return visa.visa_rate_3_pax
+  if (adultCount === 4) return visa.visa_rate_4_pax
+  if (adultCount === 5) return visa.visa_rate_5_pax ?? visa.visa_rate_4_pax ?? 625
+  if (adultCount <= 49) return visa.visa_rate_group_pax
+  return visa.visa_rate_5_pax ?? visa.visa_rate_4_pax ?? visa.visa_rate_group_pax
 }
 
 function hotelRateSar(hotel: CalcInput['makkahHotel'], room: CalcInput['makkahRoom']): number {
@@ -42,7 +43,7 @@ export function getCalc(
 
   const rawTicketCostPkr = includeTickets
     ? (customTicket
-      ? customTicketPkr
+      ? customTicketPkr * pax
       : airline
         ? adult * airline.adult_pkr + child * airline.child_pkr + infant * airline.infant_pkr
         : 0)
@@ -57,8 +58,8 @@ export function getCalc(
     if (customVisaPkr && customVisaPkr > 0) {
       visaCost = currencyUnit === 'SAR' ? customVisaPkr / sarToPkr : customVisaPkr
     } else {
-      const visaAdultSar = getAdultVisaRate(visa, adult)
-      const rawVisaCostSar = adult * visaAdultSar + child * visa.child_sar + infant * visa.infant_sar
+      const visaRateSar = getAdultVisaRate(visa, adult)
+      const rawVisaCostSar = (adult + child) * visaRateSar + infant * visa.infant_sar
       visaCost = currencyUnit === 'SAR' ? rawVisaCostSar : rawVisaCostSar * sarToPkr
     }
   }
@@ -98,7 +99,7 @@ export function getCalc(
     .map(z => ({
       id: z.id,
       name: z.name,
-      cost: (currencyUnit === 'SAR' ? z.rate_sar : z.rate_sar * sarToPkr) * pax,
+      cost: (currencyUnit === 'SAR' ? z.rate_sar : z.rate_sar * sarToPkr) * pax, // per-person rate × total pax
     }))
   const ziaratTotalCost = ziaratItems.reduce((sum, item) => sum + item.cost, 0)
 

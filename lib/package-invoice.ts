@@ -4,17 +4,56 @@ import { resolveSelectedZiaratIds, ziaratLegacyFlags, mergeDefaultZiarats } from
 
 export const PACKAGE_DATA_TERMS_PREFIX = '__PKG__:'
 
+/** True when `package_data` holds calculator snapshot fields (not custom-invoice display prefs). */
+export function isPackageCalculatorPayload(raw: unknown): boolean {
+  if (!raw || typeof raw !== 'object') return false
+  const d = raw as Record<string, unknown>
+  return (
+    'adult' in d ||
+    'airlineId' in d ||
+    'makkahHotelId' in d ||
+    'madinahHotelId' in d ||
+    'selectedZiaratIds' in d ||
+    'includeTickets' in d
+  )
+}
+
 export function isPackageInvoice(inv: {
   invoice_kind?: string | null
   package_data?: unknown
   invoice_number?: string | null
   terms_text?: string | null
+  line_items?: unknown[] | null
 }): boolean {
   if (inv.invoice_kind === 'package') return true
-  if (inv.package_data != null) return true
-  if (inv.invoice_number?.startsWith('INV-')) return true
+  if (inv.invoice_kind === 'custom') return false
+
+  // Standalone custom invoices always store line items; package calculator saves with line_items = []
+  const items = inv.line_items
+  if (Array.isArray(items) && items.length > 0) return false
+
   if (inv.terms_text?.startsWith(PACKAGE_DATA_TERMS_PREFIX)) return true
+  if (isPackageCalculatorPayload(inv.package_data)) return true
+
+  // Legacy rows before invoice_kind: package calculator used INV- with empty line_items
+  if (inv.invoice_number?.startsWith('INV-')) {
+    if (!items || (Array.isArray(items) && items.length === 0)) return true
+  }
+
   return false
+}
+
+export function getInvoiceEditHref(inv: {
+  id: string
+  invoice_kind?: string | null
+  package_data?: unknown
+  invoice_number?: string | null
+  terms_text?: string | null
+  line_items?: unknown[] | null
+}): string {
+  return isPackageInvoice(inv)
+    ? `/calculator?edit=${inv.id}`
+    : `/custom-invoices?edit=${inv.id}`
 }
 
 export function encodePackageDataInTerms(data: PackageInvoiceData): string {
@@ -34,7 +73,9 @@ export function getPackageDataFromInvoice(inv: {
   package_data?: unknown
   terms_text?: string | null
 }, ziarats: ZiaratOption[] = []): PackageInvoiceData | null {
-  const fromColumn = parsePackageInvoiceData(inv.package_data, ziarats)
+  const fromColumn = inv.package_data && isPackageCalculatorPayload(inv.package_data)
+    ? parsePackageInvoiceData(inv.package_data, ziarats)
+    : null
   if (fromColumn) return fromColumn
   return decodePackageDataFromTerms(inv.terms_text, ziarats)
 }

@@ -1,4 +1,5 @@
 import { getBookings, getPayments, getStandaloneCustomInvoices } from '@/lib/db'
+import { getCustomInvoicePax } from '@/lib/custom-invoice-pax'
 import { pkr } from '@/lib/formatters'
 import KpiCard from '@/components/shared/KpiCard'
 import KpiGrid, { PageContainer } from '@/components/shared/KpiGrid'
@@ -48,7 +49,9 @@ export default async function DashboardPage() {
   const totalCost       = bookings.reduce((s, b) => s + b.cost_pkr, 0) + customCost
   const totalProfit     = bookings.reduce((s, b) => s + b.profit_pkr, 0) + customProfit
   const totalDue        = bookings.reduce((s, b) => s + b.remaining_pkr, 0) + customInvoices.reduce((s, inv) => s + inv.remaining, 0)
-  const totalPax        = bookings.reduce((s, b) => s + (b.adult_count || 0) + (b.child_count || 0) + (b.infant_count || 0), 0)
+  const bookingPax      = bookings.reduce((s, b) => s + (b.adult_count || 0) + (b.child_count || 0) + (b.infant_count || 0), 0)
+  const customPax       = customInvoices.reduce((s, inv) => s + getCustomInvoicePax(inv), 0)
+  const totalPax        = bookingPax + customPax
   const recent          = bookings.slice(0, 5)
 
   // ── Monthly revenue data — always 6 months grid ──────────────────────────

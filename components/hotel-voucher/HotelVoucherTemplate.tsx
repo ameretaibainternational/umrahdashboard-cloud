@@ -472,7 +472,7 @@ export const VoucherPage1 = forwardRef<HTMLDivElement, VoucherPage1Props>(
               <GridTable
                 columns={[
                   { label: 'Hotel Name', width: 'minmax(100px, 2.4fr)' },
-                  { label: 'Confirm No', width: '100px' },
+                  { label: 'QTY', width: '100px' },
                   { label: 'City', width: '56px' },
                   { label: 'Room Type', width: '75px' },
                   { label: 'Meal', width: '44px', align: 'center' },

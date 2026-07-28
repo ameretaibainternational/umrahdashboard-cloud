@@ -1,7 +1,8 @@
-import { getInvoiceSettings, getAllInvoiceNumbers, getInvoiceClients, getInvoicePaymentMethods, getInvoiceServices, getCustomInvoiceById, getCurrency } from '@/lib/db'
+import { getInvoiceSettings, getAllInvoiceNumbers, getInvoiceClients, getInvoicePaymentMethods, getInvoiceServices, getCustomInvoiceById, getPackageInvoiceById, getCurrency } from '@/lib/db'
 import CustomInvoiceForm from '@/components/custom-invoice/CustomInvoiceForm'
 import { FileText, ArrowLeft } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { redirect } from 'next/navigation'
 
 export default async function CustomInvoicesPage({
   searchParams,
@@ -9,13 +10,19 @@ export default async function CustomInvoicesPage({
   searchParams: Promise<{ edit?: string }>
 }) {
   const { edit } = await searchParams
-  const [settings, invoiceNumbers, savedClients, paymentMethods, services, editInvoice, currency] = await Promise.all([
+
+  const editInvoice = edit ? await getCustomInvoiceById(edit) : null
+  if (edit && !editInvoice) {
+    const packageInvoice = await getPackageInvoiceById(edit)
+    if (packageInvoice) redirect(`/calculator?edit=${edit}`)
+  }
+
+  const [settings, invoiceNumbers, savedClients, paymentMethods, services, currency] = await Promise.all([
     getInvoiceSettings(),
     getAllInvoiceNumbers(),
     getInvoiceClients(),
     getInvoicePaymentMethods(),
     getInvoiceServices(),
-    edit ? getCustomInvoiceById(edit) : Promise.resolve(null),
     getCurrency(),
   ])
 

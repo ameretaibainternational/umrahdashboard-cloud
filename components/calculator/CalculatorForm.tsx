@@ -13,6 +13,7 @@ import { uint8ToBase64 } from '@/lib/pdf-utils'
 import { preloadCompanyLogo } from '@/lib/company-logo'
 import { getPackageDataFromInvoice } from '@/lib/package-invoice'
 import { buildPackageCustomInvoice, formatHotelForWhatsApp, formatRoute } from '@/lib/build-package-custom-invoice'
+import { getInvoiceTemplatePageCount } from '@/lib/invoice-page-count'
 import { generateCustomInvoicePdfBytes } from '@/lib/generate-custom-invoice-pdf'
 import { getNextPackageInvoiceNumber, resolveInvoiceSettings } from '@/lib/invoice-defaults'
 import {
@@ -177,7 +178,7 @@ function ScaledPreview({ children, totalPages }: { children: React.ReactNode; to
   const scaledH = Math.round(totalCanvasH * scale)
 
   return (
-    <div ref={outerRef} style={{ width: '100%' }}>
+    <div ref={outerRef} className="w-full flex justify-center">
       <div style={{ width: containerW, height: scaledH, overflow: 'hidden', borderRadius: 8, boxShadow: '0 4px 24px rgba(0,0,0,0.18)' }}>
         <div style={{ transform: `scale(${scale})`, transformOrigin: 'top left', width: CANVAS_W, height: totalCanvasH }}>
           {children}
@@ -591,10 +592,10 @@ export default function CalculatorForm({
     company, resolvedSettings, currencyUnit,
   ])
 
-  const previewTotalPages = useMemo(() => {
-    const count = packageInvoice.line_items.length
-    return count <= 4 ? 1 : 1 + Math.ceil((count - 4) / 5)
-  }, [packageInvoice.line_items.length])
+  const previewTotalPages = useMemo(
+    () => getInvoiceTemplatePageCount(packageInvoice.line_items, hideServiceCharges),
+    [packageInvoice.line_items, hideServiceCharges],
+  )
 
   const generatePdfBytes = useCallback(async (): Promise<Uint8Array> => {
     const el = printRef.current
@@ -1415,7 +1416,7 @@ export default function CalculatorForm({
                     {z.name}
                     {z.rate_sar > 0 ? (
                       <span className="ml-1.5 text-xs text-muted-foreground">
-                        ({currencyUnit === 'SAR' ? fmtSar(z.rate_sar) : fmtPkr(z.rate_sar * currency.sar_to_pkr)})
+                        ({currencyUnit === 'SAR' ? fmtSar(z.rate_sar) : fmtPkr(z.rate_sar * currency.sar_to_pkr)}/pax)
                       </span>
                     ) : (
                       <span className="ml-1.5 text-xs text-muted-foreground">(Free)</span>
@@ -1828,7 +1829,7 @@ export default function CalculatorForm({
                   )}
                 </CardTitle>
               </CardHeader>
-              <CardContent>
+              <CardContent className="pb-3">
                 <ScaledPreview totalPages={previewTotalPages}>
                   <CustomInvoiceTemplate
                     invoice={packageInvoice}

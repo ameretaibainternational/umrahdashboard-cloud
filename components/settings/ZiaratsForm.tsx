@@ -57,7 +57,7 @@ export default function ZiaratsForm({ ziarats }: Props) {
           <div>
             <CardTitle className="text-base">Ziarat Rates (SAR)</CardTitle>
             <p className="text-xs text-muted-foreground mt-1">
-              Flat group rates added to the package cost when selected in the calculator.
+              Per-person rates (SAR) — multiplied by total pax when selected in the calculator.
             </p>
           </div>
           <Button size="sm" onClick={() => setEditing(empty)} className="bg-navy hover:bg-navy-2 text-white gap-1.5 shrink-0">
@@ -69,7 +69,7 @@ export default function ZiaratsForm({ ziarats }: Props) {
             <TableHeader>
               <TableRow className="bg-muted/40">
                 <TableHead className="text-xs">Ziarat Name</TableHead>
-                <TableHead className="text-xs w-32">Rate (SAR)</TableHead>
+                <TableHead className="text-xs w-32">Per Person (SAR)</TableHead>
                 <TableHead className="w-20" />
               </TableRow>
             </TableHeader>
@@ -114,7 +114,7 @@ export default function ZiaratsForm({ ziarats }: Props) {
               <Input name="name" defaultValue={editing?.name ?? ''} required placeholder="e.g. Jeddah City Tour" />
             </div>
             <div className="space-y-1.5">
-              <Label className="text-xs">Flat Group Rate (SAR)</Label>
+              <Label className="text-xs">Per Person Rate (SAR)</Label>
               <Input type="number" name="rate_sar" defaultValue={editing?.rate_sar ?? 0} min={0} />
             </div>
             <DialogFooter>

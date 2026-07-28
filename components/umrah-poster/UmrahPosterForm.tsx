@@ -51,6 +51,18 @@ function formatPosterPrice(n: number): string {
   return Math.round(n).toLocaleString('en-PK')
 }
 
+function buildMakkahHotelDetails(hotel: Hotel, nights: number): string {
+  const parts = [`${nights} Nights`]
+  if (hotel.distance?.trim()) parts.push(hotel.distance.trim())
+  return `( ${parts.join(' | ')} )`
+}
+
+function buildMadinahHotelDetails(hotel: Hotel, nights: number): string {
+  const parts = [`${nights} Nights`]
+  if (hotel.distance?.trim()) parts.push(hotel.distance.trim())
+  return `( ${parts.join(' | ')} )`
+}
+
 function Section({ title, children, collapsible, open, onToggle }: {
   title: string
   children: React.ReactNode
@@ -206,10 +218,14 @@ export default function UmrahPosterForm({
   const [showCalc, setShowCalc] = useState(false)
   const [showHeadings, setShowHeadings] = useState(false)
   const [showAirplaneSettings, setShowAirplaneSettings] = useState(false)
-  const [customVisaPkr, setCustomVisaPkr] = useState(0)
+  const [visaAmount, setVisaAmount] = useState(0)
+  const [visaCurrency, setVisaCurrency] = useState<'PKR' | 'SAR'>('PKR')
   const [useCustomTicket, setUseCustomTicket] = useState(false)
   const [customTicketPkr, setCustomTicketPkr] = useState(0)
   const [includeTransport, setIncludeTransport] = useState(true)
+  const [profitType, setProfitType] = useState<'percent' | 'fixed'>('percent')
+  const [profitValue, setProfitValue] = useState(8)
+  const [currencyUnit, setCurrencyUnit] = useState<'PKR' | 'SAR'>('PKR')
   const [airlineId, setAirlineId] = useState(airlines[0]?.id ?? '')
   const [transportType, setTransportType] = useState<string>(transportVehicles[0]?.name || 'CAR')
   const [selectedTransportRouteIds, setSelectedTransportRouteIds] = useState<string[]>(() => {
@@ -297,6 +313,30 @@ export default function UmrahPosterForm({
   const makkahHotel = makkahHotels.find(h => h.id === makkahHotelId) ?? null
   const madinahHotel = madinahHotels.find(h => h.id === madinahHotelId) ?? null
 
+  const customVisaPkr = visaAmount > 0
+    ? (visaCurrency === 'SAR' ? visaAmount * currency.sar_to_pkr : visaAmount)
+    : 0
+
+  useEffect(() => {
+    const hotel = makkahHotels.find(h => h.id === makkahHotelId)
+    if (!hotel) return
+    setData(prev => ({
+      ...prev,
+      makkahHotelName: hotel.name,
+      makkahHotelDetails: buildMakkahHotelDetails(hotel, makkahNights),
+    }))
+  }, [makkahHotelId, makkahNights, makkahHotels])
+
+  useEffect(() => {
+    const hotel = madinahHotels.find(h => h.id === madinahHotelId)
+    if (!hotel) return
+    setData(prev => ({
+      ...prev,
+      madinaHotelName: hotel.name,
+      madinaHotelDetails: buildMadinahHotelDetails(hotel, madinahNights),
+    }))
+  }, [madinahHotelId, madinahNights, madinahHotels])
+
   const calcPrices = useMemo(() => {
     const baseInput = {
       adult: 1,
@@ -308,8 +348,8 @@ export default function UmrahPosterForm({
       makkahNights,
       madinahHotel,
       madinahNights,
-      profitType: 'percent' as const,
-      profitValue: 8,
+      profitType,
+      profitValue,
       sellingOverride: null,
       advance: 0,
       customerName: '',
@@ -317,11 +357,13 @@ export default function UmrahPosterForm({
       includeMakkahHotel: true,
       includeMadinahHotel: true,
       includeTickets: true,
+      includeVisa: visaAmount > 0,
       customTicket: useCustomTicket,
       customTicketLabel: '',
       customTicketPkr: customTicketPkr,
       includeTransport,
       customVisaPkr,
+      currencyUnit,
       selectedTransportRouteIds,
     }
 
@@ -355,7 +397,8 @@ export default function UmrahPosterForm({
 
     return prices
   }, [
-    customVisaPkr, useCustomTicket, customTicketPkr, includeTransport,
+    customVisaPkr, visaAmount, useCustomTicket, customTicketPkr, includeTransport,
+    profitType, profitValue, currencyUnit,
     airline, transportType, makkahHotel, madinahHotel,
     makkahNights, madinahNights, selectedZiaratIds,
     transportRates, currency.sar_to_pkr, visa, ziarats,
@@ -376,20 +419,10 @@ export default function UmrahPosterForm({
 
   function handleMakkahHotelSelect(id: string) {
     setMakkahHotelId(id)
-    const hotel = makkahHotels.find(h => h.id === id)
-    if (hotel) {
-      setField('makkahHotelName', hotel.name)
-      setField('makkahHotelDetails', `( ${makkahNights} Nights - ${hotel.distance} )`)
-    }
   }
 
   function handleMadinahHotelSelect(id: string) {
     setMadinahHotelId(id)
-    const hotel = madinahHotels.find(h => h.id === id)
-    if (hotel) {
-      setField('madinaHotelName', hotel.name)
-      setField('madinaHotelDetails', `( ${madinahNights} Nights - ${hotel.distance} )`)
-    }
   }
 
   async function handleLogoUpload(e: React.ChangeEvent<HTMLInputElement>) {
@@ -688,15 +721,37 @@ export default function UmrahPosterForm({
           </p>
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
-              <Label className="text-xs">Visa Rate (PKR)</Label>
+              <div className="flex items-center justify-between">
+                <Label className="text-xs">Visa Rate</Label>
+                <div className="flex rounded-md overflow-hidden border text-xs">
+                  {(['SAR', 'PKR'] as const).map(cur => (
+                    <button
+                      key={cur}
+                      type="button"
+                      onClick={() => setVisaCurrency(cur)}
+                      className={`px-2.5 py-0.5 font-semibold transition-colors ${visaCurrency === cur
+                        ? 'bg-navy text-white'
+                        : 'bg-white text-muted-foreground hover:bg-muted'
+                        }`}
+                    >
+                      {cur}
+                    </button>
+                  ))}
+                </div>
+              </div>
               <Input
                 type="number"
                 min="0"
-                value={customVisaPkr || ''}
-                onChange={e => setCustomVisaPkr(Number(e.target.value) || 0)}
-                placeholder="From settings if empty"
+                value={visaAmount || ''}
+                onChange={e => setVisaAmount(Number(e.target.value) || 0)}
+                placeholder="0 if empty"
                 className="h-9"
               />
+              {visaAmount > 0 && visaCurrency === 'SAR' && (
+                <p className="text-[10px] text-muted-foreground">
+                  = {formatPosterPrice(visaAmount * currency.sar_to_pkr)} PKR
+                </p>
+              )}
             </div>
             <div className="space-y-1.5 flex flex-col justify-end pb-2">
               <label className="flex items-center gap-2 cursor-pointer select-none">
@@ -851,6 +906,43 @@ export default function UmrahPosterForm({
               </label>
             ))}
           </div>
+
+          <div className="grid grid-cols-2 gap-3 pt-3 border-t">
+            <div className="space-y-1.5 col-span-2">
+              <Label className="text-xs">Currency</Label>
+              <select
+                value={currencyUnit}
+                onChange={e => setCurrencyUnit(e.target.value as 'PKR' | 'SAR')}
+                className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm"
+              >
+                <option value="PKR">PKR (Pakistani Rupee)</option>
+                <option value="SAR">SAR (Saudi Riyal)</option>
+              </select>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Profit Type</Label>
+              <select
+                value={profitType}
+                onChange={e => setProfitType(e.target.value as 'percent' | 'fixed')}
+                className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm"
+              >
+                <option value="percent">Percentage %</option>
+                <option value="fixed">{currencyUnit === 'PKR' ? 'Fixed PKR' : 'Fixed SAR'}</option>
+              </select>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">
+                {profitType === 'percent' ? 'Profit %' : (currencyUnit === 'PKR' ? 'Profit PKR' : 'Profit SAR')}
+              </Label>
+              <Input
+                type="number"
+                min="0"
+                value={profitValue}
+                onChange={e => setProfitValue(parseFloat(e.target.value) || 0)}
+                className="h-9"
+              />
+            </div>
+          </div>
         </Section>
 
         <Section title="Hotels &amp; Ziyarat">
@@ -880,7 +972,7 @@ export default function UmrahPosterForm({
                 </div>
                 {makkahHotels.length > 0 && !data.makkahCustomName ? (
                   <select
-                    value={makkahHotels.find(h => h.name === data.makkahHotelName)?.id ?? makkahHotelId}
+                    value={makkahHotelId}
                     onChange={e => handleMakkahHotelSelect(e.target.value)}
                     className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm"
                   >
@@ -940,7 +1032,7 @@ export default function UmrahPosterForm({
                 </div>
                 {madinahHotels.length > 0 && !data.madinaCustomName ? (
                   <select
-                    value={madinahHotels.find(h => h.name === data.madinaHotelName)?.id ?? madinahHotelId}
+                    value={madinahHotelId}
                     onChange={e => handleMadinahHotelSelect(e.target.value)}
                     className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm"
                   >
