@@ -6,6 +6,8 @@ import { toast } from 'sonner'
 import { deleteLedgerEntries } from '@/app/actions/accounts'
 import type { Payment, Booking } from '@/lib/types'
 import { pkr, formatDate, bookingInvoiceId, sar } from '@/lib/formatters'
+import { formatLedgerInvoices, ledgerCustomerKey, ledgerDisplayName } from '@/lib/ledger-utils'
+import { staffUsernames } from '@/lib/staff-lookup'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Button } from '@/components/ui/button'
@@ -20,9 +22,24 @@ interface Props {
   bookings: Booking[]
   companyName: string
   sarToPkrRate?: number
+  staffUsernames?: Record<string, string>
 }
 
 interface LedgerRow {
+  customerKey: string
+  customerName: string
+  bookingIds: string[]
+  paymentDate: string
+  invoiceIds: string[]
+  packageAmount: number
+  receivedAmount: number
+  balance: number
+  method: string
+  note: string
+  recordedByIds: string[]
+}
+
+interface BookingLedgerRow {
   bookingId: string
   customerName: string
   paymentDate: string
@@ -32,18 +49,20 @@ interface LedgerRow {
   balance: number
   method: string
   note: string
+  recordedByIds: string[]
 }
 
-function buildInvoiceLedgerRows(
+function buildBookingLedgerRows(
   payments: Payment[],
   bookingMap: Map<string, Booking>,
-): LedgerRow[] {
+): BookingLedgerRow[] {
   const byBooking = new Map<string, {
     receivedAmount: number
     latestPaymentDate: string
     latestMethod: string
     latestNote: string
     customerName: string
+    recordedByIds: string[]
   }>()
 
   for (const p of payments) {
@@ -56,11 +75,15 @@ function buildInvoiceLedgerRows(
         latestMethod: p.method,
         latestNote: p.note || '',
         customerName: p.customer_name,
+        recordedByIds: [],
       }
       byBooking.set(key, entry)
     }
 
     entry.receivedAmount += p.amount_pkr
+    if (p.created_by && !entry.recordedByIds.includes(p.created_by)) {
+      entry.recordedByIds.push(p.created_by)
+    }
 
     if (p.payment_date.localeCompare(entry.latestPaymentDate) >= 0) {
       entry.latestPaymentDate = p.payment_date
@@ -69,7 +92,7 @@ function buildInvoiceLedgerRows(
     }
   }
 
-  const rows: LedgerRow[] = []
+  const rows: BookingLedgerRow[] = []
 
   for (const [bookingId, entry] of byBooking) {
     const booking = bookingMap.get(bookingId)
@@ -84,16 +107,61 @@ function buildInvoiceLedgerRows(
       balance: booking?.remaining_pkr ?? 0,
       method: entry.latestMethod,
       note: entry.latestNote,
+      recordedByIds: entry.recordedByIds,
     })
   }
 
   return rows.sort((a, b) => b.paymentDate.localeCompare(a.paymentDate))
 }
 
-export default function ClientLedger({ payments, bookings, companyName, sarToPkrRate = 75 }: Props) {
+function aggregateCustomerLedgerRows(rows: BookingLedgerRow[]): LedgerRow[] {
+  const byCustomer = new Map<string, LedgerRow>()
+
+  for (const row of rows) {
+    const customerKey = ledgerCustomerKey(row.customerName)
+    const displayName = ledgerDisplayName(row.customerName)
+    let entry = byCustomer.get(customerKey)
+
+    if (!entry) {
+      byCustomer.set(customerKey, {
+        customerKey,
+        customerName: displayName,
+        bookingIds: [row.bookingId],
+        paymentDate: row.paymentDate,
+        invoiceIds: [row.invoiceId],
+        packageAmount: row.packageAmount,
+        receivedAmount: row.receivedAmount,
+        balance: row.balance,
+        method: row.method,
+        note: row.note,
+        recordedByIds: [...row.recordedByIds],
+      })
+      continue
+    }
+
+    entry.bookingIds.push(row.bookingId)
+    if (!entry.invoiceIds.includes(row.invoiceId)) entry.invoiceIds.push(row.invoiceId)
+    entry.packageAmount += row.packageAmount
+    entry.receivedAmount += row.receivedAmount
+    entry.balance += row.balance
+    for (const id of row.recordedByIds) {
+      if (!entry.recordedByIds.includes(id)) entry.recordedByIds.push(id)
+    }
+
+    if (row.paymentDate.localeCompare(entry.paymentDate) >= 0) {
+      entry.paymentDate = row.paymentDate
+      entry.method = row.method
+      if (row.note?.trim()) entry.note = row.note.trim()
+    }
+  }
+
+  return [...byCustomer.values()].sort((a, b) => b.paymentDate.localeCompare(a.paymentDate))
+}
+
+export default function ClientLedger({ payments, bookings, companyName, sarToPkrRate = 75, staffUsernames: staffMap = {} }: Props) {
   const router = useRouter()
   const [selectedCustomer, setSelectedCustomer] = useState<string>('__all__')
-  const [selectedBookingIds, setSelectedBookingIds] = useState<Set<string>>(new Set())
+  const [selectedCustomerKeys, setSelectedCustomerKeys] = useState<Set<string>>(new Set())
   const [selectedCurrency, setSelectedCurrency] = useState<'PKR' | 'SAR'>('PKR')
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false)
   const [isPending, startTransition] = useTransition()
@@ -111,9 +179,9 @@ export default function ClientLedger({ payments, bookings, companyName, sarToPkr
     return m
   }, [bookings])
 
-  // One row per invoice/booking — received totals all payments for that booking
+  // One row per customer — amounts sum across all invoices/bookings for that client
   const allRows = useMemo<LedgerRow[]>(
-    () => buildInvoiceLedgerRows(payments, bookingMap),
+    () => aggregateCustomerLedgerRows(buildBookingLedgerRows(payments, bookingMap)),
     [payments, bookingMap],
   )
 
@@ -139,36 +207,42 @@ export default function ClientLedger({ payments, bookings, companyName, sarToPkr
     }
   }, [allRows, selectedCustomer])
 
-  const allSelected = filteredRows.length > 0 && filteredRows.every(r => selectedBookingIds.has(r.bookingId))
+  const allSelected = filteredRows.length > 0 && filteredRows.every(r => selectedCustomerKeys.has(r.customerKey))
 
   function toggleSelectAll(checked: boolean) {
     if (checked) {
-      setSelectedBookingIds(new Set(filteredRows.map(r => r.bookingId)))
+      setSelectedCustomerKeys(new Set(filteredRows.map(r => r.customerKey)))
     } else {
-      setSelectedBookingIds(new Set())
+      setSelectedCustomerKeys(new Set())
     }
   }
 
-  function toggleSelect(bookingId: string, checked: boolean) {
-    setSelectedBookingIds(prev => {
+  function toggleSelect(customerKey: string, checked: boolean) {
+    setSelectedCustomerKeys(prev => {
       const next = new Set(prev)
-      if (checked) next.add(bookingId)
-      else next.delete(bookingId)
+      if (checked) next.add(customerKey)
+      else next.delete(customerKey)
       return next
     })
   }
 
   function handleBulkDelete() {
-    const ids = [...selectedBookingIds]
+    const bookingIds = [
+      ...new Set(
+        allRows
+          .filter(r => selectedCustomerKeys.has(r.customerKey))
+          .flatMap(r => r.bookingIds),
+      ),
+    ]
     startTransition(async () => {
-      const result = await deleteLedgerEntries(ids)
+      const result = await deleteLedgerEntries(bookingIds)
       if ('error' in result && result.error && !('success' in result)) {
         toast.error(result.error)
       } else if ('success' in result && result.success) {
-        const count = 'deleted' in result ? result.deleted : ids.length
+        const count = 'deleted' in result ? result.deleted : bookingIds.length
         toast.success(`${count} ledger entr${count !== 1 ? 'ies' : 'y'} deleted`)
         if ('error' in result && result.error) toast.warning(result.error)
-        setSelectedBookingIds(new Set())
+        setSelectedCustomerKeys(new Set())
         router.refresh()
       }
       setBulkDeleteOpen(false)
@@ -184,11 +258,12 @@ export default function ClientLedger({ payments, bookings, companyName, sarToPkr
         <td>${i + 1}</td>
         <td>${r.paymentDate}</td>
         <td>${r.customerName}</td>
-        <td>${r.invoiceId}</td>
+        <td>${formatLedgerInvoices(r.invoiceIds)}</td>
         <td style="text-align:right">${formatVal(r.packageAmount)}</td>
         <td style="text-align:right;color:#0b8050;font-weight:700">${formatVal(r.receivedAmount)}</td>
         <td style="text-align:right;color:#b73838">${formatVal(r.balance)}</td>
         <td>${r.method}</td>
+        <td>${staffUsernames(staffMap, r.recordedByIds)}</td>
         <td>${r.note}</td>
       </tr>
     `).join('')
@@ -237,10 +312,10 @@ export default function ClientLedger({ payments, bookings, companyName, sarToPkr
         <th style="text-align:right">Package (${selectedCurrency})</th>
         <th style="text-align:right">Received (${selectedCurrency})</th>
         <th style="text-align:right">Balance (${selectedCurrency})</th>
-        <th>Method</th><th>Note</th>
+        <th>Method</th><th>Recorded By</th><th>Note</th>
       </tr>
     </thead>
-    <tbody>${rowsHtml || '<tr><td colspan="9" style="text-align:center;color:#888;padding:20px">No entries found.</td></tr>'}</tbody>
+    <tbody>${rowsHtml || '<tr><td colspan="10" style="text-align:center;color:#888;padding:20px">No entries found.</td></tr>'}</tbody>
   </table>
   <div class="summary">
     <table>
@@ -279,11 +354,12 @@ export default function ClientLedger({ payments, bookings, companyName, sarToPkr
     for (const r of filteredRows) {
       lines.push(`Date       : ${r.paymentDate}`)
       lines.push(`Customer   : ${r.customerName}`)
-      lines.push(`Invoice    : ${r.invoiceId}`)
+      lines.push(`Invoice    : ${formatLedgerInvoices(r.invoiceIds)}`)
       lines.push(`Package    : ${formatVal(r.packageAmount)}`)
       lines.push(`Received   : ${formatVal(r.receivedAmount)}`)
       lines.push(`Balance    : ${formatVal(r.balance)}`)
       lines.push(`Method     : ${r.method}`)
+      lines.push(`Recorded By: ${staffUsernames(staffMap, r.recordedByIds)}`)
       if (r.note) lines.push(`Note       : ${r.note}`)
       lines.push(divider)
     }
@@ -315,11 +391,11 @@ export default function ClientLedger({ payments, bookings, companyName, sarToPkr
                 Client Ledger
               </CardTitle>
               <p className="text-xs text-muted-foreground mt-0.5">
-                One row per invoice — received totals all payments for that booking; new payments update the same row.
+                One row per client — package, received, and balance totals combine all invoices for that customer.
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              {selectedBookingIds.size > 0 && (
+              {selectedCustomerKeys.size > 0 && (
                 <Button
                   variant="destructive"
                   size="sm"
@@ -327,7 +403,7 @@ export default function ClientLedger({ payments, bookings, companyName, sarToPkr
                   className="gap-1.5 text-xs"
                 >
                   <Trash2 className="w-3.5 h-3.5" />
-                  Delete Selected ({selectedBookingIds.size})
+                  Delete Selected ({selectedCustomerKeys.size})
                 </Button>
               )}
               <Button
@@ -411,32 +487,34 @@ export default function ClientLedger({ payments, bookings, companyName, sarToPkr
                 <TableHead className="text-xs text-right">Received ({selectedCurrency})</TableHead>
                 <TableHead className="text-xs text-right">Balance ({selectedCurrency})</TableHead>
                 <TableHead className="text-xs">Method</TableHead>
+                <TableHead className="text-xs">Recorded By</TableHead>
                 <TableHead className="text-xs">Note</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {filteredRows.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={9} className="text-center text-muted-foreground py-10 text-sm">
+                  <TableCell colSpan={10} className="text-center text-muted-foreground py-10 text-sm">
                     No payment entries found.
                   </TableCell>
                 </TableRow>
               ) : filteredRows.map(r => (
-                <TableRow key={r.bookingId} className="hover:bg-muted/20">
+                <TableRow key={r.customerKey} className="hover:bg-muted/20">
                   <TableCell>
                     <Checkbox
-                      checked={selectedBookingIds.has(r.bookingId)}
-                      onCheckedChange={v => toggleSelect(r.bookingId, Boolean(v))}
-                      aria-label={`Select ledger entry ${r.invoiceId}`}
+                      checked={selectedCustomerKeys.has(r.customerKey)}
+                      onCheckedChange={v => toggleSelect(r.customerKey, Boolean(v))}
+                      aria-label={`Select ledger entry for ${r.customerName}`}
                     />
                   </TableCell>
                   <TableCell className="text-xs text-muted-foreground whitespace-nowrap">{formatDate(r.paymentDate)}</TableCell>
                   <TableCell className="text-sm font-medium whitespace-nowrap">{r.customerName}</TableCell>
-                  <TableCell className="text-xs font-mono text-muted-foreground">{r.invoiceId}</TableCell>
+                  <TableCell className="text-xs font-mono text-muted-foreground">{formatLedgerInvoices(r.invoiceIds)}</TableCell>
                   <TableCell className="text-right text-xs text-muted-foreground">{formatVal(r.packageAmount)}</TableCell>
                   <TableCell className="text-right text-sm font-semibold text-emerald-600">{formatVal(r.receivedAmount)}</TableCell>
                   <TableCell className="text-right text-sm font-semibold text-rose-600">{formatVal(r.balance)}</TableCell>
                   <TableCell><Badge variant="outline" className="text-[10px]">{r.method}</Badge></TableCell>
+                  <TableCell className="text-xs font-mono text-muted-foreground">{staffUsernames(staffMap, r.recordedByIds)}</TableCell>
                   <TableCell className="text-xs text-muted-foreground">{r.note || '—'}</TableCell>
                 </TableRow>
               ))}
@@ -470,8 +548,8 @@ export default function ClientLedger({ payments, bookings, companyName, sarToPkr
           <DialogHeader>
             <DialogTitle>Delete selected ledger entries?</DialogTitle>
             <DialogDescription>
-              This removes all payment records for {selectedBookingIds.size} selected invoice
-              {selectedBookingIds.size !== 1 ? 's' : ''} and resets their paid balance to zero.
+              This removes all payment records for {selectedCustomerKeys.size} selected client
+              {selectedCustomerKeys.size !== 1 ? 's' : ''} (all linked invoices) and resets their paid balance to zero.
               The bookings themselves will not be deleted.
             </DialogDescription>
           </DialogHeader>

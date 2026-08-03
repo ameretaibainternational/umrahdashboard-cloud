@@ -9,6 +9,7 @@ import { deleteCustomInvoice, deleteCustomInvoices } from '@/app/actions/custom-
 import { downloadStoredPdf } from '@/lib/storage-client'
 import { pkr, formatDate } from '@/lib/formatters'
 import { getInvoiceEditHref } from '@/lib/package-invoice'
+import { staffUsername } from '@/lib/staff-lookup'
 import type { CustomInvoice } from '@/lib/types'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -19,9 +20,10 @@ import { Badge } from '@/components/ui/badge'
 interface Props {
   invoices: CustomInvoice[]
   canManage?: boolean
+  staffUsernames?: Record<string, string>
 }
 
-export default function CustomInvoicesTable({ invoices, canManage = true }: Props) {
+export default function CustomInvoicesTable({ invoices, canManage = true, staffUsernames = {} }: Props) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
   const [downloadingId, setDownloadingId] = useState<string | null>(null)
@@ -145,6 +147,7 @@ export default function CustomInvoicesTable({ invoices, canManage = true }: Prop
                 )}
                 <TableHead className="text-xs">Invoice #</TableHead>
                 <TableHead className="text-xs">Customer</TableHead>
+                <TableHead className="text-xs">Created By</TableHead>
                 <TableHead className="text-xs">Date</TableHead>
                 <TableHead className="text-xs text-right">Total</TableHead>
                 <TableHead className="text-xs text-right">Profit</TableHead>
@@ -168,6 +171,7 @@ export default function CustomInvoicesTable({ invoices, canManage = true }: Prop
                     {inv.billed_to_name ? `${inv.billed_to_name} — ${inv.invoice_number}` : inv.invoice_number}
                   </TableCell>
                   <TableCell className="text-sm">{inv.billed_to_name}</TableCell>
+                  <TableCell className="text-xs font-mono text-muted-foreground">{staffUsername(staffUsernames, inv.created_by)}</TableCell>
                   <TableCell className="text-sm text-muted-foreground">{formatDate(inv.invoice_date)}</TableCell>
                   <TableCell className="text-sm text-right font-medium">{pkr(inv.total)}</TableCell>
                   <TableCell className="text-sm text-right text-emerald-600">{pkr(inv.profit_pkr ?? 0)}</TableCell>

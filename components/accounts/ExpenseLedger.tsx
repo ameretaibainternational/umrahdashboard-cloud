@@ -6,6 +6,8 @@ import { toast } from 'sonner'
 import { deleteExpenses } from '@/app/actions/accounts'
 import type { Expense } from '@/lib/types'
 import { pkr, formatDate } from '@/lib/formatters'
+import { ledgerCustomerKey, ledgerDisplayName } from '@/lib/ledger-utils'
+import { staffUsernames } from '@/lib/staff-lookup'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -17,45 +19,111 @@ import { Receipt, Printer, Copy, Trash2, Loader2 } from 'lucide-react'
 interface Props {
   expenses: Expense[]
   companyName: string
+  staffUsernames?: Record<string, string>
 }
 
-export default function ExpenseLedger({ expenses, companyName }: Props) {
+interface ExpenseLedgerRow {
+  customerKey: string
+  supplier: string
+  expenseIds: string[]
+  expense_date: string
+  expense_type: string
+  method: string
+  amount_pkr: number
+  note: string
+  recordedByIds: string[]
+}
+
+function aggregateExpenseRows(expenses: Expense[]): ExpenseLedgerRow[] {
+  const bySupplier = new Map<string, ExpenseLedgerRow & { types: Set<string> }>()
+
+  for (const expense of expenses) {
+    const customerKey = ledgerCustomerKey(expense.supplier)
+    const supplier = ledgerDisplayName(expense.supplier)
+    let entry = bySupplier.get(customerKey)
+
+    if (!entry) {
+      bySupplier.set(customerKey, {
+        customerKey,
+        supplier,
+        expenseIds: [expense.id],
+        expense_date: expense.expense_date,
+        expense_type: expense.expense_type,
+        method: expense.method,
+        amount_pkr: expense.amount_pkr,
+        note: expense.note || '',
+        recordedByIds: expense.created_by ? [expense.created_by] : [],
+        types: new Set([expense.expense_type]),
+      })
+      continue
+    }
+
+    entry.expenseIds.push(expense.id)
+    entry.amount_pkr += expense.amount_pkr
+    entry.types.add(expense.expense_type)
+    if (expense.created_by && !entry.recordedByIds.includes(expense.created_by)) {
+      entry.recordedByIds.push(expense.created_by)
+    }
+
+    if (expense.expense_date.localeCompare(entry.expense_date) >= 0) {
+      entry.expense_date = expense.expense_date
+      entry.method = expense.method
+      entry.expense_type = expense.expense_type
+      if (expense.note?.trim()) entry.note = expense.note.trim()
+    }
+  }
+
+  return [...bySupplier.values()]
+    .map(({ types, ...row }) => ({
+      ...row,
+      expense_type: types.size > 1 ? 'Multiple' : row.expense_type,
+    }))
+    .sort((a, b) => b.expense_date.localeCompare(a.expense_date))
+}
+
+export default function ExpenseLedger({ expenses, companyName, staffUsernames: staffMap = {} }: Props) {
   const router = useRouter()
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [selectedCustomerKeys, setSelectedCustomerKeys] = useState<Set<string>>(new Set())
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false)
   const [isPending, startTransition] = useTransition()
 
-  const sortedExpenses = useMemo(
-    () => [...expenses].sort((a, b) => b.expense_date.localeCompare(a.expense_date)),
+  const aggregatedRows = useMemo(
+    () => aggregateExpenseRows(expenses),
     [expenses],
   )
 
   const totalAmount = useMemo(
-    () => sortedExpenses.reduce((sum, e) => sum + e.amount_pkr, 0),
-    [sortedExpenses],
+    () => aggregatedRows.reduce((sum, row) => sum + row.amount_pkr, 0),
+    [aggregatedRows],
   )
 
-  const allSelected = sortedExpenses.length > 0 && sortedExpenses.every(e => selectedIds.has(e.id))
+  const allSelected = aggregatedRows.length > 0 && aggregatedRows.every(r => selectedCustomerKeys.has(r.customerKey))
 
   function toggleSelectAll(checked: boolean) {
     if (checked) {
-      setSelectedIds(new Set(sortedExpenses.map(e => e.id)))
+      setSelectedCustomerKeys(new Set(aggregatedRows.map(r => r.customerKey)))
     } else {
-      setSelectedIds(new Set())
+      setSelectedCustomerKeys(new Set())
     }
   }
 
-  function toggleSelect(id: string, checked: boolean) {
-    setSelectedIds(prev => {
+  function toggleSelect(customerKey: string, checked: boolean) {
+    setSelectedCustomerKeys(prev => {
       const next = new Set(prev)
-      if (checked) next.add(id)
-      else next.delete(id)
+      if (checked) next.add(customerKey)
+      else next.delete(customerKey)
       return next
     })
   }
 
   function handleBulkDelete() {
-    const ids = [...selectedIds]
+    const ids = [
+      ...new Set(
+        aggregatedRows
+          .filter(r => selectedCustomerKeys.has(r.customerKey))
+          .flatMap(r => r.expenseIds),
+      ),
+    ]
     startTransition(async () => {
       const result = await deleteExpenses(ids)
       if ('error' in result && result.error && !('success' in result)) {
@@ -64,7 +132,7 @@ export default function ExpenseLedger({ expenses, companyName }: Props) {
         const count = 'deleted' in result ? result.deleted : ids.length
         toast.success(`${count} expense${count !== 1 ? 's' : ''} deleted`)
         if ('error' in result && result.error) toast.warning(result.error)
-        setSelectedIds(new Set())
+        setSelectedCustomerKeys(new Set())
         router.refresh()
       }
       setBulkDeleteOpen(false)
@@ -83,15 +151,16 @@ export default function ExpenseLedger({ expenses, companyName }: Props) {
 
     const today = new Date().toLocaleDateString('en-PK', { day: '2-digit', month: 'short', year: 'numeric' })
 
-    const rowsHtml = sortedExpenses.map((e, i) => `
+    const rowsHtml = aggregatedRows.map((row, i) => `
       <tr>
         <td>${i + 1}</td>
-        <td>${e.expense_date}</td>
-        <td>${escapeHtml(e.expense_type)}</td>
-        <td>${escapeHtml(e.supplier)}</td>
-        <td>${escapeHtml(e.method)}</td>
-        <td style="text-align:right;color:#b73838;font-weight:700">${pkr(e.amount_pkr)}</td>
-        <td>${escapeHtml(e.note || '')}</td>
+        <td>${row.expense_date}</td>
+        <td>${escapeHtml(row.expense_type)}</td>
+        <td>${escapeHtml(row.supplier)}</td>
+        <td>${escapeHtml(row.method)}</td>
+        <td style="text-align:right;color:#b73838;font-weight:700">${pkr(row.amount_pkr)}</td>
+        <td>${escapeHtml(staffUsernames(staffMap, row.recordedByIds))}</td>
+        <td>${escapeHtml(row.note || '')}</td>
       </tr>
     `).join('')
 
@@ -129,17 +198,17 @@ export default function ExpenseLedger({ expenses, companyName }: Props) {
     </div>
     <div class="meta">
       <p><strong>Print Date:</strong> ${today}</p>
-      <p><strong>Total Entries:</strong> ${sortedExpenses.length}</p>
+      <p><strong>Total Entries:</strong> ${aggregatedRows.length}</p>
     </div>
   </div>
   <table>
     <thead>
       <tr>
         <th>#</th><th>Date</th><th>Type</th><th>Supplier</th>
-        <th>Method</th><th style="text-align:right">Amount</th><th>Note</th>
+        <th>Method</th><th style="text-align:right">Amount</th><th>Recorded By</th><th>Note</th>
       </tr>
     </thead>
-    <tbody>${rowsHtml || '<tr><td colspan="7" style="text-align:center;color:#888;padding:20px">No entries found.</td></tr>'}</tbody>
+    <tbody>${rowsHtml || '<tr><td colspan="8" style="text-align:center;color:#888;padding:20px">No entries found.</td></tr>'}</tbody>
   </table>
   <div class="summary">
     <table>
@@ -159,7 +228,7 @@ export default function ExpenseLedger({ expenses, companyName }: Props) {
   }
 
   function handleCopy() {
-    if (sortedExpenses.length === 0) { toast.error('No expense entries to copy'); return }
+    if (aggregatedRows.length === 0) { toast.error('No expense entries to copy'); return }
 
     const today = new Date().toLocaleDateString('en-PK', { day: '2-digit', month: 'short', year: 'numeric' })
     const divider = '─'.repeat(52)
@@ -172,13 +241,14 @@ export default function ExpenseLedger({ expenses, companyName }: Props) {
       '',
     ]
 
-    for (const e of sortedExpenses) {
-      lines.push(`Date       : ${e.expense_date}`)
-      lines.push(`Type       : ${e.expense_type}`)
-      lines.push(`Supplier   : ${e.supplier}`)
-      lines.push(`Method     : ${e.method}`)
-      lines.push(`Amount     : ${pkr(e.amount_pkr)}`)
-      if (e.note) lines.push(`Note       : ${e.note}`)
+    for (const row of aggregatedRows) {
+      lines.push(`Date       : ${row.expense_date}`)
+      lines.push(`Type       : ${row.expense_type}`)
+      lines.push(`Supplier   : ${row.supplier}`)
+      lines.push(`Method     : ${row.method}`)
+      lines.push(`Amount     : ${pkr(row.amount_pkr)}`)
+      lines.push(`Recorded By: ${staffUsernames(staffMap, row.recordedByIds)}`)
+      if (row.note) lines.push(`Note       : ${row.note}`)
       lines.push(divider)
     }
 
@@ -207,11 +277,11 @@ export default function ExpenseLedger({ expenses, companyName }: Props) {
                 Supplier / Expense Ledger
               </CardTitle>
               <p className="text-xs text-muted-foreground mt-0.5">
-                All package supplier costs recorded automatically from the calculator — print or copy for sharing.
+                One row per supplier — amounts combine all package and invoice expenses for that customer.
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              {selectedIds.size > 0 && (
+              {selectedCustomerKeys.size > 0 && (
                 <Button
                   variant="destructive"
                   size="sm"
@@ -219,7 +289,7 @@ export default function ExpenseLedger({ expenses, companyName }: Props) {
                   className="gap-1.5 text-xs"
                 >
                   <Trash2 className="w-3.5 h-3.5" />
-                  Delete Selected ({selectedIds.size})
+                  Delete Selected ({selectedCustomerKeys.size})
                 </Button>
               )}
               <Button
@@ -261,38 +331,40 @@ export default function ExpenseLedger({ expenses, companyName }: Props) {
                   <TableHead className="text-xs">Supplier / Description</TableHead>
                   <TableHead className="text-xs">Method</TableHead>
                   <TableHead className="text-xs text-right">Amount</TableHead>
+                  <TableHead className="text-xs">Recorded By</TableHead>
                   <TableHead className="text-xs">Note</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {sortedExpenses.length === 0 ? (
+                {aggregatedRows.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={7} className="text-center text-muted-foreground py-10 text-sm">
-                      No expense records yet. Save a booking from the Package Calculator to record package cost automatically.
+                    <TableCell colSpan={8} className="text-center text-muted-foreground py-10 text-sm">
+                      No expense records yet. Package supplier costs appear here when customer payments are logged.
                     </TableCell>
                   </TableRow>
-                ) : sortedExpenses.map(e => (
-                  <TableRow key={e.id} className="hover:bg-muted/20">
+                ) : aggregatedRows.map(row => (
+                  <TableRow key={row.customerKey} className="hover:bg-muted/20">
                     <TableCell>
                       <Checkbox
-                        checked={selectedIds.has(e.id)}
-                        onCheckedChange={v => toggleSelect(e.id, Boolean(v))}
-                        aria-label={`Select expense for ${e.supplier}`}
+                        checked={selectedCustomerKeys.has(row.customerKey)}
+                        onCheckedChange={v => toggleSelect(row.customerKey, Boolean(v))}
+                        aria-label={`Select expense for ${row.supplier}`}
                       />
                     </TableCell>
-                    <TableCell className="text-xs text-muted-foreground whitespace-nowrap">{formatDate(e.expense_date)}</TableCell>
-                    <TableCell><Badge variant="outline" className="text-[10px]">{e.expense_type}</Badge></TableCell>
-                    <TableCell className="text-sm font-medium">{e.supplier}</TableCell>
-                    <TableCell><Badge variant="outline" className="text-[10px]">{e.method}</Badge></TableCell>
-                    <TableCell className="text-right text-sm font-semibold text-rose-600">{pkr(e.amount_pkr)}</TableCell>
-                    <TableCell className="text-xs text-muted-foreground">{e.note || '—'}</TableCell>
+                    <TableCell className="text-xs text-muted-foreground whitespace-nowrap">{formatDate(row.expense_date)}</TableCell>
+                    <TableCell><Badge variant="outline" className="text-[10px]">{row.expense_type}</Badge></TableCell>
+                    <TableCell className="text-sm font-medium">{row.supplier}</TableCell>
+                    <TableCell><Badge variant="outline" className="text-[10px]">{row.method}</Badge></TableCell>
+                    <TableCell className="text-right text-sm font-semibold text-rose-600">{pkr(row.amount_pkr)}</TableCell>
+                    <TableCell className="text-xs font-mono text-muted-foreground">{staffUsernames(staffMap, row.recordedByIds)}</TableCell>
+                    <TableCell className="text-xs text-muted-foreground">{row.note || '—'}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
             </Table>
           </div>
 
-          {sortedExpenses.length > 0 && (
+          {aggregatedRows.length > 0 && (
             <div className="flex justify-end">
               <div className="rounded-xl bg-navy text-white p-4 min-w-[280px]">
                 <div className="flex justify-between">
@@ -310,14 +382,15 @@ export default function ExpenseLedger({ expenses, companyName }: Props) {
           <DialogHeader>
             <DialogTitle>Delete selected expenses?</DialogTitle>
             <DialogDescription>
-              This will permanently delete {selectedIds.size} expense{selectedIds.size !== 1 ? 's' : ''}. This cannot be undone.
+              This will permanently delete all expense records for {selectedCustomerKeys.size} selected supplier
+              {selectedCustomerKeys.size !== 1 ? 's' : ''}. This cannot be undone.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <Button variant="outline" onClick={() => setBulkDeleteOpen(false)} disabled={isPending}>Cancel</Button>
             <Button variant="destructive" onClick={handleBulkDelete} disabled={isPending}>
               {isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-              Delete {selectedIds.size} expense{selectedIds.size !== 1 ? 's' : ''}
+              Delete {selectedCustomerKeys.size} supplier{selectedCustomerKeys.size !== 1 ? 's' : ''}
             </Button>
           </DialogFooter>
         </DialogContent>

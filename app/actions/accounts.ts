@@ -5,6 +5,7 @@ import { isDemoMode } from '@/lib/is-demo'
 import { demoStore } from '@/lib/demo-store'
 import { friendlyDbError } from '@/lib/friendly-db-error'
 import { requireModeratorFeature } from '@/lib/permissions-server'
+import { syncPackageExpenseFromBookingId } from '@/lib/package-expense'
 import { hasDirectDb, requireWriteSql } from '@/lib/sql'
 
 export async function addPayment(formData: FormData) {
@@ -177,6 +178,8 @@ export async function addPayment(formData: FormData) {
       }
     }
 
+    await syncPackageExpenseFromBookingId(bookingId)
+
     revalidatePath('/accounts'); revalidatePath('/bookings')
     revalidatePath('/dashboard'); revalidatePath('/reports')
     return { success: true }
@@ -221,6 +224,7 @@ export async function addPayment(formData: FormData) {
           await updateInvoiceReceivedTotals(booking.source_invoice_id, convertedAmount)
         }
       }
+      await syncPackageExpenseFromBookingId(bookingId)
     } else {
       const { createClient } = await import('@/lib/supabase/server')
       const supabase = await createClient()
@@ -267,6 +271,7 @@ export async function addPayment(formData: FormData) {
             .eq('id', booking.source_invoice_id)
         }
       }
+      await syncPackageExpenseFromBookingId(bookingId)
     }
   } catch (e) {
     return { error: friendlyDbError(e instanceof Error ? e.message : 'Payment failed') }
@@ -416,6 +421,7 @@ export async function deleteLedgerEntry(bookingId: string) {
         if (owner !== ctx.userId) return { error: 'You can only delete your own ledger entries.' }
       }
       await deletePaymentsForBooking(bookingId)
+      await syncPackageExpenseFromBookingId(bookingId)
     } else {
       const { createClient } = await import('@/lib/supabase/server')
       const supabase = await createClient()
@@ -435,6 +441,7 @@ export async function deleteLedgerEntry(bookingId: string) {
         .update({ paid_pkr: 0, remaining_pkr: booking.total_pkr })
         .eq('id', bookingId)
       if (bookingError) return { error: friendlyDbError(bookingError.message) }
+      await syncPackageExpenseFromBookingId(bookingId)
     }
   } catch (e) {
     return { error: friendlyDbError(e instanceof Error ? e.message : 'Delete failed') }

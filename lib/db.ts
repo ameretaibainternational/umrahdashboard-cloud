@@ -9,7 +9,7 @@ import { demoStore } from './demo-store'
 import { isAdminPermission } from './permissions'
 import { hasDirectDb, isDirectDbConnectionError, isDirectDbRecoverableError, markDirectDbAuthFailed, requireSql } from './sql'
 import { parseFlightCities, DEFAULT_PK_FLIGHT_CITIES, DEFAULT_SA_FLIGHT_CITIES } from './flight-cities'
-import type { Airline, Hotel, Booking, Payment, Expense, StaffUser, VisaSettings, CurrencySettings, TransportRate, Company, InvoiceSettings, InvoiceClient, InvoicePaymentMethod, InvoiceService, CustomInvoice, HotelVoucherSettings, HotelVoucherRecord, StorageUsage, StoredFileRow, StaffActivityStats, ZiaratOption, HotelContact, TransportContact, CustomTransport, TransportRoute, TransportVehicle, RouteVehicleRate } from './types'
+import type { Airline, Hotel, Booking, Payment, Expense, StaffUser, VisaSettings, CurrencySettings, TransportRate, Company, InvoiceSettings, InvoiceClient, InvoicePaymentMethod, InvoiceService, CustomInvoice, HotelVoucherSettings, HotelVoucherRecord, UmrahPosterRecord, StorageUsage, StoredFileRow, StaffActivityStats, ZiaratOption, HotelContact, TransportContact, CustomTransport, TransportRoute, TransportVehicle, RouteVehicleRate } from './types'
 import { DEFAULT_TRANSPORT_RATE_SAR, TRANSPORT_VEHICLES, transportServiceName } from './transport'
 import { customTransportToRateRows } from './custom-transports'
 import { mergeDefaultZiarats } from './ziarats'
@@ -610,6 +610,22 @@ export async function getHotelVouchers(): Promise<HotelVoucherRecord[]> {
   )
 }
 
+export async function getUmrahPosters(): Promise<UmrahPosterRecord[]> {
+  const ownerId = await getOwnerFilter()
+  if (isDemoMode()) return filterByOwner([...demoStore.umrahPosters], ownerId)
+  return withDirectDbFallback(
+    async () => {
+      const { fetchUmrahPosters } = await import('@/lib/document-db')
+      return fetchUmrahPosters(ownerId)
+    },
+    async () => {
+      const sb = await getSupabase()
+      const { data } = await sb.from('umrah_posters').select('*').order('created_at', { ascending: false })
+      return filterByOwner(data ?? [], ownerId)
+    },
+  )
+}
+
 export async function getStorageUsage(): Promise<StorageUsage> {
   if (isDemoMode()) return { ...demoStore.storageUsage }
   const empty = { id: '', total_bytes: 0, updated_at: new Date().toISOString() }
@@ -660,6 +676,20 @@ export async function getStoredFiles(): Promise<StoredFileRow[]> {
           date: v.voucher_date,
           file_size_bytes: v.file_size_bytes,
           created_at: v.created_at,
+        })
+      }
+    }
+    for (const p of demoStore.umrahPosters) {
+      if (ownerId && p.created_by !== ownerId) continue
+      if (!p.file_deleted_at && p.storage_key && p.file_size_bytes) {
+        rows.push({
+          id: p.id,
+          type: 'poster',
+          number: p.poster_number,
+          label: p.title,
+          date: p.poster_date,
+          file_size_bytes: p.file_size_bytes,
+          created_at: p.created_at,
         })
       }
     }
@@ -715,11 +745,13 @@ export async function getStaffActivityStats(): Promise<StaffActivityStats[]> {
     return demoStore.staff.map(s => ({
       staff_id: s.id,
       staff_name: s.name,
+      staff_username: s.username,
       bookings: demoStore.bookings.filter(b => b.created_by === s.id).length,
       custom_invoices: demoStore.customInvoices.filter(i => i.created_by === s.id).length,
       hotel_vouchers: demoStore.hotelVouchers.filter(v => v.created_by === s.id).length,
       payments: demoStore.payments.filter(p => p.created_by === s.id).length,
       expenses: (demoStore.expenses ?? []).filter(e => e.created_by === s.id).length,
+      umrah_posters: demoStore.umrahPosters.filter(p => p.created_by === s.id).length,
     }))
   }
 
@@ -728,7 +760,10 @@ export async function getStaffActivityStats(): Promise<StaffActivityStats[]> {
       const { fetchStaffActivityStats } = await import('@/lib/document-db')
       return fetchStaffActivityStats()
     },
-    async () => [],
+    async () => {
+      const { fetchStaffActivityStatsSupabase } = await import('@/lib/supabase-document-db')
+      return fetchStaffActivityStatsSupabase()
+    },
   )
 }
 

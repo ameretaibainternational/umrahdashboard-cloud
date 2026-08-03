@@ -7,7 +7,7 @@ import {
   requireSql,
   requireWriteSql,
 } from '@/lib/sql'
-import type { CustomInvoice, CustomInvoiceLineItem, HotelVoucherRecord, PackageInvoiceData, StorageUsage, StoredFileRow, StaffActivityStats } from '@/lib/types'
+import type { CustomInvoice, CustomInvoiceLineItem, HotelVoucherRecord, UmrahPosterRecord, PackageInvoiceData, StorageUsage, StoredFileRow, StoredFileType, StaffActivityStats } from '@/lib/types'
 import { decodePackageDataFromTerms, encodePackageDataInTerms } from '@/lib/package-invoice'
 
 function pgDate(v: unknown): string {
@@ -647,6 +647,9 @@ export async function fetchStorageUsage(): Promise<StorageUsage> {
       UNION ALL
       SELECT file_size_bytes FROM hotel_vouchers
         WHERE file_deleted_at IS NULL AND storage_key IS NOT NULL AND coalesce(file_size_bytes, 0) > 0
+      UNION ALL
+      SELECT file_size_bytes FROM umrah_posters
+        WHERE file_deleted_at IS NULL AND storage_key IS NOT NULL AND coalesce(file_size_bytes, 0) > 0
     ) active_files
   `
   const total_bytes = Number(row?.total ?? 0)
@@ -665,6 +668,9 @@ export async function fetchActiveStorageKeys(): Promise<string[]> {
       WHERE file_deleted_at IS NULL AND storage_key IS NOT NULL
     UNION
     SELECT storage_key FROM hotel_vouchers
+      WHERE file_deleted_at IS NULL AND storage_key IS NOT NULL
+    UNION
+    SELECT storage_key FROM umrah_posters
       WHERE file_deleted_at IS NULL AND storage_key IS NOT NULL
   `
   return rows.map(r => r.storage_key)
@@ -759,6 +765,150 @@ export async function deleteHotelVoucher(id: string) {
   )
 }
 
+async function insertUmrahPosterDirect(row: {
+  id: string
+  title: string
+  poster_date: string
+  poster_data: Record<string, unknown>
+  branding_data: Record<string, unknown>
+  calc_data: Record<string, unknown> | null
+  storage_key: string
+  file_size_bytes: number
+  created_by?: string | null
+}) {
+  const sql = requireWriteSql()
+  const [created] = await sql<{ id: string; poster_number: string }[]>`
+    INSERT INTO umrah_posters (
+      id, title, poster_date, poster_data, branding_data, calc_data,
+      storage_key, file_size_bytes, created_by
+    ) VALUES (
+      ${row.id}, ${row.title}, ${row.poster_date},
+      ${sql.json(row.poster_data as postgres.JSONValue)},
+      ${sql.json(row.branding_data as postgres.JSONValue)},
+      ${row.calc_data ? sql.json(row.calc_data as postgres.JSONValue) : null},
+      ${row.storage_key}, ${row.file_size_bytes}, ${row.created_by ?? null}
+    )
+    RETURNING id, poster_number
+  `
+  return created
+}
+
+export async function insertUmrahPoster(row: {
+  id: string
+  title: string
+  poster_date: string
+  poster_data: Record<string, unknown>
+  branding_data: Record<string, unknown>
+  calc_data: Record<string, unknown> | null
+  storage_key: string
+  file_size_bytes: number
+  created_by?: string | null
+}) {
+  return withDocumentDbFallback(
+    () => insertUmrahPosterDirect(row),
+    async () => {
+      const { insertUmrahPosterSupabase } = await import('@/lib/supabase-document-db')
+      return insertUmrahPosterSupabase(row)
+    },
+  )
+}
+
+export async function fetchUmrahPosters(createdBy?: string | null): Promise<UmrahPosterRecord[]> {
+  const sql = requireSql()
+  const rows = createdBy
+    ? await sql<UmrahPosterRecord[]>`
+        SELECT * FROM umrah_posters
+        WHERE created_by = ${createdBy}
+        ORDER BY created_at DESC
+      `
+    : await sql<UmrahPosterRecord[]>`
+        SELECT * FROM umrah_posters ORDER BY created_at DESC
+      `
+  return rows.map(r => ({
+    ...r,
+    poster_date: pgDate(r.poster_date),
+    created_at: pgTimestamp(r.created_at),
+    file_deleted_at: r.file_deleted_at ? pgTimestamp(r.file_deleted_at) : null,
+  }))
+}
+
+export async function updateUmrahPosterDirect(
+  id: string,
+  row: {
+    title: string
+    poster_date: string
+    poster_data: Record<string, unknown>
+    branding_data: Record<string, unknown>
+    calc_data: Record<string, unknown> | null
+    storage_key: string
+    file_size_bytes: number
+  },
+  options?: { force?: boolean },
+) {
+  const sql = requireWriteSql(options)
+  const [existing] = await sql<{ storage_key: string | null }[]>`
+    SELECT storage_key FROM umrah_posters WHERE id = ${id}
+  `
+  if (existing?.storage_key && existing.storage_key !== row.storage_key) {
+    const { deletePdfKeys } = await import('@/lib/r2')
+    await deletePdfKeys([existing.storage_key])
+  }
+  await sql`
+    UPDATE umrah_posters SET
+      title = ${row.title},
+      poster_date = ${row.poster_date},
+      poster_data = ${sql.json(row.poster_data as postgres.JSONValue)},
+      branding_data = ${sql.json(row.branding_data as postgres.JSONValue)},
+      calc_data = ${row.calc_data ? sql.json(row.calc_data as postgres.JSONValue) : null},
+      storage_key = ${row.storage_key},
+      file_size_bytes = ${row.file_size_bytes}
+    WHERE id = ${id}
+  `
+}
+
+export async function deleteUmrahPosterDirect(id: string, options?: { force?: boolean }) {
+  const sql = requireWriteSql(options)
+  const [poster] = await sql<{ storage_key: string | null }[]>`
+    SELECT storage_key FROM umrah_posters WHERE id = ${id}
+  `
+  if (poster?.storage_key) {
+    const { deletePdfKeys } = await import('@/lib/r2')
+    await deletePdfKeys([poster.storage_key])
+  }
+  await sql`DELETE FROM umrah_posters WHERE id = ${id}`
+}
+
+export async function updateUmrahPoster(
+  id: string,
+  row: {
+    title: string
+    poster_date: string
+    poster_data: Record<string, unknown>
+    branding_data: Record<string, unknown>
+    calc_data: Record<string, unknown> | null
+    storage_key: string
+    file_size_bytes: number
+  },
+) {
+  return withDocumentDbFallback(
+    () => updateUmrahPosterDirect(id, row),
+    async () => {
+      const { updateUmrahPosterSupabase } = await import('@/lib/supabase-document-db')
+      return updateUmrahPosterSupabase(id, row)
+    },
+  )
+}
+
+export async function deleteUmrahPoster(id: string) {
+  return withDocumentDbFallback(
+    () => deleteUmrahPosterDirect(id),
+    async () => {
+      const { deleteUmrahPosterSupabase } = await import('@/lib/supabase-document-db')
+      return deleteUmrahPosterSupabase(id)
+    },
+  )
+}
+
 export async function deleteHotelVouchers(ids: string[]) {
   return withDocumentDbFallback(
     async () => {
@@ -806,7 +956,22 @@ export async function fetchStoredFiles(createdBy?: string | null): Promise<Store
         FROM hotel_vouchers
         WHERE file_deleted_at IS NULL AND storage_key IS NOT NULL
       `
-  return [...invoices, ...vouchers]
+  const posters = createdBy
+    ? await sql<StoredFileRow[]>`
+        SELECT id, 'poster'::text AS type, poster_number AS number,
+               title AS label, poster_date::text AS date,
+               file_size_bytes, created_at
+        FROM umrah_posters
+        WHERE file_deleted_at IS NULL AND storage_key IS NOT NULL AND created_by = ${createdBy}
+      `
+    : await sql<StoredFileRow[]>`
+        SELECT id, 'poster'::text AS type, poster_number AS number,
+               title AS label, poster_date::text AS date,
+               file_size_bytes, created_at
+        FROM umrah_posters
+        WHERE file_deleted_at IS NULL AND storage_key IS NOT NULL
+      `
+  return [...invoices, ...vouchers, ...posters]
     .map(r => ({
       ...r,
       date: pgDate(r.date),
@@ -816,7 +981,7 @@ export async function fetchStoredFiles(createdBy?: string | null): Promise<Store
     .sort((a, b) => a.created_at.localeCompare(b.created_at))
 }
 
-export async function softDeleteFileRow(id: string, type: 'invoice' | 'voucher') {
+export async function softDeleteFileRow(id: string, type: StoredFileType) {
   return withDocumentDbFallback(
     async () => {
       const sql = requireSql()
@@ -826,8 +991,14 @@ export async function softDeleteFileRow(id: string, type: 'invoice' | 'voucher')
         `
         return row
       }
+      if (type === 'voucher') {
+        const [row] = await sql<{ storage_key: string | null; file_deleted_at: string | null }[]>`
+          SELECT storage_key, file_deleted_at FROM hotel_vouchers WHERE id = ${id}
+        `
+        return row
+      }
       const [row] = await sql<{ storage_key: string | null; file_deleted_at: string | null }[]>`
-        SELECT storage_key, file_deleted_at FROM hotel_vouchers WHERE id = ${id}
+        SELECT storage_key, file_deleted_at FROM umrah_posters WHERE id = ${id}
       `
       return row
     },
@@ -838,14 +1009,16 @@ export async function softDeleteFileRow(id: string, type: 'invoice' | 'voucher')
   )
 }
 
-export async function markFileDeleted(id: string, type: 'invoice' | 'voucher', deletedAt: string) {
+export async function markFileDeleted(id: string, type: StoredFileType, deletedAt: string) {
   return withDocumentDbFallback(
     async () => {
       const sql = requireWriteSql()
       if (type === 'invoice') {
         await sql`UPDATE custom_invoices SET file_deleted_at = ${deletedAt} WHERE id = ${id}`
-      } else {
+      } else if (type === 'voucher') {
         await sql`UPDATE hotel_vouchers SET file_deleted_at = ${deletedAt} WHERE id = ${id}`
+      } else {
+        await sql`UPDATE umrah_posters SET file_deleted_at = ${deletedAt} WHERE id = ${id}`
       }
     },
     async () => {
@@ -855,7 +1028,7 @@ export async function markFileDeleted(id: string, type: 'invoice' | 'voucher', d
   )
 }
 
-export async function fetchFileForDownload(id: string, type: 'invoice' | 'voucher') {
+export async function fetchFileForDownload(id: string, type: StoredFileType) {
   return withDocumentDbFallback(
     async () => {
       const sql = requireSql()
@@ -865,10 +1038,16 @@ export async function fetchFileForDownload(id: string, type: 'invoice' | 'vouche
         `
         return row ? { ...row, number: row.invoice_number } : null
       }
-      const [row] = await sql<{ storage_key: string | null; file_deleted_at: string | null; voucher_number: string; created_by: string | null }[]>`
-        SELECT storage_key, file_deleted_at, voucher_number, created_by FROM hotel_vouchers WHERE id = ${id}
+      if (type === 'voucher') {
+        const [row] = await sql<{ storage_key: string | null; file_deleted_at: string | null; voucher_number: string; created_by: string | null }[]>`
+          SELECT storage_key, file_deleted_at, voucher_number, created_by FROM hotel_vouchers WHERE id = ${id}
+        `
+        return row ? { ...row, number: row.voucher_number } : null
+      }
+      const [row] = await sql<{ storage_key: string | null; file_deleted_at: string | null; poster_number: string; created_by: string | null }[]>`
+        SELECT storage_key, file_deleted_at, poster_number, created_by FROM umrah_posters WHERE id = ${id}
       `
-      return row ? { ...row, number: row.voucher_number } : null
+      return row ? { ...row, number: row.poster_number } : null
     },
     async () => {
       const { fetchFileForDownloadSupabase } = await import('@/lib/supabase-document-db')
@@ -877,7 +1056,7 @@ export async function fetchFileForDownload(id: string, type: 'invoice' | 'vouche
   )
 }
 
-export async function fetchFileForBulkDownload(id: string, type: 'invoice' | 'voucher') {
+export async function fetchFileForBulkDownload(id: string, type: StoredFileType) {
   return withDocumentDbFallback(
     async () => {
       const sql = requireSql()
@@ -889,11 +1068,19 @@ export async function fetchFileForBulkDownload(id: string, type: 'invoice' | 'vo
           ? { name: `${row.invoice_number}.pdf`, storage_key: row.storage_key }
           : null
       }
-      const [row] = await sql<{ storage_key: string | null; file_deleted_at: string | null; voucher_number: string }[]>`
-        SELECT storage_key, file_deleted_at, voucher_number FROM hotel_vouchers WHERE id = ${id}
+      if (type === 'voucher') {
+        const [row] = await sql<{ storage_key: string | null; file_deleted_at: string | null; voucher_number: string }[]>`
+          SELECT storage_key, file_deleted_at, voucher_number FROM hotel_vouchers WHERE id = ${id}
+        `
+        return row?.storage_key && !row.file_deleted_at
+          ? { name: `${row.voucher_number}.pdf`, storage_key: row.storage_key }
+          : null
+      }
+      const [row] = await sql<{ storage_key: string | null; file_deleted_at: string | null; poster_number: string }[]>`
+        SELECT storage_key, file_deleted_at, poster_number FROM umrah_posters WHERE id = ${id}
       `
       return row?.storage_key && !row.file_deleted_at
-        ? { name: `${row.voucher_number}.pdf`, storage_key: row.storage_key }
+        ? { name: `${row.poster_number}.jpg`, storage_key: row.storage_key }
         : null
     },
     async () => {
@@ -909,21 +1096,25 @@ export async function fetchStaffActivityStats(): Promise<StaffActivityStats[]> {
     SELECT
       s.id AS staff_id,
       s.name AS staff_name,
+      s.username AS staff_username,
       (SELECT COUNT(*)::int FROM bookings WHERE created_by = s.id) AS bookings,
       (SELECT COUNT(*)::int FROM custom_invoices WHERE created_by = s.id) AS custom_invoices,
       (SELECT COUNT(*)::int FROM hotel_vouchers WHERE created_by = s.id) AS hotel_vouchers,
       (SELECT COUNT(*)::int FROM payments WHERE created_by = s.id) AS payments,
-      (SELECT COUNT(*)::int FROM expenses WHERE created_by = s.id) AS expenses
+      (SELECT COUNT(*)::int FROM expenses WHERE created_by = s.id) AS expenses,
+      (SELECT COUNT(*)::int FROM umrah_posters WHERE created_by = s.id) AS umrah_posters
     FROM staff_users s
     ORDER BY s.name
   `
   return rows.map(r => ({
     staff_id: r.staff_id,
     staff_name: r.staff_name,
+    staff_username: r.staff_username,
     bookings: Number(r.bookings),
     custom_invoices: Number(r.custom_invoices),
     hotel_vouchers: Number(r.hotel_vouchers),
     payments: Number(r.payments),
     expenses: Number(r.expenses),
+    umrah_posters: Number(r.umrah_posters),
   }))
 }

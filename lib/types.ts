@@ -183,11 +183,13 @@ export interface Expense {
 export interface StaffActivityStats {
   staff_id: string
   staff_name: string
+  staff_username: string
   bookings: number
   custom_invoices: number
   hotel_vouchers: number
   payments: number
   expenses: number
+  umrah_posters: number
 }
 
 export interface StaffUser {
@@ -229,7 +231,8 @@ export interface CustomInvoiceLineItem {
   service: string
   pax_price: number | null   // null = column hidden for this row
   pax_price_unit: string     // "SAR" | "PKR" | ""
-  total_pax: number          // doubles as total_nights when night_price is active
+  total_pax: number          // passenger count (dashboard PAX counter)
+  total_nights?: number      // night count when night_price is active
   total: number
   total_unit: string
   received: number
@@ -280,6 +283,8 @@ export interface PackageInvoiceData {
   hidePricing?: boolean
   hideServiceCharges?: boolean
   profit_sar?: number
+  /** When true, fixed profitValue is per passenger (new behavior). Omitted on legacy saves (total profit). */
+  profitFixedPerPax?: boolean
 }
 
 export interface TransportRoute {
@@ -347,13 +352,28 @@ export interface HotelVoucherRecord {
   created_by?: string | null
 }
 
+export interface UmrahPosterRecord {
+  id: string
+  poster_number: string
+  title: string
+  poster_date: string
+  poster_data: Record<string, unknown>
+  branding_data: Record<string, unknown>
+  calc_data: Record<string, unknown> | null
+  storage_key?: string | null
+  file_size_bytes?: number | null
+  file_deleted_at?: string | null
+  created_at: string
+  created_by?: string | null
+}
+
 export interface StorageUsage {
   id: string
   total_bytes: number
   updated_at?: string
 }
 
-export type StoredFileType = 'invoice' | 'voucher'
+export type StoredFileType = 'invoice' | 'voucher' | 'poster'
 
 export interface StoredFileRow {
   id: string

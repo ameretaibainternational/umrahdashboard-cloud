@@ -1,13 +1,15 @@
 import HotelVoucherForm from '@/components/hotel-voucher/HotelVoucherForm'
-import { getHotelVoucherSettings, getHotelVouchers, getCurrentStaff, getHotels, getHotelContacts, getTransportContacts } from '@/lib/db'
+import { getHotelVoucherSettings, getHotelVouchers, getCurrentStaff, getHotels, getHotelContacts, getTransportContacts, getStaff } from '@/lib/db'
+import { buildStaffUsernameMap } from '@/lib/staff-lookup'
 import { isAdminPermission } from '@/lib/permissions'
 import { BedDouble } from 'lucide-react'
 
 export default async function HotelVoucherPage() {
-  const [settings, vouchers, staff, hotels, hotelContacts, transportContacts] = await Promise.all([
+  const [settings, vouchers, staff, allStaff, hotels, hotelContacts, transportContacts] = await Promise.all([
     getHotelVoucherSettings(),
     getHotelVouchers(),
     getCurrentStaff(),
+    getStaff(),
     getHotels(),
     getHotelContacts(),
     getTransportContacts(),
@@ -39,6 +41,7 @@ export default async function HotelVoucherPage() {
         transportContacts={transportContacts}
         existingVouchers={vouchers}
         canEditGuidelines={!!staff && isAdminPermission(staff.permission)}
+        staffUsernames={buildStaffUsernameMap(allStaff)}
       />
     </div>
   )

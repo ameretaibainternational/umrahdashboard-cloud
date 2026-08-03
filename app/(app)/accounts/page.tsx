@@ -1,4 +1,5 @@
-import { getBookings, getPayments, getExpenses, getCompany, getStandaloneCustomInvoices, getCurrency } from '@/lib/db'
+import { getBookings, getPayments, getExpenses, getCompany, getStandaloneCustomInvoices, getCurrency, getStaff } from '@/lib/db'
+import { buildStaffUsernameMap } from '@/lib/staff-lookup'
 import { pkr } from '@/lib/formatters'
 import KpiCard from '@/components/shared/KpiCard'
 import KpiGrid, { PageContainer } from '@/components/shared/KpiGrid'
@@ -9,14 +10,16 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Wallet, TrendingDown, AlertCircle, DollarSign } from 'lucide-react'
 
 export default async function AccountsPage() {
-  const [rawBookings, payments, expenses, company, standaloneCustomInvoices, currency] = await Promise.all([
+  const [rawBookings, payments, expenses, company, standaloneCustomInvoices, currency, staff] = await Promise.all([
     getBookings(),
     getPayments(),
     getExpenses(),
     getCompany(),
     getStandaloneCustomInvoices(),
     getCurrency(),
+    getStaff(),
   ])
+  const staffUsernames = buildStaffUsernameMap(staff)
 
   const customBookings = standaloneCustomInvoices.map(inv => ({
     id: `invoice-${inv.id}`,
@@ -113,8 +116,8 @@ export default async function AccountsPage() {
       <Card className="shadow-sm border-0 bg-slate-50/80">
         <CardContent className="py-4 px-5">
           <p className="text-sm text-muted-foreground">
-            Package expenses are recorded automatically when you save a booking from the Package Calculator.
-            The expense amount equals the package cost (selling price minus profit).
+            Package supplier cost is recorded when you log a customer payment (proportional to amount received).
+            Example: 500k package with 450k cost — logging 500k payment records 450k expense and 50k cash profit.
           </p>
         </CardContent>
       </Card>
@@ -125,10 +128,11 @@ export default async function AccountsPage() {
         bookings={bookings}
         companyName={company.name}
         sarToPkrRate={currency?.sar_to_pkr ?? 75}
+        staffUsernames={staffUsernames}
       />
 
       {/* ── Supplier / Expense Ledger ── */}
-      <ExpenseLedger expenses={expenses} companyName={company.name} />
+      <ExpenseLedger expenses={expenses} companyName={company.name} staffUsernames={staffUsernames} />
 
       {/* ── Cash Book Summary ── */}
       <Card className="shadow-sm border-0">

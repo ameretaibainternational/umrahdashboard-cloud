@@ -10,9 +10,10 @@ interface Props {
   packageInvoices: CustomInvoice[]
   customInvoices: CustomInvoice[]
   canManage: boolean
+  staffUsernames?: Record<string, string>
 }
 
-export default function InvoicesTabs({ packageInvoices, customInvoices, canManage }: Props) {
+export default function InvoicesTabs({ packageInvoices, customInvoices, canManage, staffUsernames = {} }: Props) {
   const router = useRouter()
   const searchParams = useSearchParams()
   const tab = searchParams.get('tab') === 'custom' ? 'custom' : 'package'
@@ -58,8 +59,8 @@ export default function InvoicesTabs({ packageInvoices, customInvoices, canManag
       </div>
 
       {tab === 'package'
-        ? <PackageInvoicesTable invoices={packageInvoices} canManage={canManage} />
-        : <CustomInvoicesTable invoices={customInvoices} canManage={canManage} />}
+        ? <PackageInvoicesTable invoices={packageInvoices} canManage={canManage} staffUsernames={staffUsernames} />
+        : <CustomInvoicesTable invoices={customInvoices} canManage={canManage} staffUsernames={staffUsernames} />}
     </div>
   )
 }

@@ -56,45 +56,59 @@ export default function StaffForm({ staff, activityStats }: Props) {
 
   return (
     <>
-      {activityStats.length > 0 && (
-        <Card className="shadow-sm border-0 mb-4">
-          <CardHeader className="pb-3">
-            <div className="flex items-center gap-2">
-              <BarChart3 className="w-4 h-4 text-muted-foreground" />
-              <CardTitle className="text-base">Staff Activity</CardTitle>
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Records created by each staff member. Moderators only see their own data; admins see everything.
+      <Card className="shadow-sm border-0 mb-4">
+        <CardHeader className="pb-3">
+          <div className="flex items-center gap-2">
+            <BarChart3 className="w-4 h-4 text-muted-foreground" />
+            <CardTitle className="text-base">Staff Progress</CardTitle>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Records created by each staff member (bookings, invoices, vouchers, payments, posters, and more).
+          </p>
+        </CardHeader>
+        <CardContent className="p-0 overflow-x-auto">
+          {activityStats.length === 0 ? (
+            <p className="text-sm text-muted-foreground px-6 py-8 text-center">
+              No staff activity data yet.
             </p>
-          </CardHeader>
-          <CardContent className="p-0">
+          ) : (
             <Table>
               <TableHeader>
                 <TableRow className="bg-muted/40">
                   <TableHead className="text-xs">Staff Member</TableHead>
+                  <TableHead className="text-xs">Username</TableHead>
                   <TableHead className="text-xs text-right">Bookings</TableHead>
                   <TableHead className="text-xs text-right">Custom Invoices</TableHead>
                   <TableHead className="text-xs text-right">Hotel Vouchers</TableHead>
+                  <TableHead className="text-xs text-right">Umrah Posters</TableHead>
                   <TableHead className="text-xs text-right">Payments</TableHead>
                   <TableHead className="text-xs text-right">Expenses</TableHead>
+                  <TableHead className="text-xs text-right">Total</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {activityStats.map(row => (
-                  <TableRow key={row.staff_id}>
-                    <TableCell className="text-sm font-medium">{row.staff_name}</TableCell>
-                    <TableCell className="text-sm text-right tabular-nums">{row.bookings}</TableCell>
-                    <TableCell className="text-sm text-right tabular-nums">{row.custom_invoices}</TableCell>
-                    <TableCell className="text-sm text-right tabular-nums">{row.hotel_vouchers}</TableCell>
-                    <TableCell className="text-sm text-right tabular-nums">{row.payments}</TableCell>
-                    <TableCell className="text-sm text-right tabular-nums">{row.expenses}</TableCell>
-                  </TableRow>
-                ))}
+                {activityStats.map(row => {
+                  const total = row.bookings + row.custom_invoices + row.hotel_vouchers
+                    + row.umrah_posters + row.payments + row.expenses
+                  return (
+                    <TableRow key={row.staff_id}>
+                      <TableCell className="text-sm font-medium">{row.staff_name}</TableCell>
+                      <TableCell className="text-xs font-mono text-muted-foreground">{row.staff_username}</TableCell>
+                      <TableCell className="text-sm text-right tabular-nums">{row.bookings}</TableCell>
+                      <TableCell className="text-sm text-right tabular-nums">{row.custom_invoices}</TableCell>
+                      <TableCell className="text-sm text-right tabular-nums">{row.hotel_vouchers}</TableCell>
+                      <TableCell className="text-sm text-right tabular-nums">{row.umrah_posters}</TableCell>
+                      <TableCell className="text-sm text-right tabular-nums">{row.payments}</TableCell>
+                      <TableCell className="text-sm text-right tabular-nums">{row.expenses}</TableCell>
+                      <TableCell className="text-sm text-right tabular-nums font-semibold">{total}</TableCell>
+                    </TableRow>
+                  )
+                })}
               </TableBody>
             </Table>
-          </CardContent>
-        </Card>
-      )}
+          )}
+        </CardContent>
+      </Card>
 
       <Card className="shadow-sm border-0">
         <CardHeader className="pb-3 flex flex-row items-center justify-between">

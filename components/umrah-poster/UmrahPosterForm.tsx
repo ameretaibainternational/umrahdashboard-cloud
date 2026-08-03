@@ -1,15 +1,17 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from 'react'
+import { useRouter } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
-import { Download, ChevronDown, ChevronUp, RotateCcw } from 'lucide-react'
+import { Download, ChevronDown, ChevronUp, RotateCcw, Pencil, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { getCalc } from '@/lib/calculations'
-import type { Airline, Hotel, VisaSettings, CurrencySettings, TransportRate, RoomType, CalcInput, ZiaratOption, TransportRoute, TransportVehicle, RouteVehicleRate } from '@/lib/types'
+import type { Airline, Hotel, VisaSettings, CurrencySettings, TransportRate, RoomType, CalcInput, ZiaratOption, TransportRoute, TransportVehicle, RouteVehicleRate, UmrahPosterRecord } from '@/lib/types'
+import { staffUsername } from '@/lib/staff-lookup'
 import { DEFAULT_TRANSPORT_VEHICLE, listTransportOptions } from '@/lib/transport'
 import { ziaratBySlug } from '@/lib/ziarats'
 import {
@@ -19,6 +21,7 @@ import {
   POSTER_W,
   withLeadingSpace,
   type UmrahPosterFormData,
+  canvasToJpegBase64,
   downloadPosterCanvas,
   renderPosterToCanvas,
   POSTER_BACKGROUNDS,
@@ -37,6 +40,8 @@ import {
   type PosterBranding,
 } from '@/lib/umrah-poster-branding-layout'
 import { BrandingSlider, BrandingResetButton } from '@/components/branding/BrandingSlider'
+import { createUmrahPosterWithImage, updateUmrahPosterWithImage, deleteUmrahPoster, deleteUmrahPosters } from '@/app/actions/umrah-posters'
+import { downloadStoredFile } from '@/lib/storage-client'
 
 function readFileAsDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -193,6 +198,8 @@ interface Props {
   transportRoutes?: TransportRoute[]
   transportVehicles?: TransportVehicle[]
   routeVehicleRates?: RouteVehicleRate[]
+  existingPosters?: UmrahPosterRecord[]
+  staffUsernames?: Record<string, string>
 }
 
 function defaultPosterZiaratIds(ziarats: ZiaratOption[]): string[] {
@@ -212,7 +219,11 @@ export default function UmrahPosterForm({
   transportRoutes = [],
   transportVehicles = [],
   routeVehicleRates = [],
+  existingPosters = [],
+  staffUsernames = {},
 }: Props) {
+  const router = useRouter()
+  const [isPosterPending, startPosterTransition] = useTransition()
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [data, setData] = useState<UmrahPosterFormData>(DEFAULT_POSTER_DATA)
   const [showCalc, setShowCalc] = useState(false)
@@ -252,6 +263,11 @@ export default function UmrahPosterForm({
   const [logoX, setLogoX] = useState(DEFAULT_POSTER_LOGO_X)
   const [logoY, setLogoY] = useState(DEFAULT_POSTER_LOGO_Y)
   const logoInputRef = useRef<HTMLInputElement>(null)
+  const [editingPosterId, setEditingPosterId] = useState<string | null>(null)
+  const [showAllPosters, setShowAllPosters] = useState(false)
+  const [selectedPosterIds, setSelectedPosterIds] = useState<Set<string>>(() => new Set())
+
+  const savedPosters = showAllPosters ? existingPosters : existingPosters.filter(p => !p.file_deleted_at)
 
   const logoMaxX = Math.max(0, POSTER_CANVAS_W - logoSize)
   const logoMaxY = Math.max(0, POSTER_CANVAS_H - logoSize)
@@ -464,15 +480,144 @@ export default function UmrahPosterForm({
     return () => clearTimeout(t)
   }, [redraw])
 
-  async function handleDownload() {
+  async function handleSaveAndDownload() {
     const canvas = canvasRef.current
     if (!canvas) return
     setIsDownloading(true)
     try {
       await renderPosterToCanvas(canvas, data, branding)
-      const slug = data.cityName.trim().replace(/\s+/g, '-').toLowerCase() || 'umrah-package'
-      downloadPosterCanvas(canvas, `${slug}-poster.jpg`)
-      toast.success('Poster downloaded.')
+      const jpeg_base64 = canvasToJpegBase64(canvas)
+      const title = data.cityName.trim() || data.blessedLine.trim() || 'Umrah Poster'
+      const payload = {
+        title,
+        poster_date: new Date().toISOString().slice(0, 10),
+        poster_data: data as unknown as Record<string, unknown>,
+        branding_data: branding as unknown as Record<string, unknown>,
+        calc_data: buildCalcSnapshot(),
+        jpeg_base64,
+      }
+      const persist = () => editingPosterId
+        ? updateUmrahPosterWithImage({ id: editingPosterId, ...payload })
+        : createUmrahPosterWithImage(payload)
+
+      const result = await persist()
+      if ('error' in result && result.error) {
+        toast.error(result.error)
+        return
+      }
+      if (!('success' in result) || !result.success) return
+
+      const fileNo = ('poster_number' in result && result.poster_number)
+        ? result.poster_number
+        : (editingPosterId ? savedPosters.find(p => p.id === editingPosterId)?.poster_number : 'poster')
+
+      downloadPosterCanvas(canvas, `${fileNo}.jpg`)
+      toast.success(editingPosterId ? 'Poster updated and downloaded.' : `Poster ${fileNo} saved and downloaded.`)
+      if (editingPosterId) {
+        setEditingPosterId(null)
+        setData(DEFAULT_POSTER_DATA)
+        setLogoUrl(null)
+        setAddCorner(DEFAULT_POSTER_ADD_CORNER)
+        setCornerColor('#1b376e')
+        resetLogoDefaults()
+      }
+      router.refresh()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Save failed.')
+    } finally {
+      setIsDownloading(false)
+    }
+  }
+
+  function buildCalcSnapshot(): Record<string, unknown> {
+    return {
+      showCalc,
+      showHeadings,
+      showAirplaneSettings,
+      visaAmount,
+      visaCurrency,
+      useCustomTicket,
+      customTicketPkr,
+      includeTransport,
+      profitType,
+      profitValue,
+      currencyUnit,
+      airlineId,
+      transportType,
+      selectedTransportRouteIds,
+      makkahHotelId,
+      madinahHotelId,
+      makkahNights,
+      madinahNights,
+      selectedZiaratIds,
+    }
+  }
+
+  function restoreCalcSnapshot(calc: Record<string, unknown> | null | undefined) {
+    if (!calc) return
+    if (typeof calc.showCalc === 'boolean') setShowCalc(calc.showCalc)
+    if (typeof calc.showHeadings === 'boolean') setShowHeadings(calc.showHeadings)
+    if (typeof calc.showAirplaneSettings === 'boolean') setShowAirplaneSettings(calc.showAirplaneSettings)
+    if (typeof calc.visaAmount === 'number') setVisaAmount(calc.visaAmount)
+    if (calc.visaCurrency === 'PKR' || calc.visaCurrency === 'SAR') setVisaCurrency(calc.visaCurrency)
+    if (typeof calc.useCustomTicket === 'boolean') setUseCustomTicket(calc.useCustomTicket)
+    if (typeof calc.customTicketPkr === 'number') setCustomTicketPkr(calc.customTicketPkr)
+    if (typeof calc.includeTransport === 'boolean') setIncludeTransport(calc.includeTransport)
+    if (calc.profitType === 'percent' || calc.profitType === 'fixed') setProfitType(calc.profitType)
+    if (typeof calc.profitValue === 'number') setProfitValue(calc.profitValue)
+    if (calc.currencyUnit === 'PKR' || calc.currencyUnit === 'SAR') setCurrencyUnit(calc.currencyUnit)
+    if (typeof calc.airlineId === 'string') setAirlineId(calc.airlineId)
+    if (typeof calc.transportType === 'string') setTransportType(calc.transportType)
+    if (Array.isArray(calc.selectedTransportRouteIds)) setSelectedTransportRouteIds(calc.selectedTransportRouteIds as string[])
+    if (typeof calc.makkahHotelId === 'string') setMakkahHotelId(calc.makkahHotelId)
+    if (typeof calc.madinahHotelId === 'string') setMadinahHotelId(calc.madinahHotelId)
+    if (typeof calc.makkahNights === 'number') setMakkahNights(calc.makkahNights)
+    if (typeof calc.madinahNights === 'number') setMadinahNights(calc.madinahNights)
+    if (Array.isArray(calc.selectedZiaratIds)) setSelectedZiaratIds(calc.selectedZiaratIds as string[])
+  }
+
+  function restoreBrandingSnapshot(b: Record<string, unknown> | undefined) {
+    if (!b) return
+    if (typeof b.logoUrl === 'string') setLogoUrl(b.logoUrl || null)
+    else if (b.logoUrl === null) setLogoUrl(null)
+    if (typeof b.addCorner === 'boolean') setAddCorner(b.addCorner)
+    if (typeof b.cornerColor === 'string') setCornerColor(b.cornerColor)
+    if (typeof b.logoSize === 'number') setLogoSize(b.logoSize)
+    if (typeof b.logoX === 'number') setLogoX(b.logoX)
+    if (typeof b.logoY === 'number') setLogoY(b.logoY)
+  }
+
+  function handleEdit(poster: UmrahPosterRecord) {
+    setData({ ...DEFAULT_POSTER_DATA, ...(poster.poster_data as Partial<UmrahPosterFormData>) })
+    restoreBrandingSnapshot(poster.branding_data)
+    restoreCalcSnapshot(poster.calc_data)
+    setEditingPosterId(poster.id)
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+    toast.info(`Poster ${poster.poster_number} loaded in editor.`)
+  }
+
+  function handleCancelEdit() {
+    setEditingPosterId(null)
+    setData(DEFAULT_POSTER_DATA)
+    setLogoUrl(null)
+    setAddCorner(DEFAULT_POSTER_ADD_CORNER)
+    setCornerColor('#1b376e')
+    resetLogoDefaults()
+    toast.info('Editor reset.')
+  }
+
+  async function handleStoredDownload(poster: UmrahPosterRecord) {
+    if (poster.file_deleted_at) {
+      toast.error(`File removed — storage was freed on ${poster.file_deleted_at.split('T')[0]}.`)
+      return
+    }
+    if (!poster.storage_key) {
+      toast.error('No stored image for this poster.')
+      return
+    }
+    setIsDownloading(true)
+    try {
+      await downloadStoredFile(poster.id, 'poster')
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Download failed.')
     } finally {
@@ -480,7 +625,57 @@ export default function UmrahPosterForm({
     }
   }
 
+  function togglePosterSelect(id: string, checked: boolean) {
+    setSelectedPosterIds(prev => {
+      const next = new Set(prev)
+      if (checked) next.add(id)
+      else next.delete(id)
+      return next
+    })
+  }
+
+  function toggleAllPosters(checked: boolean) {
+    if (checked) {
+      setSelectedPosterIds(new Set(savedPosters.map(p => p.id)))
+    } else {
+      setSelectedPosterIds(new Set())
+    }
+  }
+
+  async function handleBulkDelete() {
+    if (selectedPosterIds.size === 0) return
+    if (!confirm(`Delete ${selectedPosterIds.size} selected poster(s)? This cannot be undone.`)) return
+
+    startPosterTransition(async () => {
+      const ids = [...selectedPosterIds]
+      const result = await deleteUmrahPosters(ids)
+      if ('error' in result && result.error) {
+        toast.error(result.error)
+      } else {
+        toast.success('Selected poster(s) deleted.')
+        setSelectedPosterIds(new Set())
+        if (editingPosterId && ids.includes(editingPosterId)) handleCancelEdit()
+        router.refresh()
+      }
+    })
+  }
+
+  async function handleDeletePoster(poster: UmrahPosterRecord) {
+    if (!confirm(`Delete poster ${poster.poster_number}? This cannot be undone.`)) return
+    startPosterTransition(async () => {
+      const result = await deleteUmrahPoster(poster.id)
+      if ('error' in result && result.error) {
+        toast.error(result.error)
+      } else {
+        toast.success(`Poster ${poster.poster_number} deleted.`)
+        if (editingPosterId === poster.id) handleCancelEdit()
+        router.refresh()
+      }
+    })
+  }
+
   return (
+    <div className="space-y-6">
     <div className="flex flex-col xl:flex-row gap-6">
       {/* ── Form ── */}
       <div className="xl:w-[42%] shrink-0 space-y-4">
@@ -932,7 +1127,9 @@ export default function UmrahPosterForm({
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs">
-                {profitType === 'percent' ? 'Profit %' : (currencyUnit === 'PKR' ? 'Profit PKR' : 'Profit SAR')}
+                {profitType === 'percent'
+                  ? 'Profit %'
+                  : `${currencyUnit === 'PKR' ? 'Profit PKR' : 'Profit SAR'} (per pax)`}
               </Label>
               <Input
                 type="number"
@@ -1284,7 +1481,7 @@ export default function UmrahPosterForm({
 
         <Section title="Branding">
           <p className="text-[10px] text-muted-foreground mb-2">
-            Logo stays in your browser only until download — not stored on the server. Recommended size: 215×215 px.
+            Logo is saved with the poster so you can edit and re-download later. Recommended size: 215×215 px.
           </p>
           <div className="space-y-1.5">
             <Label className="text-xs">Logo Upload (max 150 KB)</Label>
@@ -1419,25 +1616,170 @@ export default function UmrahPosterForm({
         <div className="flex items-center justify-between gap-2 flex-wrap">
           <p className="text-xs text-muted-foreground font-medium">
             Live Preview {isRendering && <span className="text-muted-foreground/60">(updating…)</span>}
+            {editingPosterId && (
+              <span className="ml-2 text-amber-600 font-semibold">
+                Editing {savedPosters.find(p => p.id === editingPosterId)?.poster_number}
+              </span>
+            )}
           </p>
-          <Button
-            type="button"
-            onClick={handleDownload}
-            disabled={isDownloading || isRendering}
-            className="gap-2 bg-navy hover:bg-navy/90 text-white h-9 text-xs"
-            size="sm"
-          >
-            <Download className="w-3.5 h-3.5" />
-            {isDownloading ? 'Preparing…' : 'Download High-Quality Image'}
-          </Button>
+          <div className="flex items-center gap-2">
+            {editingPosterId && (
+              <Button type="button" variant="outline" size="sm" className="h-9 text-xs" onClick={handleCancelEdit}>
+                Cancel Edit
+              </Button>
+            )}
+            <Button
+              type="button"
+              onClick={handleSaveAndDownload}
+              disabled={isDownloading || isRendering}
+              className="gap-2 bg-navy hover:bg-navy/90 text-white h-9 text-xs"
+              size="sm"
+            >
+              <Download className="w-3.5 h-3.5" />
+              {isDownloading
+                ? 'Saving…'
+                : (editingPosterId ? 'Update & Download Poster' : 'Save & Download Poster')}
+            </Button>
+          </div>
         </div>
 
         <ScaledCanvasPreview canvasRef={canvasRef} />
 
         <p className="text-[10px] text-muted-foreground text-center">
-          Output: 1587 × 2245 px JPEG · Base: Umrah Package-empty.jpg
+          Output: 1587 × 2245 px JPEG · Saved to cloud storage on download
         </p>
       </div>
+    </div>
+
+    {(existingPosters.length > 0 || savedPosters.length > 0) && (
+      <Card className="border shadow-sm">
+        <CardHeader className="pb-3 pt-4 px-6 border-b flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between bg-muted/20">
+          <div>
+            <CardTitle className="text-base">Saved Posters</CardTitle>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Manage and re-edit saved Umrah package posters
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-3">
+            <label className="flex items-center gap-2 text-xs font-medium cursor-pointer select-none">
+              <Checkbox
+                checked={showAllPosters}
+                onCheckedChange={v => {
+                  setShowAllPosters(Boolean(v))
+                  setSelectedPosterIds(new Set())
+                }}
+              />
+              Include Posters with deleted images
+            </label>
+            {selectedPosterIds.size > 0 && (
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={handleBulkDelete}
+                disabled={isPosterPending}
+                className="gap-1.5 h-8 text-xs"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                Delete Selected ({selectedPosterIds.size})
+              </Button>
+            )}
+          </div>
+        </CardHeader>
+        <CardContent className="p-0 overflow-x-auto">
+          <table className="w-full text-sm min-w-[760px]">
+            <thead className="bg-muted/30 text-left border-b">
+              <tr>
+                <th className="p-3 w-10">
+                  <Checkbox
+                    checked={savedPosters.length > 0 && savedPosters.every(p => selectedPosterIds.has(p.id))}
+                    onCheckedChange={checked => toggleAllPosters(checked === true)}
+                    aria-label="Select all posters"
+                  />
+                </th>
+                <th className="p-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Poster #</th>
+                <th className="p-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Title</th>
+                <th className="p-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Created By</th>
+                <th className="p-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Date</th>
+                <th className="p-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Image Status</th>
+                <th className="p-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {savedPosters.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="text-center text-muted-foreground py-8 text-xs">
+                    No posters match the filter.
+                  </td>
+                </tr>
+              ) : (
+                savedPosters.map(poster => {
+                  const isSelected = selectedPosterIds.has(poster.id)
+                  const hasFile = poster.storage_key && !poster.file_deleted_at
+                  return (
+                    <tr key={poster.id} className="hover:bg-slate-50/50 transition-colors">
+                      <td className="p-3">
+                        <Checkbox
+                          checked={isSelected}
+                          onCheckedChange={checked => togglePosterSelect(poster.id, checked === true)}
+                          aria-label={`Select poster ${poster.poster_number}`}
+                        />
+                      </td>
+                      <td className="p-3 font-semibold text-navy text-xs font-mono">{poster.poster_number}</td>
+                      <td className="p-3 text-sm font-medium truncate max-w-[220px]" title={poster.title}>
+                        {poster.title || '—'}
+                      </td>
+                      <td className="p-3 text-xs font-mono text-muted-foreground">{staffUsername(staffUsernames, poster.created_by)}</td>
+                      <td className="p-3 text-xs text-muted-foreground">{poster.poster_date}</td>
+                      <td className="p-3">
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium border ${hasFile
+                          ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                          : 'bg-amber-50 text-amber-700 border-amber-200'
+                          }`}>
+                          {hasFile ? 'Stored JPEG' : 'Image Deleted'}
+                        </span>
+                      </td>
+                      <td className="p-3 text-right">
+                        <div className="flex items-center justify-end gap-1.5">
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-7 w-7 p-0"
+                            onClick={() => handleEdit(poster)}
+                            title="Edit Poster"
+                          >
+                            <Pencil className="w-3.5 h-3.5" />
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-7 w-7 p-0"
+                            disabled={!hasFile || isDownloading}
+                            onClick={() => handleStoredDownload(poster)}
+                            title="Download JPEG"
+                          >
+                            <Download className="w-3.5 h-3.5" />
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-7 w-7 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
+                            disabled={isPosterPending}
+                            onClick={() => handleDeletePoster(poster)}
+                            title="Delete Poster"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                })
+              )}
+            </tbody>
+          </table>
+        </CardContent>
+      </Card>
+    )}
     </div>
   )
 }

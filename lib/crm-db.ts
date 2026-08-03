@@ -346,6 +346,52 @@ export async function deleteExpensesByInvoiceId(invoiceId: string): Promise<void
   }
 }
 
+export async function deleteExpensesByBookingId(bookingId: string): Promise<void> {
+  await ensureOwnershipColumns()
+  const sql = requireWriteSql()
+  try {
+    await sql`DELETE FROM expenses WHERE booking_id = ${bookingId}`
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    if (!message.includes('booking_id')) throw error
+  }
+}
+
+export async function fetchBookingExpenseSnapshot(bookingId: string): Promise<{
+  customer_name: string
+  cost_pkr: number
+  total_pkr: number
+  profit_pkr: number
+  booking_date: string
+  paid_pkr: number
+  created_by: string | null
+  source_invoice_id: string | null
+} | null> {
+  await ensureOwnershipColumns()
+  const sql = requireWriteSql()
+  const [row] = await sql<{
+    customer_name: string
+    cost_pkr: number
+    total_pkr: number
+    profit_pkr: number
+    booking_date: string
+    paid_pkr: number
+    created_by: string | null
+    source_invoice_id: string | null
+  }[]>`
+    SELECT customer_name, cost_pkr, total_pkr, profit_pkr, booking_date, paid_pkr, created_by, source_invoice_id
+    FROM bookings WHERE id = ${bookingId}
+  `
+  if (!row) return null
+  return {
+    ...row,
+    cost_pkr: Number(row.cost_pkr),
+    total_pkr: Number(row.total_pkr),
+    profit_pkr: Number(row.profit_pkr),
+    paid_pkr: Number(row.paid_pkr),
+  }
+}
+
 export async function fetchExpenses(createdBy?: string | null): Promise<Expense[]> {
   const sql = requireSql()
   const rows = await fetchOwnedRows(

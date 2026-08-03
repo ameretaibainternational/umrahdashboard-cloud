@@ -15,14 +15,18 @@ interface BulkItem {
 async function resolveFileDemo(item: BulkItem): Promise<{ name: string; buffer: Buffer } | null> {
   const row = item.type === 'invoice'
     ? demoStore.customInvoices.find(i => i.id === item.id)
-    : demoStore.hotelVouchers.find(v => v.id === item.id)
+    : item.type === 'voucher'
+      ? demoStore.hotelVouchers.find(v => v.id === item.id)
+      : demoStore.umrahPosters.find(p => p.id === item.id)
   if (!row?.storage_key || row.file_deleted_at) return null
   const { demoFileStore } = await import('@/lib/demo-file-store')
   const buf = demoFileStore.get(row.storage_key)
   if (!buf) return null
   const name = item.type === 'invoice'
     ? `${(row as { invoice_number: string }).invoice_number}.pdf`
-    : `${(row as { voucher_number: string }).voucher_number}.pdf`
+    : item.type === 'voucher'
+      ? `${(row as { voucher_number: string }).voucher_number}.pdf`
+      : `${(row as { poster_number: string }).poster_number}.jpg`
   return { name, buffer: buf }
 }
 

@@ -48,7 +48,8 @@ interface LineItemDraft {
   use_night_price: boolean  // mutually exclusive with use_pax_price
   night_price: string
   night_price_unit: string
-  total_pax: string         // label = "Total Pax" or "Total Nights" depending on active mode
+  total_pax: string         // passenger count (dashboard + invoice when not night-only qty)
+  total_nights: string      // nights count when per-night pricing is active
   total: string
   total_unit: string
   received: string
@@ -59,21 +60,24 @@ function newRow(id: string, defaultCurrency = 'PKR'): LineItemDraft {
     id, service: '',
     use_pax_price: false, pax_price: '', pax_price_unit: defaultCurrency,
     use_night_price: false, night_price: '', night_price_unit: defaultCurrency,
-    total_pax: '1', total: '', total_unit: defaultCurrency, received: '0',
+    total_pax: '1', total_nights: '1', total: '', total_unit: defaultCurrency, received: '0',
   }
 }
 
 function lineItemToDraft(item: CustomInvoiceLineItem, id: string): LineItemDraft {
+  const isNight = item.night_price != null
+  const hasExplicitNights = item.total_nights != null && item.total_nights > 0
   return {
     id,
     service: item.service,
     use_pax_price: item.pax_price != null,
     pax_price: item.pax_price != null ? String(item.pax_price) : '',
     pax_price_unit: item.pax_price_unit || 'PKR',
-    use_night_price: item.night_price != null,
+    use_night_price: isNight,
     night_price: item.night_price != null ? String(item.night_price) : '',
     night_price_unit: item.night_price_unit || 'PKR',
-    total_pax: String(item.total_pax || 1),
+    total_pax: hasExplicitNights ? String(item.total_pax || 1) : (isNight ? '1' : String(item.total_pax || 1)),
+    total_nights: isNight ? String(item.total_nights ?? item.total_pax ?? 1) : '1',
     total: String(item.total),
     total_unit: item.total_unit || 'PKR',
     received: String(item.received),
@@ -93,15 +97,16 @@ function toNum(s: string) { const n = parseFloat(s.replace(/,/g, '')); return is
 function buildLineItem(d: LineItemDraft, globalCurrency: string): CustomInvoiceLineItem {
   const pax_price = d.use_pax_price && d.pax_price !== '' ? toNum(d.pax_price) : null
   const night_price = d.use_night_price && d.night_price !== '' ? toNum(d.night_price) : null
-  const qty = toNum(d.total_pax) || 1  // total_pax doubles as total_nights in night mode
+  const paxCount = toNum(d.total_pax) || 1
+  const nightCount = toNum(d.total_nights) || 1
 
   let total: number
   if (d.total !== '') {
     total = toNum(d.total)
   } else if (pax_price != null) {
-    total = pax_price * qty
+    total = pax_price * paxCount
   } else if (night_price != null) {
-    total = night_price * qty
+    total = night_price * nightCount
   } else {
     total = 0
   }
@@ -112,7 +117,8 @@ function buildLineItem(d: LineItemDraft, globalCurrency: string): CustomInvoiceL
     pax_price_unit: globalCurrency,
     night_price,
     night_price_unit: globalCurrency,
-    total_pax: qty,
+    total_pax: paxCount,
+    ...(night_price != null ? { total_nights: nightCount } : {}),
     total,
     total_unit: globalCurrency,
     received: toNum(d.received),
@@ -909,7 +915,7 @@ export default function CustomInvoiceForm({
                                     onChange={e => {
                                       updateRow(row.id, {
                                         use_pax_price: e.target.checked,
-                                        use_night_price: false,  // uncheck the other
+                                        use_night_price: false,
                                         pax_price_unit: e.target.checked ? rowCurrency : row.pax_price_unit,
                                         total: '',
                                       })
@@ -953,7 +959,9 @@ export default function CustomInvoiceForm({
                                     onChange={e => {
                                       updateRow(row.id, {
                                         use_night_price: e.target.checked,
-                                        use_pax_price: false,  // uncheck the other
+                                        use_pax_price: false,
+                                        night_price_unit: e.target.checked ? rowCurrency : row.night_price_unit,
+                                        total_nights: e.target.checked ? (row.total_nights || '1') : row.total_nights,
                                         total: '',
                                       })
                                     }}
@@ -968,7 +976,7 @@ export default function CustomInvoiceForm({
                                       value={row.night_price}
                                       onChange={e => {
                                         const val = e.target.value
-                                        const newTotal = toNum(val) * (toNum(row.total_pax) || 1)
+                                        const newTotal = toNum(val) * (toNum(row.total_nights) || 1)
                                         updateRow(row.id, { night_price: val, total: newTotal > 0 ? String(newTotal) : '' })
                                       }}
                                       className="h-8 text-sm w-24"
@@ -987,11 +995,31 @@ export default function CustomInvoiceForm({
                               </div>
                             </div>
 
-                            {/* Total Pax / Total Nights — label changes with active mode */}
+                            {row.use_night_price && (
+                              <div className="space-y-1.5 w-full sm:w-[80px] shrink-0">
+                                <Label className="text-xs">Total Nights</Label>
+                                <Input
+                                  type="number" min="1"
+                                  value={row.total_nights}
+                                  onChange={e => {
+                                    const val = e.target.value
+                                    const nights = toNum(val) || 1
+                                    if (row.night_price) {
+                                      updateRow(row.id, {
+                                        total_nights: val,
+                                        total: String(toNum(row.night_price) * nights),
+                                      })
+                                    } else {
+                                      updateRow(row.id, { total_nights: val })
+                                    }
+                                  }}
+                                  className="h-8 text-sm"
+                                />
+                              </div>
+                            )}
+
                             <div className="space-y-1.5 w-full sm:w-[80px] shrink-0">
-                              <Label className="text-xs">
-                                {row.use_night_price ? 'Total Nights' : 'Total Pax'}
-                              </Label>
+                              <Label className="text-xs">Total Pax</Label>
                               <Input
                                 type="number" min="1"
                                 value={row.total_pax}
@@ -1000,8 +1028,6 @@ export default function CustomInvoiceForm({
                                   const qty = toNum(val) || 1
                                   if (row.use_pax_price && row.pax_price) {
                                     updateRow(row.id, { total_pax: val, total: String(toNum(row.pax_price) * qty) })
-                                  } else if (row.use_night_price && row.night_price) {
-                                    updateRow(row.id, { total_pax: val, total: String(toNum(row.night_price) * qty) })
                                   } else {
                                     updateRow(row.id, { total_pax: val })
                                   }

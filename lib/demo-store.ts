@@ -1,4 +1,4 @@
-import type { Airline, Hotel, Booking, Payment, Expense, StaffUser, VisaSettings, CurrencySettings, TransportRate, Company, InvoiceSettings, InvoiceClient, InvoicePaymentMethod, InvoiceService, CustomInvoice, HotelVoucherSettings, HotelVoucherRecord, StorageUsage, ZiaratOption, HotelContact, TransportContact, CustomTransport, TransportRoute, TransportVehicle, RouteVehicleRate } from './types'
+import type { Airline, Hotel, Booking, Payment, Expense, StaffUser, VisaSettings, CurrencySettings, TransportRate, Company, InvoiceSettings, InvoiceClient, InvoicePaymentMethod, InvoiceService, CustomInvoice, HotelVoucherSettings, HotelVoucherRecord, UmrahPosterRecord, StorageUsage, ZiaratOption, HotelContact, TransportContact, CustomTransport, TransportRoute, TransportVehicle, RouteVehicleRate } from './types'
 import { DEFAULT_TRANSPORT_RATE_SAR, TRANSPORT_VEHICLES, transportServiceName } from './transport'
 import { DEFAULT_ZIARAT_SEED } from './ziarats'
 import { DEFAULT_URDU_FOOTER, DEFAULT_URDU_GUIDELINES } from './hotel-voucher-defaults'
@@ -238,8 +238,10 @@ class DemoStore {
   hotelVoucherSettings: HotelVoucherSettings = { ...DEFAULT_HOTEL_VOUCHER_SETTINGS, urdu_guidelines: [...DEFAULT_URDU_GUIDELINES] }
   customInvoices: CustomInvoice[] = []
   hotelVouchers: HotelVoucherRecord[] = []
+  umrahPosters: UmrahPosterRecord[] = []
   invoiceCounter: number = 0
   voucherCounter: number = 0
+  posterCounter: number = 0
   storageUsage: StorageUsage = { id: 'su1', total_bytes: 0, updated_at: new Date().toISOString() }
 
   private bumpStorage(bytes: number) {
@@ -505,6 +507,9 @@ class DemoStore {
   deleteExpensesForInvoice(invoiceId: string) {
     this.expenses = this.expenses.filter(e => e.invoice_id !== invoiceId)
   }
+  deleteExpensesForBooking(bookingId: string) {
+    this.expenses = this.expenses.filter(e => e.booking_id !== bookingId)
+  }
 
   // Custom Invoices
   addCustomInvoice(
@@ -594,6 +599,52 @@ class DemoStore {
       this.reduceStorage(v.file_size_bytes ?? 0)
     }
     this.hotelVouchers = this.hotelVouchers.filter(x => x.id !== id)
+  }
+
+  addUmrahPoster(
+    data: Omit<UmrahPosterRecord, 'created_at' | 'poster_number'> & { poster_number?: string },
+  ): UmrahPosterRecord {
+    this.posterCounter++
+    const poster: UmrahPosterRecord = {
+      ...data,
+      poster_number: data.poster_number ?? `UP-${String(this.posterCounter).padStart(3, '0')}`,
+      file_deleted_at: data.file_deleted_at ?? null,
+      created_at: new Date().toISOString(),
+    }
+    if (poster.file_size_bytes) this.bumpStorage(poster.file_size_bytes)
+    this.umrahPosters = [poster, ...this.umrahPosters]
+    return poster
+  }
+  softDeletePosterFile(id: string) {
+    const p = this.umrahPosters.find(x => x.id === id)
+    if (!p || p.file_deleted_at || !p.storage_key) return
+    demoFileStore.delete(p.storage_key)
+    this.reduceStorage(p.file_size_bytes ?? 0)
+    p.file_deleted_at = new Date().toISOString()
+  }
+  updateUmrahPoster(id: string, data: Partial<Omit<UmrahPosterRecord, 'id' | 'created_at' | 'poster_number'>>) {
+    const idx = this.umrahPosters.findIndex(p => p.id === id)
+    if (idx !== -1) {
+      const existing = this.umrahPosters[idx]
+      const oldSize = existing.file_size_bytes ?? 0
+      const newSize = data.file_size_bytes ?? oldSize
+      if (oldSize !== newSize) {
+        this.reduceStorage(oldSize)
+        this.bumpStorage(newSize)
+      }
+      this.umrahPosters[idx] = {
+        ...existing,
+        ...data,
+      } as UmrahPosterRecord
+    }
+  }
+  deleteUmrahPoster(id: string) {
+    const p = this.umrahPosters.find(x => x.id === id)
+    if (p?.storage_key && !p.file_deleted_at) {
+      demoFileStore.delete(p.storage_key)
+      this.reduceStorage(p.file_size_bytes ?? 0)
+    }
+    this.umrahPosters = this.umrahPosters.filter(x => x.id !== id)
   }
   updateInvoiceSettings(data: Partial<Omit<InvoiceSettings, 'id'>>) {
     this.invoiceSettings = { ...this.invoiceSettings, ...data, updated_at: new Date().toISOString() }
@@ -686,15 +737,17 @@ class DemoStore {
     this.hotelVoucherSettings = { ...DEFAULT_HOTEL_VOUCHER_SETTINGS, urdu_guidelines: [...DEFAULT_URDU_GUIDELINES] }
     this.customInvoices = []
     this.hotelVouchers = []
+    this.umrahPosters = []
     this.invoiceCounter = 0
     this.voucherCounter = 0
+    this.posterCounter = 0
     this.storageUsage = { id: 'su1', total_bytes: 0, updated_at: new Date().toISOString() }
     demoFileStore.clear()
   }
 }
 
 // Bump this whenever DemoStore gains new fields, to force recreation in dev hot-reloads
-const STORE_VERSION = 12
+const STORE_VERSION = 13
 
 const globalStore = globalThis as typeof globalThis & {
   __demoStore?: DemoStore

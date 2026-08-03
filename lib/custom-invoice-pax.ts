@@ -1,8 +1,7 @@
 import type { CustomInvoice, CustomInvoiceLineItem } from '@/lib/types'
 
-/** Pax per line item; night-mode rows use total_pax for nights, not people. */
+/** Pax per line item — always uses total_pax (people count). */
 function lineItemPax(item: CustomInvoiceLineItem): number {
-  if (item.night_price != null) return 0
   const qty = Number(item.total_pax)
   return Number.isFinite(qty) && qty > 0 ? qty : 0
 }

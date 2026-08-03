@@ -36,10 +36,10 @@ const ROWS_PC = 5   // continuation pages (compact header, more room)
 // Page 1 row start positions — single Y for all columns (split Y values misalign in html2canvas PDF)
 const P1_ROW_Y0 = 337.6
 
-// Continuation page row start positions — large top padding keeps rows lower on the page
-const C_HDR_Y = 300
-const C_HR_Y = 0
-const C_ROW_Y0 = 340
+// Continuation page row start — align with page 1 once billing block is shown
+const C_HDR_Y = 294.1
+const C_HR_Y = 322.8
+const C_ROW_Y0 = P1_ROW_Y0
 
 function fmtDate(iso: string) {
   const d = new Date(iso + 'T00:00:00')
@@ -52,6 +52,13 @@ function fmtDate(iso: string) {
 function fmtNum(n: number, unit?: string) {
   const s = new Intl.NumberFormat('en-US').format(n)
   return unit ? `${s}\u00A0${unit}` : s
+}
+
+function lineItemQty(item: CustomInvoiceLineItem): number {
+  if (item.night_price != null && item.pax_price == null) {
+    return item.total_nights ?? item.total_pax
+  }
+  return item.total_pax
 }
 
 // ─── Absolutely-positioned text node ─────────────────────────────────────────
@@ -178,31 +185,24 @@ function TableRows({
         return (
           <div key={i} style={{ position: 'relative', width: '100%', minHeight: `${ROW_H}px` }}>
             <T x={30.6} y={0} invoiceRow color={ink}>{rowOffset + i + 1}</T>
-            <div
-              style={{
-                position: 'relative',
-                display: 'block',
-                marginLeft: `${SERVICE_COL_X}px`,
-                maxWidth: `${serviceMaxW}px`,
-                fontWeight: 400,
-                fontSize: '12px',
-                color: ink,
-                lineHeight: '16px',
-                fontFamily: PDF_FONT,
-                paddingBottom: '4px',
-              }}
-              data-invoice-row-text="1"
+            <T
+              x={SERVICE_COL_X}
+              y={0}
+              invoiceRow
+              color={ink}
+              maxW={serviceMaxW}
+              style={{ whiteSpace: 'normal', wordBreak: 'break-word' }}
             >
               {item.service}
-            </div>
+            </T>
             {unitPriceLabel && !hidePricing && unitVal && (
               <T x={214.5} y={0} nowrap invoiceRow color={ink}>{unitVal}</T>
             )}
             {hidePricing ? (
-              <T right={557.0} y={0} nowrap invoiceRow color={ink}>{item.total_pax}</T>
+              <T right={557.0} y={0} nowrap invoiceRow color={ink}>{lineItemQty(item)}</T>
             ) : (
               <>
-                <T x={324.6} y={0} invoiceRow color={ink}>{item.total_pax}</T>
+                <T x={324.6} y={0} invoiceRow color={ink}>{lineItemQty(item)}</T>
                 <T right={479.6} y={0} nowrap invoiceRow color={ink}>
                   {fmtNum(item.total, item.total_unit || undefined)}
                 </T>
@@ -213,6 +213,22 @@ function TableRows({
         )
       })}
     </div>
+  )
+}
+
+// ─── Billed To + Payment Method (repeated on every invoice page) ─────────────
+function BillingDetailsSection({ invoice, ink }: { invoice: CustomInvoice; ink: string }) {
+  return (
+    <>
+      <T x={59.5} y={176.0} bold color={ink}>Billed To</T>
+      <T x={59.5} y={195.3} color={ink}><span style={{ fontWeight: 500 }}>Name: </span>{invoice.billed_to_name}</T>
+      <T x={59.8} y={214.9} color={ink}><span style={{ fontWeight: 500 }}>Address: </span>{invoice.billed_to_address}</T>
+      <T x={59.8} y={237.7} color={ink}><span style={{ fontWeight: 500 }}>Client Number: </span>{invoice.billed_to_client_number}</T>
+
+      <T x={439.9} y={178.6} bold color={ink}>Payment Method</T>
+      <T right={547} y={199.5} nowrap color={ink}>{invoice.payment_bank_name}:</T>
+      <T right={547} y={220.1} nowrap color={ink}>{invoice.payment_account_number}</T>
+    </>
   )
 }
 
@@ -459,16 +475,8 @@ const CustomInvoiceTemplate = forwardRef<HTMLDivElement, Props>(
             <span style={{ fontWeight: 400 }}>{fmtDate(invoice.invoice_date)}</span>
           </T>
 
-          {/* Billed To */}
-          <T x={59.5} y={176.0} bold color={ink}>Billed To</T>
-          <T x={59.5} y={195.3} color={ink}><span style={{ fontWeight: 500 }}>Name: </span>{invoice.billed_to_name}</T>
-          <T x={59.8} y={214.9} color={ink}><span style={{ fontWeight: 500 }}>Address: </span>{invoice.billed_to_address}</T>
-          <T x={59.8} y={237.7} color={ink}><span style={{ fontWeight: 500 }}>Client Number: </span>{invoice.billed_to_client_number}</T>
-
-          {/* Payment Method */}
-          <T x={439.9} y={178.6} bold color={ink}>Payment Method</T>
-          <T right={547} y={199.5} nowrap color={ink}>{invoice.payment_bank_name}:</T>
-          <T right={547} y={220.1} nowrap color={ink}>{invoice.payment_account_number}</T>
+          {/* Billed To + Payment Method */}
+          <BillingDetailsSection invoice={invoice} ink={ink} />
 
           {/* Table */}
           <TableHeader unitPriceLabel={unitPriceLabel} qtyLabel={qtyLabel} hdrY={294.1} hrY={322.8} ink={ink} ruleColor={ruleColor} hidePricing={hidePricing} />
@@ -514,6 +522,8 @@ const CustomInvoiceTemplate = forwardRef<HTMLDivElement, Props>(
               <T right={559} y={28} size={9} color={inkMuted} nowrap>
                 Page {pageNum} of {totalPages}
               </T>
+
+              <BillingDetailsSection invoice={invoice} ink={ink} />
 
               {/* Table header repeated for context */}
               <TableHeader unitPriceLabel={unitPriceLabel} qtyLabel={qtyLabel} hdrY={C_HDR_Y} hrY={C_HR_Y} ink={ink} ruleColor={ruleColor} hidePricing={hidePricing} />

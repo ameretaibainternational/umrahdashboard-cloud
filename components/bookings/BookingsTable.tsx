@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { deleteBooking, deleteBookings } from '@/app/actions/bookings'
 import { pkr, formatDate, bookingInvoiceId } from '@/lib/formatters'
+import { staffUsername } from '@/lib/staff-lookup'
 import type { Booking } from '@/lib/types'
 import BookingDialog from '@/components/bookings/BookingDialog'
 import { Badge } from '@/components/ui/badge'
@@ -17,9 +18,10 @@ import { Trash2, Search, Loader2, Eye, Pencil, FileText } from 'lucide-react'
 
 interface Props {
   bookings: Booking[]
+  staffUsernames?: Record<string, string>
 }
 
-export default function BookingsTable({ bookings }: Props) {
+export default function BookingsTable({ bookings, staffUsernames = {} }: Props) {
   const router = useRouter()
   const [search, setSearch] = useState('')
   const [deleteId, setDeleteId] = useState<string | null>(null)
@@ -122,7 +124,7 @@ export default function BookingsTable({ bookings }: Props) {
 
       <div className="rounded-xl border bg-white overflow-hidden shadow-sm">
         <div className="overflow-x-auto">
-        <Table className="min-w-[900px]">
+        <Table className="min-w-[980px]">
           <TableHeader>
             <TableRow className="bg-muted/40">
               <TableHead className="w-10">
@@ -134,6 +136,7 @@ export default function BookingsTable({ bookings }: Props) {
               </TableHead>
               <TableHead className="text-xs">Invoice</TableHead>
               <TableHead className="text-xs">Customer</TableHead>
+              <TableHead className="text-xs">Created By</TableHead>
               <TableHead className="text-xs">Airline</TableHead>
               <TableHead className="text-xs">Pax</TableHead>
               <TableHead className="text-xs text-right">Total</TableHead>
@@ -147,7 +150,7 @@ export default function BookingsTable({ bookings }: Props) {
           <TableBody>
             {filtered.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={11} className="text-center text-muted-foreground py-12 text-sm">
+                <TableCell colSpan={12} className="text-center text-muted-foreground py-12 text-sm">
                   {search ? 'No bookings match your search' : 'No bookings yet. Create your first package!'}
                 </TableCell>
               </TableRow>
@@ -163,6 +166,7 @@ export default function BookingsTable({ bookings }: Props) {
                   </TableCell>
                   <TableCell className="text-xs font-mono text-muted-foreground">{bookingInvoiceId(b)}</TableCell>
                   <TableCell className="font-medium text-sm">{b.customer_name}</TableCell>
+                  <TableCell className="text-xs font-mono text-muted-foreground">{staffUsername(staffUsernames, b.created_by)}</TableCell>
                   <TableCell className="text-sm text-muted-foreground">{b.airline_name}</TableCell>
                   <TableCell className="text-sm">{b.adult_count + b.child_count + b.infant_count}</TableCell>
                   <TableCell className="text-right text-sm font-semibold">{pkr(b.total_pkr)}</TableCell>

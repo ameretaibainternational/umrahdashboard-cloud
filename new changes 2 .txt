@@ -1,17 +1,16 @@
-1- Add Total PAX Counter on Dashboard that counts total pax made from bookings.
+In hotel settings, when we add a new hotel, it autofills the other prices by checking room price and then dividing it that is good. But On Hotel Vouher page, there is an option to add Hotel from there too. That popup to add hotel is not doing this automation thing. make it do this too.
 
-2- VISA Pricing are not being saved like when i change prices in settings and click save, it doesnt saves.
+In Hotel Voucher Page, When we select a Hotel Contcat from dropdown, then there is no option to unselect that. fix this too.
 
-3- In Hotels section in Package calculator, add a custom hotel button and when we click that , a popup opens to add a new hotel naem and its rates and distance etc. and it will not be saved in settings because it will be temporary for that specific package.
+In Hotels Tab in Settings, there is Contact Number Field in that list. But we have hotel contacts already on saperate page so remove the Contact Number field from Hotels tab.
 
-4- Right now if the rate of Makkah ziarat is 12 SAR, and we add 10 pax in Package calculator, it still counts only 12sar for all 10 pax. instead make it count ziarate prices pax wise means if there are 10 pax, then it should multiply price with pax and show 120sar for 10 pax and just like this for Madinah ziarat and for everything.
+When we try to add a new hotel contact in settings, it asks for Hotel Name, city and contact number. Make the Hotel Name from text to dropdown and fetch hotel names from added hotels in settings.
 
-5- Make the transport price fixed means if there are 10 pax and we select coaster for like 530 SAR, then it should count only 530SAR for whole package. you must not multiply 530sar with 10 pax because the coaster is for whole package not for per person. same goes for all other vehocles. pricong of all should be fixed and does not depends upon pax. and in package calculator when it shows per person price, then only you have to divide the coaset price with pax and show it like that. also make sure that in total price of package calculator, the transport price should be added as fixed price not multiplied with pax.
+In Visa Rate Settings, Remove the Child Visa rate Entorely because Adult and child visa rates are same. Also, Where there is 6-59 PAx, change it to 6-49 PAX and also change claculations according to these changes.
 
-6- Look at the attached screenshot of package calculator. i have made a package of 14 pax that only includes transport and nothing else. I have set the profit percentage to 0% and even after that, it is still showing profit of 6rs.And if i now change the vehicle from STARIA to HIACE,it makes the profit of -6pkr. Fix it .
+In package calculator when we add a custom ticket of like 2 lac pkr, and then we change pax to 2, then it divies 2 lac on 2 pax and makes 1 lac per pax that is wrong. make it multiply like if there are 2 pax then 2lax x2 = 4lac total amount for tickets for 2 pax.
 
-7- i have attached another screenshot of website not opening on icognito mode and some browsers. Fix it.
+On Mobile view, there is too much empty space below invoice preview.
 
-8- When i try to edit a booking, lets suppose i made a booking of 400000PKR and i click on edit, it opens it in package calculator and what it does it puts that price in the selling price override field. While i havent put thae pric in that field while createing that package, make it open the edit package as it was made .
+Change the confirmation number heading in hotel voucher to QTY
 
-NOTE: ONly change the things i told you. do not change the other things. earlier, you fixed some things and corrupted some other things. please be careful and only do what i tell you.

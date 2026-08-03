@@ -107,7 +107,7 @@ export function getCalc(
 
   let autoSelling: number
   if (profitType === 'fixed') {
-    autoSelling = totalCost + profitValue
+    autoSelling = totalCost + profitValue * pax
   } else {
     autoSelling = Math.round(totalCost + totalCost * (profitValue / 100))
   }

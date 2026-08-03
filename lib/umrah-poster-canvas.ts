@@ -425,18 +425,15 @@ function drawPackagePriceList(
   const tripleL = data.tripleLabel !== undefined ? data.tripleLabel : 'Triple: '
   const doubleL = data.doubleLabel !== undefined ? data.doubleLabel : 'Double: '
 
-  if (data.sharingPrice?.trim() && sharingL.trim()) {
-    rows.push([sharingL, data.sharingPrice.trim()])
+  const pushRow = (label: string, price: string | undefined) => {
+    const value = price?.trim() ?? ''
+    if (label.trim() || value) rows.push([label, value])
   }
-  if (data.quadPrice?.trim() && quadL.trim()) {
-    rows.push([quadL, data.quadPrice.trim()])
-  }
-  if (data.triplePrice?.trim() && tripleL.trim()) {
-    rows.push([tripleL, data.triplePrice.trim()])
-  }
-  if (data.doublePrice?.trim() && doubleL.trim()) {
-    rows.push([doubleL, data.doublePrice.trim()])
-  }
+
+  pushRow(sharingL, data.sharingPrice)
+  pushRow(quadL, data.quadPrice)
+  pushRow(tripleL, data.triplePrice)
+  pushRow(doubleL, data.doublePrice)
   const boldFont = `700 ${fontSize}px Poppins, sans-serif`
   const mediumFont = `500 ${fontSize}px Poppins, sans-serif`
   rows.forEach(([label, value], i) => {
@@ -777,6 +774,12 @@ export async function renderPosterToCanvas(
   const ctx = canvas.getContext('2d')
   if (!ctx) throw new Error('Canvas 2D context unavailable')
   renderUmrahPoster(ctx, data, baseImage, branding, cornerImage, logoImage, airplaneImage)
+}
+
+export function canvasToJpegBase64(canvas: HTMLCanvasElement): string {
+  const dataUrl = canvas.toDataURL('image/jpeg', 1.0)
+  const comma = dataUrl.indexOf(',')
+  return comma >= 0 ? dataUrl.slice(comma + 1) : dataUrl
 }
 
 export function downloadPosterCanvas(canvas: HTMLCanvasElement, filename = 'umrah-package-poster.jpg'): void {

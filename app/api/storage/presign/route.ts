@@ -15,14 +15,16 @@ export async function GET(request: NextRequest) {
   const id = request.nextUrl.searchParams.get('id')
   const type = request.nextUrl.searchParams.get('type')
 
-  if (!id || (type !== 'invoice' && type !== 'voucher')) {
+  if (!id || (type !== 'invoice' && type !== 'voucher' && type !== 'poster')) {
     return NextResponse.json({ error: 'Invalid id or type' }, { status: 400 })
   }
 
   if (isDemoMode()) {
     const row = type === 'invoice'
       ? demoStore.customInvoices.find(i => i.id === id)
-      : demoStore.hotelVouchers.find(v => v.id === id)
+      : type === 'voucher'
+        ? demoStore.hotelVouchers.find(v => v.id === id)
+        : demoStore.umrahPosters.find(p => p.id === id)
 
     if (!row) return NextResponse.json({ error: 'Record not found' }, { status: 404 })
     if (!canAccessDocument(caller.permission, row.created_by, caller.userId)) {
@@ -39,9 +41,12 @@ export async function GET(request: NextRequest) {
 
     const filename = type === 'invoice'
       ? `${(row as { invoice_number: string }).invoice_number}.pdf`
-      : `${(row as { voucher_number: string }).voucher_number}.pdf`
+      : type === 'voucher'
+        ? `${(row as { voucher_number: string }).voucher_number}.pdf`
+        : `${(row as { poster_number: string }).poster_number}.jpg`
 
-    const url = await getPresignedDownloadUrl(row.storage_key, filename)
+    const contentType = type === 'poster' ? 'image/jpeg' : 'application/pdf'
+    const url = await getPresignedDownloadUrl(row.storage_key, filename, contentType)
     return NextResponse.json({ url })
   }
 
@@ -69,6 +74,8 @@ export async function GET(request: NextRequest) {
   }
   if (!row.storage_key) return NextResponse.json({ error: 'No stored file for this record' }, { status: 404 })
 
-  const url = await getPresignedDownloadUrl(row.storage_key, `${row.number}.pdf`)
+  const ext = type === 'poster' ? 'jpg' : 'pdf'
+  const contentType = type === 'poster' ? 'image/jpeg' : 'application/pdf'
+  const url = await getPresignedDownloadUrl(row.storage_key, `${row.number}.${ext}`, contentType)
   return NextResponse.json({ url })
 }

@@ -4,7 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { isDemoMode } from '@/lib/is-demo'
 import { demoStore } from '@/lib/demo-store'
 import { friendlyDbError } from '@/lib/friendly-db-error'
-import { recordPackageExpense } from '@/lib/package-expense'
+import { syncPackageExpenseFromBookingId } from '@/lib/package-expense'
 import { recordInitialBookingPayment } from '@/lib/booking-payment'
 import { requireModeratorFeature } from '@/lib/permissions-server'
 import {
@@ -24,7 +24,6 @@ type BookingPayload = {
   madinah_hotel_distance: string | null;   madinah_room_type: string | null; madinah_nights: number | null
   booking_date?: string
   source_invoice_id?: string | null
-  auto_record_expense?: boolean
 }
 
 const REVALIDATE_PATHS = ['/bookings', '/dashboard', '/accounts', '/reports', '/customers', '/invoices']
@@ -35,40 +34,28 @@ async function insertBookingWithExpense(
 ): Promise<{ error?: string }> {
   const bookingDate = payload.booking_date ?? new Date().toISOString().split('T')[0]
   const isFinalized = Boolean(payload.source_invoice_id)
-  const shouldRecordExpense = payload.auto_record_expense === true && isFinalized
   const shouldRecordPayment = isFinalized
 
-  const expenseInput = {
-    customer_name: payload.customer_name,
-    cost_pkr: payload.cost_pkr,
-    total_pkr: payload.total_pkr,
-    profit_pkr: payload.profit_pkr,
-    booking_date: bookingDate,
-    created_by: userId,
-  }
-
   if (isDemoMode()) {
-    const { auto_record_expense: __, source_invoice_id, ...bookingPayload } = payload
+    const { source_invoice_id, ...bookingPayload } = payload
     const booking = demoStore.addBooking({
       ...bookingPayload,
       booking_date: bookingDate,
       created_by: userId,
       source_invoice_id: source_invoice_id ?? null,
     })
-    if (shouldRecordExpense) {
-      await recordPackageExpense({ ...expenseInput, booking_id: booking.id })
-    }
     if (shouldRecordPayment) {
       await recordInitialBookingPayment(booking.id, {
         customer_name: payload.customer_name,
         advance_pkr: payload.advance_pkr,
         booking_date: bookingDate,
       }, userId)
+      await syncPackageExpenseFromBookingId(booking.id)
     }
     return {}
   }
 
-  const { source_invoice_id, auto_record_expense: _, ...bookingFields } = payload
+  const { source_invoice_id, ...bookingFields } = payload
   const row: Record<string, unknown> = { ...bookingFields, booking_date: bookingDate }
   if (source_invoice_id) row.source_invoice_id = source_invoice_id
 
@@ -103,15 +90,17 @@ async function insertBookingWithExpense(
     bookingId = data.id
   }
 
-  if (shouldRecordExpense) {
-    await recordPackageExpense({ ...expenseInput, booking_id: bookingId })
-  }
-  if (bookingId && shouldRecordPayment) {
+  if (!bookingId) return { error: 'Save failed' }
+
+  if (shouldRecordPayment) {
     await recordInitialBookingPayment(bookingId, {
       customer_name: payload.customer_name,
       advance_pkr: payload.advance_pkr,
       booking_date: bookingDate,
     }, userId)
+  }
+  if (isFinalized) {
+    await syncPackageExpenseFromBookingId(bookingId)
   }
   return {}
 }
@@ -317,6 +306,8 @@ async function syncBookingInitialPayment(
       booking_date: paymentDate,
     }, userId)
   }
+
+  await syncPackageExpenseFromBookingId(bookingId)
 }
 
 export async function updateBooking(id: string, payload: BookingPayload) {
@@ -406,21 +397,12 @@ export async function finalizeBookingWithInvoice(bookingId: string, invoiceId: s
     await supabase.from('bookings').update({ source_invoice_id: invoiceId }).eq('id', bookingId)
   }
 
-  const expenseInput = {
-    customer_name: booking.customer_name,
-    cost_pkr: booking.cost_pkr,
-    total_pkr: booking.total_pkr,
-    profit_pkr: booking.profit_pkr,
-    booking_date: booking.booking_date,
-    created_by: ctx.userId,
-  }
-
-  await recordPackageExpense({ ...expenseInput, booking_id: bookingId })
   await recordInitialBookingPayment(bookingId, {
     customer_name: booking.customer_name,
     advance_pkr: booking.advance_pkr,
     booking_date: booking.booking_date,
   }, ctx.userId)
+  await syncPackageExpenseFromBookingId(bookingId)
 
   REVALIDATE_PATHS.forEach(p => revalidatePath(p))
   return { success: true as const }

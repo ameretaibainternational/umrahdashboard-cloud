@@ -110,7 +110,7 @@ function initialFromBooking(
     madinahRoom: (booking.madinah_room_type || 'sharing') as RoomType,
     madinahNights: booking.madinah_nights || 0,
     profitType: 'fixed',
-    profitValue: booking.profit_pkr,
+    profitValue: booking.profit_pkr / Math.max(1, booking.adult_count + booking.child_count + booking.infant_count),
     sellingOverride: null,
     advance: booking.advance_pkr,
     customerName: booking.customer_name,
@@ -287,7 +287,13 @@ export default function CalculatorForm({
   const [includeVisa, setIncludeVisa] = useState(initial?.includeVisa ?? true)
   const [currencyUnit, setCurrencyUnit] = useState<'PKR' | 'SAR'>(initial?.currencyUnit ?? 'PKR')
   const [profitType, setProfitType] = useState<'percent' | 'fixed'>(initial?.profitType ?? (bookingObj ? 'fixed' : 'percent'))
-  const [profitValue, setProfitValue] = useState(initial?.profitValue ?? (bookingObj ? bookingObj.profit_pkr : 8))
+  const [profitValue, setProfitValue] = useState(
+    initial?.profitValue ?? (
+      bookingObj
+        ? bookingObj.profit_pkr / Math.max(1, bookingObj.adult_count + bookingObj.child_count + bookingObj.infant_count)
+        : 8
+    ),
+  )
   const [sellingOverride, setSellingOverride] = useState<number | null>(() => {
     if (initial) return initial.sellingOverride
     if (bookingObj) return bookingObj.total_pkr
@@ -609,6 +615,7 @@ export default function CalculatorForm({
       makkahHotelId, makkahRoom, makkahNights,
       madinahHotelId, madinahRoom, madinahNights,
       profitType, profitValue, sellingOverride, advance,
+      ...(profitType === 'fixed' ? { profitFixedPerPax: true as const } : {}),
       customerName,
       selectedZiaratIds,
       ...ziaratLegacyFlags(selectedZiaratIds, ziarats),
@@ -659,7 +666,6 @@ export default function CalculatorForm({
       madinah_room_type: includeMadinahHotel ? madinahRoom : null,
       madinah_nights: includeMadinahHotel ? madinahNights : null,
       booking_date: travelDate || new Date().toISOString().slice(0, 10),
-      auto_record_expense: true,
       source_invoice_id: sourceInvoiceId ?? savedInvoiceId ?? null,
     }
   }
@@ -1455,7 +1461,11 @@ export default function CalculatorForm({
                 </Select>
               </div>
               <div className="space-y-1.5">
-                <Label className="text-xs">{profitType === 'percent' ? 'Profit %' : (currencyUnit === 'PKR' ? 'Profit PKR' : 'Profit SAR')}</Label>
+                <Label className="text-xs">
+                  {profitType === 'percent'
+                    ? 'Profit %'
+                    : `${currencyUnit === 'PKR' ? 'Profit PKR' : 'Profit SAR'} (per pax)`}
+                </Label>
                 <Input
                   type="number" min={0} value={profitValue}
                   onChange={e => setProfitValue(parseFloat(e.target.value) || 0)}

@@ -9,6 +9,7 @@ import { deleteCustomInvoice, deleteCustomInvoices } from '@/app/actions/custom-
 import { downloadStoredPdf } from '@/lib/storage-client'
 import { pkr, formatDate } from '@/lib/formatters'
 import { getPackageDataFromInvoice, getInvoiceEditHref, isPackageInvoice } from '@/lib/package-invoice'
+import { staffUsername } from '@/lib/staff-lookup'
 import type { CustomInvoice } from '@/lib/types'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -19,9 +20,10 @@ import { Badge } from '@/components/ui/badge'
 interface Props {
   invoices: CustomInvoice[]
   canManage?: boolean
+  staffUsernames?: Record<string, string>
 }
 
-export default function PackageInvoicesTable({ invoices, canManage = true }: Props) {
+export default function PackageInvoicesTable({ invoices, canManage = true, staffUsernames = {} }: Props) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
   const [downloadingId, setDownloadingId] = useState<string | null>(null)
@@ -131,7 +133,7 @@ export default function PackageInvoicesTable({ invoices, canManage = true }: Pro
           )}
         </div>
         <div className="overflow-x-auto">
-        <Table className="min-w-[640px]">
+        <Table className="min-w-[720px]">
           <TableHeader>
             <TableRow className="bg-muted/40">
               {canManage && (
@@ -145,6 +147,7 @@ export default function PackageInvoicesTable({ invoices, canManage = true }: Pro
               )}
               <TableHead className="text-xs">Invoice #</TableHead>
               <TableHead className="text-xs">Customer</TableHead>
+              <TableHead className="text-xs">Created By</TableHead>
               <TableHead className="text-xs">Travel Date</TableHead>
               <TableHead className="text-xs text-right">Amount</TableHead>
               <TableHead className="text-xs text-right">Balance</TableHead>
@@ -156,7 +159,7 @@ export default function PackageInvoicesTable({ invoices, canManage = true }: Pro
           <TableBody>
             {invoices.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={canManage ? 9 : 7} className="text-center text-muted-foreground py-12 text-sm">
+                <TableCell colSpan={canManage ? 10 : 8} className="text-center text-muted-foreground py-12 text-sm">
                   No saved package invoices yet. Use the Package Calculator and click Download to save one.
                 </TableCell>
               </TableRow>
@@ -183,6 +186,7 @@ export default function PackageInvoicesTable({ invoices, canManage = true }: Pro
                       <span className="text-[10px] block text-muted-foreground">{pax} pax</span>
                     )}
                   </TableCell>
+                  <TableCell className="text-xs font-mono text-muted-foreground">{staffUsername(staffUsernames, inv.created_by)}</TableCell>
                   <TableCell className="text-xs text-muted-foreground">
                     {pkg?.travelDate ? formatDate(pkg.travelDate) : '—'}
                   </TableCell>

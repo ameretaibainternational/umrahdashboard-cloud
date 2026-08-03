@@ -1,5 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
-import type { CustomInvoice, CustomInvoiceLineItem, PackageInvoiceData, StoredFileRow, StorageUsage } from '@/lib/types'
+import type { CustomInvoice, CustomInvoiceLineItem, PackageInvoiceData, StoredFileRow, StoredFileType, StorageUsage } from '@/lib/types'
 import { encodePackageDataInTerms } from '@/lib/package-invoice'
 import { storageUsageFromFiles } from '@/lib/storage-usage'
 
@@ -279,7 +279,7 @@ export async function insertHotelVoucherSupabase(row: {
   return result.data
 }
 
-export async function fetchFileForDownloadSupabase(id: string, type: 'invoice' | 'voucher') {
+export async function fetchFileForDownloadSupabase(id: string, type: StoredFileType) {
   const supabase = await createClient()
   if (type === 'invoice') {
     let { data, error } = await supabase
@@ -303,15 +303,37 @@ export async function fetchFileForDownloadSupabase(id: string, type: 'invoice' |
     }
   }
 
+  if (type === 'voucher') {
+    let { data, error } = await supabase
+      .from('hotel_vouchers')
+      .select('storage_key, file_deleted_at, voucher_number, created_by')
+      .eq('id', id)
+      .single()
+    if (error && isCreatedBySchemaError(error.message)) {
+      ({ data, error } = await supabase
+        .from('hotel_vouchers')
+        .select('storage_key, file_deleted_at, voucher_number')
+        .eq('id', id)
+        .single())
+    }
+    if (error || !data) return null
+    return {
+      storage_key: data.storage_key,
+      file_deleted_at: data.file_deleted_at,
+      created_by: 'created_by' in data ? data.created_by : null,
+      number: data.voucher_number,
+    }
+  }
+
   let { data, error } = await supabase
-    .from('hotel_vouchers')
-    .select('storage_key, file_deleted_at, voucher_number, created_by')
+    .from('umrah_posters')
+    .select('storage_key, file_deleted_at, poster_number, created_by')
     .eq('id', id)
     .single()
   if (error && isCreatedBySchemaError(error.message)) {
     ({ data, error } = await supabase
-      .from('hotel_vouchers')
-      .select('storage_key, file_deleted_at, voucher_number')
+      .from('umrah_posters')
+      .select('storage_key, file_deleted_at, poster_number')
       .eq('id', id)
       .single())
   }
@@ -320,26 +342,27 @@ export async function fetchFileForDownloadSupabase(id: string, type: 'invoice' |
     storage_key: data.storage_key,
     file_deleted_at: data.file_deleted_at,
     created_by: 'created_by' in data ? data.created_by : null,
-    number: data.voucher_number,
+    number: data.poster_number,
   }
 }
 
-export async function fetchFileForBulkDownloadSupabase(id: string, type: 'invoice' | 'voucher') {
+export async function fetchFileForBulkDownloadSupabase(id: string, type: StoredFileType) {
   const row = await fetchFileForDownloadSupabase(id, type)
   if (!row?.storage_key || row.file_deleted_at) return null
-  return { name: `${row.number}.pdf`, storage_key: row.storage_key }
+  const ext = type === 'poster' ? 'jpg' : 'pdf'
+  return { name: `${row.number}.${ext}`, storage_key: row.storage_key }
 }
 
-export async function softDeleteFileRowSupabase(id: string, type: 'invoice' | 'voucher') {
+export async function softDeleteFileRowSupabase(id: string, type: StoredFileType) {
   const supabase = await createClient()
-  const table = type === 'invoice' ? 'custom_invoices' : 'hotel_vouchers'
+  const table = type === 'invoice' ? 'custom_invoices' : type === 'voucher' ? 'hotel_vouchers' : 'umrah_posters'
   const { data } = await supabase.from(table).select('storage_key, file_deleted_at').eq('id', id).single()
   return data ?? undefined
 }
 
-export async function markFileDeletedSupabase(id: string, type: 'invoice' | 'voucher', deletedAt: string) {
+export async function markFileDeletedSupabase(id: string, type: StoredFileType, deletedAt: string) {
   const supabase = await createClient()
-  const table = type === 'invoice' ? 'custom_invoices' : 'hotel_vouchers'
+  const table = type === 'invoice' ? 'custom_invoices' : type === 'voucher' ? 'hotel_vouchers' : 'umrah_posters'
   await supabase.from(table).update({ file_deleted_at: deletedAt }).eq('id', id)
 }
 
@@ -383,6 +406,20 @@ function mapStoredVoucherRows(rows: StoredFileDbRow[]): StoredFileRow[] {
     }))
 }
 
+function mapStoredPosterRows(rows: StoredFileDbRow[]): StoredFileRow[] {
+  return rows
+    .filter(r => r.storage_key && !r.file_deleted_at && r.file_size_bytes)
+    .map(r => ({
+      id: r.id,
+      type: 'poster' as const,
+      number: r.number,
+      label: r.label ?? '',
+      date: String(r.date).slice(0, 10),
+      file_size_bytes: Number(r.file_size_bytes),
+      created_at: r.created_at,
+    }))
+}
+
 export async function fetchStoredFilesSupabase(createdBy?: string | null): Promise<StoredFileRow[]> {
   const supabase = await createClient()
 
@@ -410,6 +447,18 @@ export async function fetchStoredFilesSupabase(createdBy?: string | null): Promi
     created_by?: string | null
   }
 
+  type PosterRow = {
+    id: string
+    poster_number: string
+    title: string
+    poster_date: string
+    file_size_bytes: number
+    created_at: string
+    storage_key: string | null
+    file_deleted_at: string | null
+    created_by?: string | null
+  }
+
   async function loadInvoices(withOwner: boolean) {
     let q = supabase
       .from('custom_invoices')
@@ -430,8 +479,19 @@ export async function fetchStoredFilesSupabase(createdBy?: string | null): Promi
     return q
   }
 
+  async function loadPosters(withOwner: boolean) {
+    let q = supabase
+      .from('umrah_posters')
+      .select('id, poster_number, title, poster_date, file_size_bytes, created_at, storage_key, file_deleted_at, created_by')
+      .is('file_deleted_at', null)
+      .not('storage_key', 'is', null)
+    if (withOwner && createdBy) q = q.eq('created_by', createdBy)
+    return q
+  }
+
   let invoiceRes = await loadInvoices(Boolean(createdBy))
   let voucherRes = await loadVouchers(Boolean(createdBy))
+  let posterRes = await loadPosters(Boolean(createdBy))
 
   if (createdBy && invoiceRes.error && isCreatedBySchemaError(invoiceRes.error.message)) {
     invoiceRes = await loadInvoices(false)
@@ -439,12 +499,17 @@ export async function fetchStoredFilesSupabase(createdBy?: string | null): Promi
   if (createdBy && voucherRes.error && isCreatedBySchemaError(voucherRes.error.message)) {
     voucherRes = await loadVouchers(false)
   }
+  if (createdBy && posterRes.error && isCreatedBySchemaError(posterRes.error.message)) {
+    posterRes = await loadPosters(false)
+  }
 
   if (invoiceRes.error) throw new Error(invoiceRes.error.message)
   if (voucherRes.error) throw new Error(voucherRes.error.message)
+  if (posterRes.error && !isCreatedBySchemaError(posterRes.error.message)) throw new Error(posterRes.error.message)
 
   const invoiceRows = (invoiceRes.data ?? []) as InvoiceRow[]
   const voucherRows = (voucherRes.data ?? []) as VoucherRow[]
+  const posterRows = posterRes.error ? [] : ((posterRes.data ?? []) as PosterRow[])
 
   const invoices = mapStoredInvoiceRows(
     invoiceRows
@@ -476,7 +541,22 @@ export async function fetchStoredFilesSupabase(createdBy?: string | null): Promi
       })),
   )
 
-  return [...invoices, ...vouchers].sort((a, b) => a.created_at.localeCompare(b.created_at))
+  const posters = mapStoredPosterRows(
+    posterRows
+      .filter(r => !createdBy || !r.created_by || r.created_by === createdBy)
+      .map(r => ({
+        id: r.id,
+        number: r.poster_number,
+        label: r.title,
+        date: r.poster_date,
+        file_size_bytes: r.file_size_bytes,
+        created_at: r.created_at,
+        storage_key: r.storage_key,
+        file_deleted_at: r.file_deleted_at,
+      })),
+  )
+
+  return [...invoices, ...vouchers, ...posters].sort((a, b) => a.created_at.localeCompare(b.created_at))
 }
 
 export async function fetchPackageInvoiceByIdSupabase(id: string, createdBy?: string | null): Promise<CustomInvoice | null> {
@@ -527,6 +607,14 @@ export async function fetchActiveStorageKeysSupabase(): Promise<string[]> {
     .is('file_deleted_at', null)
     .not('storage_key', 'is', null)
   for (const row of vouchers ?? []) {
+    if (row.storage_key) keys.push(row.storage_key)
+  }
+  const { data: posters } = await supabase
+    .from('umrah_posters')
+    .select('storage_key')
+    .is('file_deleted_at', null)
+    .not('storage_key', 'is', null)
+  for (const row of posters ?? []) {
     if (row.storage_key) keys.push(row.storage_key)
   }
   return keys
@@ -599,4 +687,131 @@ export async function fetchStorageUsageSupabase(): Promise<StorageUsage> {
     // Counter sync is best-effort; display still uses computed total.
   }
   return usage
+}
+
+export async function insertUmrahPosterSupabase(row: {
+  id: string
+  title: string
+  poster_date: string
+  poster_data: Record<string, unknown>
+  branding_data: Record<string, unknown>
+  calc_data: Record<string, unknown> | null
+  storage_key: string
+  file_size_bytes: number
+  created_by?: string | null
+}): Promise<{ id: string; poster_number: string }> {
+  const supabase = await createClient()
+  const payload = {
+    id: row.id,
+    title: row.title,
+    poster_date: row.poster_date,
+    poster_data: row.poster_data,
+    branding_data: row.branding_data,
+    calc_data: row.calc_data,
+    storage_key: row.storage_key,
+    file_size_bytes: row.file_size_bytes,
+    created_by: row.created_by ?? null,
+  }
+
+  let result = await supabase.from('umrah_posters').insert(payload).select('id, poster_number').single()
+  if (result.error && isCreatedBySchemaError(result.error.message)) {
+    const { created_by: _, ...withoutOwner } = payload
+    result = await supabase.from('umrah_posters').insert(withoutOwner).select('id, poster_number').single()
+  }
+  if (result.error) throw new Error(result.error.message)
+  return result.data
+}
+
+export async function updateUmrahPosterSupabase(
+  id: string,
+  row: {
+    title: string
+    poster_date: string
+    poster_data: Record<string, unknown>
+    branding_data: Record<string, unknown>
+    calc_data: Record<string, unknown> | null
+    storage_key: string
+    file_size_bytes: number
+  },
+): Promise<void> {
+  const supabase = await createClient()
+  const { error } = await supabase
+    .from('umrah_posters')
+    .update({
+      title: row.title,
+      poster_date: row.poster_date,
+      poster_data: row.poster_data,
+      branding_data: row.branding_data,
+      calc_data: row.calc_data,
+      storage_key: row.storage_key,
+      file_size_bytes: row.file_size_bytes,
+    })
+    .eq('id', id)
+  if (error) throw new Error(error.message)
+}
+
+export async function deleteUmrahPosterSupabase(id: string): Promise<void> {
+  const supabase = await createClient()
+  const { data: poster } = await supabase
+    .from('umrah_posters')
+    .select('storage_key')
+    .eq('id', id)
+    .maybeSingle()
+  if (poster?.storage_key) {
+    const { deletePdfKeys } = await import('@/lib/r2')
+    await deletePdfKeys([poster.storage_key])
+  }
+  const { error } = await supabase.from('umrah_posters').delete().eq('id', id)
+  if (error) throw new Error(error.message)
+}
+
+export async function fetchStaffActivityStatsSupabase(): Promise<import('@/lib/types').StaffActivityStats[]> {
+  const supabase = await createClient()
+  const { data: staffList, error: staffError } = await supabase
+    .from('staff_users')
+    .select('id, name, username')
+    .order('name')
+  if (staffError) throw new Error(staffError.message)
+  if (!staffList?.length) return []
+
+  type CounterKey = 'bookings' | 'custom_invoices' | 'hotel_vouchers' | 'payments' | 'expenses' | 'umrah_posters'
+  const stats = new Map<string, import('@/lib/types').StaffActivityStats>()
+  for (const member of staffList) {
+    stats.set(member.id, {
+      staff_id: member.id,
+      staff_name: member.name,
+      staff_username: member.username,
+      bookings: 0,
+      custom_invoices: 0,
+      hotel_vouchers: 0,
+      payments: 0,
+      expenses: 0,
+      umrah_posters: 0,
+    })
+  }
+
+  async function tally(table: string, field: CounterKey) {
+    const { data, error } = await supabase.from(table).select('created_by')
+    if (error) {
+      if (error.message.includes('does not exist') || error.message.includes('schema cache')) return
+      throw new Error(error.message)
+    }
+    for (const row of data ?? []) {
+      const id = row.created_by as string | null
+      if (!id) continue
+      const entry = stats.get(id)
+      if (entry) entry[field] += 1
+    }
+  }
+
+  await Promise.all([
+    tally('bookings', 'bookings'),
+    tally('custom_invoices', 'custom_invoices'),
+    tally('hotel_vouchers', 'hotel_vouchers'),
+    tally('payments', 'payments'),
+    tally('expenses', 'expenses'),
+    tally('umrah_posters', 'umrah_posters'),
+  ])
+
+  return [...stats.values()]
 }

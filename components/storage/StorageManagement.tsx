@@ -203,7 +203,7 @@ export default function StorageManagement({ files, totalBytes }: StorageManageme
                               aria-label={`Select ${file.number}`}
                             />
                           </td>
-                          <td className="p-3 capitalize">{file.type === 'invoice' ? 'Invoice' : 'Voucher'}</td>
+                          <td className="p-3 capitalize">{file.type === 'invoice' ? 'Invoice' : file.type === 'voucher' ? 'Voucher' : 'Poster'}</td>
                           <td className="p-3 font-medium text-navy">
                              {file.label ? `${file.label} — ${file.number}` : file.number}
                           </td>

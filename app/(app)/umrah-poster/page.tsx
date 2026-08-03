@@ -1,9 +1,10 @@
-import { getAirlines, getHotels, getVisa, getCurrency, getTransportRates, getZiarats, getTransportRoutes, getTransportVehicles, getRouteVehicleRates } from '@/lib/db'
+import { getAirlines, getHotels, getVisa, getCurrency, getTransportRates, getZiarats, getTransportRoutes, getTransportVehicles, getRouteVehicleRates, getUmrahPosters, getStaff } from '@/lib/db'
+import { buildStaffUsernameMap } from '@/lib/staff-lookup'
 import UmrahPosterForm from '@/components/umrah-poster/UmrahPosterForm'
 import { ImageIcon } from 'lucide-react'
 
 export default async function UmrahPosterPage() {
-  const [airlines, hotels, visa, currency, transportRates, ziarats, transportRoutes, transportVehicles, routeVehicleRates] = await Promise.all([
+  const [airlines, hotels, visa, currency, transportRates, ziarats, transportRoutes, transportVehicles, routeVehicleRates, posters, staff] = await Promise.all([
     getAirlines(),
     getHotels(),
     getVisa(),
@@ -13,6 +14,8 @@ export default async function UmrahPosterPage() {
     getTransportRoutes(),
     getTransportVehicles(),
     getRouteVehicleRates(),
+    getUmrahPosters(),
+    getStaff(),
   ])
 
   const makkahHotels = hotels.filter(h => h.city === 'Makkah')
@@ -27,7 +30,7 @@ export default async function UmrahPosterPage() {
         <div>
           <h1 className="text-xl font-bold text-navy">Umrah Package Poster</h1>
           <p className="text-xs text-muted-foreground">
-            Design a print-ready package poster and download at 1587 × 2245 px
+            Design a print-ready package poster, save to storage, and download at 1587 × 2245 px
           </p>
         </div>
       </div>
@@ -43,6 +46,8 @@ export default async function UmrahPosterPage() {
         transportRoutes={transportRoutes}
         transportVehicles={transportVehicles}
         routeVehicleRates={routeVehicleRates}
+        existingPosters={posters}
+        staffUsernames={buildStaffUsernameMap(staff)}
       />
     </div>
   )

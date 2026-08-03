@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useTransition } from 'react'
+import { useEffect, useMemo, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { upsertHotel, deleteHotel, deleteHotels } from '@/app/actions/settings'
@@ -28,7 +28,12 @@ export default function HotelsForm({ hotels }: Props) {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [isPending, startTransition] = useTransition()
 
-  const filtered = hotels.filter(h => h.city === cityFilter)
+  const filtered = useMemo(
+    () => hotels
+      .filter(h => h.city === cityFilter)
+      .sort((a, b) => Number(a.room_sar ?? 0) - Number(b.room_sar ?? 0)),
+    [hotels, cityFilter],
+  )
   const allFilteredSelected = filtered.length > 0 && filtered.every(h => selectedIds.has(h.id))
 
   useEffect(() => {

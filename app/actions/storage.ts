@@ -3,11 +3,11 @@
 import { revalidatePath } from 'next/cache'
 import { isDemoMode } from '@/lib/is-demo'
 import { demoStore } from '@/lib/demo-store'
-import { uploadPdf, deletePdfKeys, isR2Configured, listStoredPdfKeys } from '@/lib/r2'
+import { uploadPdf, uploadBinary, deletePdfKeys, isR2Configured, listStoredPdfKeys } from '@/lib/r2'
 import { hasDirectDb, isDirectDbRecoverableError, markDirectDbAuthFailed } from '@/lib/sql'
 import type { StoredFileType } from '@/lib/types'
 
-const PATHS = ['/settings/storage', '/custom-invoices', '/hotel-voucher', '/invoices', '/calculator']
+const PATHS = ['/settings/storage', '/custom-invoices', '/hotel-voucher', '/umrah-poster', '/invoices', '/calculator']
 
 async function getSupabase() {
   const { createClient } = await import('@/lib/supabase/server')
@@ -32,7 +32,8 @@ export async function softDeleteStoredFiles(items: { id: string; type: StoredFil
   if (isDemoMode()) {
     for (const item of items) {
       if (item.type === 'invoice') demoStore.softDeleteInvoiceFile(item.id)
-      else demoStore.softDeleteVoucherFile(item.id)
+      else if (item.type === 'voucher') demoStore.softDeleteVoucherFile(item.id)
+      else demoStore.softDeletePosterFile(item.id)
     }
   } else {
     const { softDeleteFileRow, markFileDeleted } = await import('@/lib/document-db')
@@ -58,7 +59,7 @@ export async function reconcileStorageUsage() {
   let activeKeys: Set<string>
   if (isDemoMode()) {
     activeKeys = new Set(
-      [...demoStore.customInvoices, ...demoStore.hotelVouchers]
+      [...demoStore.customInvoices, ...demoStore.hotelVouchers, ...demoStore.umrahPosters]
         .filter(r => !r.file_deleted_at && r.storage_key)
         .map(r => r.storage_key!),
     )
@@ -95,6 +96,9 @@ export async function reconcileStorageUsage() {
     for (const v of demoStore.hotelVouchers) {
       if (!v.file_deleted_at && v.file_size_bytes) total_bytes += v.file_size_bytes
     }
+    for (const p of demoStore.umrahPosters) {
+      if (!p.file_deleted_at && p.file_size_bytes) total_bytes += p.file_size_bytes
+    }
     demoStore.setStorageUsage(total_bytes)
   } else {
     const { fetchStorageUsageSupabase } = await import('@/lib/supabase-document-db')
@@ -128,6 +132,18 @@ export async function uploadVoucherPdfToStorage(id: string, pdfBase64: string): 
     const buffer = Buffer.from(pdfBase64, 'base64')
     const storage_key = `vouchers/${id}.pdf`
     await uploadPdf(storage_key, buffer)
+    return { storage_key, file_size_bytes: buffer.length }
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : 'Upload failed' }
+  }
+}
+
+export async function uploadPosterJpegToStorage(id: string, jpegBase64: string): Promise<{ storage_key: string; file_size_bytes: number } | { error: string }> {
+  if (!isR2Configured()) return { error: 'File storage is not configured. Add R2 credentials to .env.local.' }
+  try {
+    const buffer = Buffer.from(jpegBase64, 'base64')
+    const storage_key = `posters/${id}.jpg`
+    await uploadBinary(storage_key, buffer, 'image/jpeg')
     return { storage_key, file_size_bytes: buffer.length }
   } catch (e) {
     return { error: e instanceof Error ? e.message : 'Upload failed' }

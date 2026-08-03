@@ -28,6 +28,7 @@ import { downloadPdfBytes, downloadStoredPdf } from '@/lib/storage-client'
 import { uint8ToBase64 } from '@/lib/pdf-utils'
 import { applyVoucherPdfCloneStyles } from '@/lib/invoice-pdf-onclone'
 import type { Hotel, HotelVoucherSettings, HotelVoucherRecord, HotelContact, TransportContact } from '@/lib/types'
+import { staffUsername } from '@/lib/staff-lookup'
 import {
   filterHotelContactsByCity,
   findHotelContactByNumber,
@@ -324,6 +325,7 @@ interface HotelVoucherFormProps {
   transportContacts: TransportContact[]
   existingVouchers?: HotelVoucherRecord[]
   canEditGuidelines?: boolean
+  staffUsernames?: Record<string, string>
 }
 
 export default function HotelVoucherForm({
@@ -334,6 +336,7 @@ export default function HotelVoucherForm({
   transportContacts,
   existingVouchers = [],
   canEditGuidelines = false,
+  staffUsernames = {},
 }: HotelVoucherFormProps) {
   const [editingVoucherId, setEditingVoucherId] = useState<string | null>(null)
   const [selectedVoucherIds, setSelectedVoucherIds] = useState<Set<string>>(new Set())
@@ -1791,7 +1794,7 @@ export default function HotelVoucherForm({
             </div>
           </CardHeader>
           <CardContent className="p-0 overflow-x-auto">
-            <table className="w-full text-sm min-w-[700px]">
+            <table className="w-full text-sm min-w-[820px]">
               <thead className="bg-muted/30 text-left border-b">
                 <tr>
                   <th className="p-3 w-10">
@@ -1803,6 +1806,7 @@ export default function HotelVoucherForm({
                   </th>
                   <th className="p-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Voucher #</th>
                   <th className="p-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Family Head</th>
+                  <th className="p-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Created By</th>
                   <th className="p-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Package Info</th>
                   <th className="p-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Date</th>
                   <th className="p-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">PDF Status</th>
@@ -1812,7 +1816,7 @@ export default function HotelVoucherForm({
               <tbody className="divide-y divide-border">
                 {savedVouchers.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="text-center text-muted-foreground py-8 text-xs">
+                    <td colSpan={8} className="text-center text-muted-foreground py-8 text-xs">
                       No vouchers match the filter.
                     </td>
                   </tr>
@@ -1831,6 +1835,7 @@ export default function HotelVoucherForm({
                         </td>
                         <td className="p-3 font-semibold text-navy text-xs font-mono">{v.voucher_number}</td>
                         <td className="p-3 text-sm font-medium">{v.family_head}</td>
+                        <td className="p-3 text-xs font-mono text-muted-foreground">{staffUsername(staffUsernames, v.created_by)}</td>
                         <td className="p-3 text-xs text-muted-foreground truncate max-w-[200px]" title={v.package_info}>
                           {v.package_info || '—'}
                         </td>

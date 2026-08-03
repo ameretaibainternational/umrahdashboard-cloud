@@ -76,8 +76,8 @@ export async function downloadCalculatorPdf(
   return 'anchor'
 }
 
-/** Fetch a presigned URL and open the stored PDF (never regenerates). */
-export async function downloadStoredPdf(id: string, type: 'invoice' | 'voucher'): Promise<void> {
+/** Fetch a presigned URL and open the stored file (never regenerates). */
+export async function downloadStoredFile(id: string, type: 'invoice' | 'voucher' | 'poster'): Promise<void> {
   const res = await fetch(`/api/storage/presign?id=${encodeURIComponent(id)}&type=${type}`)
   const data = await res.json() as { url?: string; error?: string; removed?: boolean; removedAt?: string }
   if (!res.ok || data.error) {
@@ -90,6 +90,11 @@ export async function downloadStoredPdf(id: string, type: 'invoice' | 'voucher')
   window.open(data.url, '_blank', 'noopener,noreferrer')
 }
 
+/** @deprecated Use downloadStoredFile */
+export async function downloadStoredPdf(id: string, type: 'invoice' | 'voucher'): Promise<void> {
+  return downloadStoredFile(id, type)
+}
+
 export function pdfDownloadHint(method: PdfDownloadMethod): string | null {
   if (method === 'opened' || method === 'navigated') {
     return 'PDF opened — tap Share, then Save to Files.'
@@ -98,7 +103,7 @@ export function pdfDownloadHint(method: PdfDownloadMethod): string | null {
 }
 
 /** Trigger bulk ZIP download for selected storage files. */
-export function downloadStorageZip(items: { id: string; type: 'invoice' | 'voucher' }[]) {
+export function downloadStorageZip(items: { id: string; type: 'invoice' | 'voucher' | 'poster' }[]) {
   const form = document.createElement('form')
   form.method = 'POST'
   form.action = '/api/storage/bulk-download'

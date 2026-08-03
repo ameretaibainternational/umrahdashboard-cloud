@@ -41,6 +41,10 @@ function getBucket(): string {
 }
 
 export async function uploadPdf(key: string, body: Buffer): Promise<void> {
+  await uploadBinary(key, body, 'application/pdf')
+}
+
+export async function uploadBinary(key: string, body: Buffer, contentType: string): Promise<void> {
   if (isDemoMode()) {
     demoFileStore.set(key, body)
     return
@@ -50,7 +54,7 @@ export async function uploadPdf(key: string, body: Buffer): Promise<void> {
     Bucket: getBucket(),
     Key: key,
     Body: body,
-    ContentType: 'application/pdf',
+    ContentType: contentType,
   }))
 }
 
@@ -83,7 +87,7 @@ export async function listStoredPdfKeys(): Promise<string[]> {
       ContinuationToken: continuationToken,
     }))
     for (const obj of res.Contents ?? []) {
-      if (obj.Key && (obj.Key.startsWith('invoices/') || obj.Key.startsWith('vouchers/'))) {
+      if (obj.Key && (obj.Key.startsWith('invoices/') || obj.Key.startsWith('vouchers/') || obj.Key.startsWith('posters/'))) {
         keys.push(obj.Key)
       }
     }
@@ -109,7 +113,11 @@ export async function getPdfBuffer(key: string): Promise<Buffer> {
   return Buffer.from(bytes)
 }
 
-export async function getPresignedDownloadUrl(key: string, filename: string): Promise<string> {
+export async function getPresignedDownloadUrl(
+  key: string,
+  filename: string,
+  contentType = 'application/pdf',
+): Promise<string> {
   if (isDemoMode()) {
     const params = new URLSearchParams({ key, name: filename })
     return `/api/storage/demo-file?${params.toString()}`
@@ -121,7 +129,7 @@ export async function getPresignedDownloadUrl(key: string, filename: string): Pr
       Bucket: getBucket(),
       Key: key,
       ResponseContentDisposition: `attachment; filename="${filename.replace(/"/g, '')}"`,
-      ResponseContentType: 'application/pdf',
+      ResponseContentType: contentType,
     }),
     { expiresIn: 300 },
   )

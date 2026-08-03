@@ -38,7 +38,7 @@ export async function requireAdmin(): Promise<CallerContext | { error: string }>
 }
 
 export async function requireModeratorFeature(
-  feature: 'bookings' | 'accounts' | 'custom_invoices' | 'hotel_vouchers' | 'calculator',
+  feature: 'bookings' | 'accounts' | 'custom_invoices' | 'hotel_vouchers' | 'umrah_posters' | 'calculator',
 ): Promise<CallerContext | { error: string }> {
   const ctx = await getCallerContext()
   if ('error' in ctx) return ctx
@@ -52,6 +52,7 @@ export async function requireModeratorFeature(
     accounts: true,
     custom_invoices: true,
     hotel_vouchers: true,
+    umrah_posters: true,
     calculator: true,
   }
   if (!moderatorAllowed[feature] || !isModeratorPermission(ctx.permission)) {

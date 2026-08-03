@@ -103,7 +103,14 @@ export function parsePackageInvoiceData(raw: unknown, ziarats: ZiaratOption[] = 
       : 'sharing') as PackageInvoiceData['madinahRoom'],
     madinahNights: Number(d.madinahNights ?? 10),
     profitType: d.profitType === 'fixed' ? 'fixed' : 'percent',
-    profitValue: Number(d.profitValue ?? 8),
+    profitValue: (() => {
+      const raw = Number(d.profitValue ?? 8)
+      const type = d.profitType === 'fixed' ? 'fixed' : 'percent'
+      if (type !== 'fixed' || d.profitFixedPerPax) return raw
+      const pax = Math.max(1, Number(d.adult ?? 1) + Number(d.child ?? 0) + Number(d.infant ?? 0))
+      return raw / pax
+    })(),
+    profitFixedPerPax: d.profitFixedPerPax === true ? true : undefined,
     sellingOverride: d.sellingOverride != null ? Number(d.sellingOverride) : null,
     advance: Number(d.advance ?? 0),
     customerName: String(d.customerName ?? ''),
