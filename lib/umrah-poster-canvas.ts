@@ -776,18 +776,42 @@ export async function renderPosterToCanvas(
   renderUmrahPoster(ctx, data, baseImage, branding, cornerImage, logoImage, airplaneImage)
 }
 
-export function canvasToJpegBase64(canvas: HTMLCanvasElement): string {
-  const dataUrl = canvas.toDataURL('image/jpeg', 1.0)
-  const comma = dataUrl.indexOf(',')
-  return comma >= 0 ? dataUrl.slice(comma + 1) : dataUrl
+export function canvasToJpegBlob(canvas: HTMLCanvasElement, quality = 0.92): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    canvas.toBlob(
+      blob => {
+        if (blob) resolve(blob)
+        else reject(new Error('Failed to export poster image'))
+      },
+      'image/jpeg',
+      quality,
+    )
+  })
 }
 
-export function downloadPosterCanvas(canvas: HTMLCanvasElement, filename = 'umrah-package-poster.jpg'): void {
-  const url = canvas.toDataURL('image/jpeg', 1.0)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = filename.endsWith('.jpg') ? filename : `${filename}.jpg`
-  document.body.appendChild(a)
-  a.click()
-  a.remove()
+export async function canvasToJpegBase64(canvas: HTMLCanvasElement): Promise<string> {
+  const blob = await canvasToJpegBlob(canvas)
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => {
+      const result = reader.result
+      if (typeof result !== 'string') {
+        reject(new Error('Failed to read poster image'))
+        return
+      }
+      const comma = result.indexOf(',')
+      resolve(comma >= 0 ? result.slice(comma + 1) : result)
+    }
+    reader.onerror = () => reject(new Error('Failed to read poster image'))
+    reader.readAsDataURL(blob)
+  })
+}
+
+export async function downloadPosterCanvas(
+  canvas: HTMLCanvasElement,
+  filename = 'umrah-package-poster.jpg',
+): Promise<import('@/lib/storage-client').ImageDownloadMethod> {
+  const { downloadImageBlob } = await import('@/lib/storage-client')
+  const blob = await canvasToJpegBlob(canvas)
+  return downloadImageBlob(blob, filename)
 }

@@ -41,7 +41,7 @@ import {
 } from '@/lib/umrah-poster-branding-layout'
 import { BrandingSlider, BrandingResetButton } from '@/components/branding/BrandingSlider'
 import { createUmrahPosterWithImage, updateUmrahPosterWithImage, deleteUmrahPoster, deleteUmrahPosters } from '@/app/actions/umrah-posters'
-import { downloadStoredFile } from '@/lib/storage-client'
+import { downloadStoredFile, imageDownloadHint, storedFileDownloadHint } from '@/lib/storage-client'
 
 function readFileAsDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -486,7 +486,7 @@ export default function UmrahPosterForm({
     setIsDownloading(true)
     try {
       await renderPosterToCanvas(canvas, data, branding)
-      const jpeg_base64 = canvasToJpegBase64(canvas)
+      const jpeg_base64 = await canvasToJpegBase64(canvas)
       const title = data.cityName.trim() || data.blessedLine.trim() || 'Umrah Poster'
       const payload = {
         title,
@@ -511,8 +511,12 @@ export default function UmrahPosterForm({
         ? result.poster_number
         : (editingPosterId ? savedPosters.find(p => p.id === editingPosterId)?.poster_number : 'poster')
 
-      downloadPosterCanvas(canvas, `${fileNo}.jpg`)
-      toast.success(editingPosterId ? 'Poster updated and downloaded.' : `Poster ${fileNo} saved and downloaded.`)
+      const downloadMethod = await downloadPosterCanvas(canvas, `${fileNo}.jpg`)
+      const iosHint = imageDownloadHint(downloadMethod)
+      toast.success(
+        editingPosterId ? 'Poster updated and downloaded.' : `Poster ${fileNo} saved and downloaded.`,
+        iosHint ? { description: iosHint } : undefined,
+      )
       if (editingPosterId) {
         setEditingPosterId(null)
         setData(DEFAULT_POSTER_DATA)
@@ -617,7 +621,9 @@ export default function UmrahPosterForm({
     }
     setIsDownloading(true)
     try {
-      await downloadStoredFile(poster.id, 'poster')
+      const method = await downloadStoredFile(poster.id, 'poster')
+      const hint = storedFileDownloadHint(method, 'poster')
+      if (hint) toast.message(hint)
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Download failed.')
     } finally {

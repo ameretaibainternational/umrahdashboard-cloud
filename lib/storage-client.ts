@@ -1,6 +1,8 @@
 'use client'
 
 export type PdfDownloadMethod = 'anchor' | 'opened' | 'shared' | 'navigated'
+export type ImageDownloadMethod = PdfDownloadMethod
+export type FileDownloadMethod = PdfDownloadMethod | 'external'
 
 function isAppleMobile(): boolean {
   if (typeof navigator === 'undefined') return false
@@ -14,7 +16,7 @@ function revokeBlobUrlLater(url: string, ms = 120_000): void {
   window.setTimeout(() => URL.revokeObjectURL(url), ms)
 }
 
-function openPdfBlobUrl(url: string): PdfDownloadMethod {
+function openBlobUrl(url: string): PdfDownloadMethod {
   const opened = window.open(url, '_blank')
   if (opened) {
     revokeBlobUrlLater(url)
@@ -25,10 +27,14 @@ function openPdfBlobUrl(url: string): PdfDownloadMethod {
   return 'navigated'
 }
 
-async function sharePdfBlob(blob: Blob, filename: string): Promise<PdfDownloadMethod | null> {
+function openPdfBlobUrl(url: string): PdfDownloadMethod {
+  return openBlobUrl(url)
+}
+
+async function shareFileBlob(blob: Blob, filename: string, mime: string): Promise<PdfDownloadMethod | null> {
   if (typeof navigator.share !== 'function' || typeof File === 'undefined') return null
   try {
-    const file = new File([blob], filename, { type: 'application/pdf' })
+    const file = new File([blob], filename, { type: mime })
     if (navigator.canShare && !navigator.canShare({ files: [file] })) return null
     await navigator.share({ files: [file], title: filename })
     return 'shared'
@@ -36,6 +42,14 @@ async function sharePdfBlob(blob: Blob, filename: string): Promise<PdfDownloadMe
     if ((err as DOMException)?.name === 'AbortError') return 'shared'
     return null
   }
+}
+
+async function sharePdfBlob(blob: Blob, filename: string): Promise<PdfDownloadMethod | null> {
+  return shareFileBlob(blob, filename, 'application/pdf')
+}
+
+async function shareImageBlob(blob: Blob, filename: string): Promise<ImageDownloadMethod | null> {
+  return shareFileBlob(blob, filename, blob.type || 'image/jpeg')
 }
 
 /** Trigger an immediate browser download from PDF bytes (used right after save). */
@@ -76,8 +90,41 @@ export async function downloadCalculatorPdf(
   return 'anchor'
 }
 
+/**
+ * JPEG/image download — same iOS Safari workaround as PDFs.
+ * Uses Share sheet or opens the image so the user can save to Photos/Files.
+ */
+export async function downloadImageBlob(
+  blob: Blob,
+  filename: string,
+): Promise<ImageDownloadMethod> {
+  const safeName = /\.jpe?g$/i.test(filename) ? filename : `${filename}.jpg`
+  const url = URL.createObjectURL(blob)
+
+  if (isAppleMobile()) {
+    const shared = await shareImageBlob(blob, safeName)
+    if (shared) {
+      revokeBlobUrlLater(url)
+      return shared
+    }
+    return openBlobUrl(url)
+  }
+
+  const a = document.createElement('a')
+  a.href = url
+  a.download = safeName
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  URL.revokeObjectURL(url)
+  return 'anchor'
+}
+
 /** Fetch a presigned URL and open the stored file (never regenerates). */
-export async function downloadStoredFile(id: string, type: 'invoice' | 'voucher' | 'poster'): Promise<void> {
+export async function downloadStoredFile(
+  id: string,
+  type: 'invoice' | 'voucher' | 'poster',
+): Promise<FileDownloadMethod> {
   const res = await fetch(`/api/storage/presign?id=${encodeURIComponent(id)}&type=${type}`)
   const data = await res.json() as { url?: string; error?: string; removed?: boolean; removedAt?: string }
   if (!res.ok || data.error) {
@@ -87,12 +134,21 @@ export async function downloadStoredFile(id: string, type: 'invoice' | 'voucher'
     throw new Error(`File removed — storage was freed${data.removedAt ? ` on ${data.removedAt}` : ''}.`)
   }
   if (!data.url) throw new Error('No download URL returned')
+
+  if (isAppleMobile() && type === 'poster') {
+    const imageRes = await fetch(data.url)
+    if (!imageRes.ok) throw new Error('Download failed')
+    const blob = await imageRes.blob()
+    return downloadImageBlob(blob, `poster-${id}.jpg`)
+  }
+
   window.open(data.url, '_blank', 'noopener,noreferrer')
+  return 'external'
 }
 
 /** @deprecated Use downloadStoredFile */
 export async function downloadStoredPdf(id: string, type: 'invoice' | 'voucher'): Promise<void> {
-  return downloadStoredFile(id, type)
+  await downloadStoredFile(id, type)
 }
 
 export function pdfDownloadHint(method: PdfDownloadMethod): string | null {
@@ -100,6 +156,26 @@ export function pdfDownloadHint(method: PdfDownloadMethod): string | null {
     return 'PDF opened — tap Share, then Save to Files.'
   }
   return null
+}
+
+export function imageDownloadHint(method: ImageDownloadMethod): string | null {
+  if (method === 'opened' || method === 'navigated') {
+    return 'Poster opened — tap Share, then Save Image.'
+  }
+  return null
+}
+
+export function storedFileDownloadHint(method: FileDownloadMethod, type: 'invoice' | 'voucher' | 'poster'): string | null {
+  if (type === 'poster') {
+    if (method === 'external' && isAppleMobile()) {
+      return 'Poster opened — tap Share, then Save Image.'
+    }
+    return imageDownloadHint(method as ImageDownloadMethod)
+  }
+  if (method === 'external' && isAppleMobile()) {
+    return 'File opened — tap Share, then Save to Files.'
+  }
+  return pdfDownloadHint(method as PdfDownloadMethod)
 }
 
 /** Trigger bulk ZIP download for selected storage files. */
