@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import type { CustomInvoice, CustomInvoiceLineItem, PackageInvoiceData, StoredFileRow, StoredFileType, StorageUsage } from '@/lib/types'
+import { storedFileEditHref } from '@/lib/stored-file-links'
 import { encodePackageDataInTerms } from '@/lib/package-invoice'
 import { storageUsageFromFiles } from '@/lib/storage-usage'
 
@@ -376,6 +377,7 @@ type StoredFileDbRow = {
   storage_key: string | null
   file_deleted_at: string | null
   created_by?: string | null
+  invoice_kind?: 'custom' | 'package' | null
 }
 
 function mapStoredInvoiceRows(rows: StoredFileDbRow[]): StoredFileRow[] {
@@ -389,6 +391,7 @@ function mapStoredInvoiceRows(rows: StoredFileDbRow[]): StoredFileRow[] {
       date: String(r.date).slice(0, 10),
       file_size_bytes: Number(r.file_size_bytes),
       created_at: r.created_at,
+      edit_href: storedFileEditHref('invoice', r.id, r.invoice_kind ?? 'custom'),
     }))
 }
 
@@ -403,6 +406,7 @@ function mapStoredVoucherRows(rows: StoredFileDbRow[]): StoredFileRow[] {
       date: String(r.date).slice(0, 10),
       file_size_bytes: Number(r.file_size_bytes),
       created_at: r.created_at,
+      edit_href: storedFileEditHref('voucher', r.id),
     }))
 }
 
@@ -417,6 +421,7 @@ function mapStoredPosterRows(rows: StoredFileDbRow[]): StoredFileRow[] {
       date: String(r.date).slice(0, 10),
       file_size_bytes: Number(r.file_size_bytes),
       created_at: r.created_at,
+      edit_href: storedFileEditHref('poster', r.id),
     }))
 }
 
@@ -433,6 +438,7 @@ export async function fetchStoredFilesSupabase(createdBy?: string | null): Promi
     storage_key: string | null
     file_deleted_at: string | null
     created_by?: string | null
+    invoice_kind?: 'custom' | 'package' | null
   }
 
   type VoucherRow = {
@@ -462,7 +468,7 @@ export async function fetchStoredFilesSupabase(createdBy?: string | null): Promi
   async function loadInvoices(withOwner: boolean) {
     let q = supabase
       .from('custom_invoices')
-      .select('id, invoice_number, billed_to_name, invoice_date, file_size_bytes, created_at, storage_key, file_deleted_at, created_by')
+      .select('id, invoice_number, billed_to_name, invoice_date, file_size_bytes, created_at, storage_key, file_deleted_at, created_by, invoice_kind')
       .is('file_deleted_at', null)
       .not('storage_key', 'is', null)
     if (withOwner && createdBy) q = q.eq('created_by', createdBy)
@@ -523,6 +529,7 @@ export async function fetchStoredFilesSupabase(createdBy?: string | null): Promi
         created_at: r.created_at,
         storage_key: r.storage_key,
         file_deleted_at: r.file_deleted_at,
+        invoice_kind: r.invoice_kind ?? 'custom',
       })),
   )
 

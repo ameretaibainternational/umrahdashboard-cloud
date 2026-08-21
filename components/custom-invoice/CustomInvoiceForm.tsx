@@ -14,6 +14,7 @@ import { generateCustomInvoicePdfBytes } from '@/lib/generate-custom-invoice-pdf
 import {
   DEFAULT_CUSTOM_INVOICE_BACKGROUND,
   DEFAULT_INVOICE_TEXT_COLOR,
+  defaultInvoiceBoxColor,
 } from '@/lib/invoice-backgrounds'
 import { createCustomInvoiceWithPdf, updateCustomInvoiceWithPdf } from '@/app/actions/custom-invoices'
 import { upsertInvoiceService, upsertInvoiceClient } from '@/app/actions/settings'
@@ -341,6 +342,7 @@ export default function CustomInvoiceForm({
   const [signaturePersonName, setSignaturePersonName] = useState('')
   const [invoiceBackground, setInvoiceBackground] = useState(DEFAULT_CUSTOM_INVOICE_BACKGROUND)
   const [invoiceTextColor, setInvoiceTextColor] = useState(DEFAULT_INVOICE_TEXT_COLOR)
+  const [invoiceBoxColor, setInvoiceBoxColor] = useState(() => defaultInvoiceBoxColor(DEFAULT_CUSTOM_INVOICE_BACKGROUND))
   const [hidePricing, setHidePricing] = useState(() => editInvoice?.package_data?.hidePricing ?? false)
   const [hideServiceCharges, setHideServiceCharges] = useState(() => editInvoice?.package_data?.hideServiceCharges ?? false)
   const logoInputRef = useRef<HTMLInputElement>(null)
@@ -1089,6 +1091,8 @@ export default function CustomInvoiceForm({
                       onBackgroundChange={setInvoiceBackground}
                       textColor={invoiceTextColor}
                       onTextColorChange={setInvoiceTextColor}
+                      boxColor={invoiceBoxColor}
+                      onBoxColorChange={setInvoiceBoxColor}
                       defaultBackground={DEFAULT_CUSTOM_INVOICE_BACKGROUND}
                     />
                   </div>
@@ -1290,6 +1294,7 @@ export default function CustomInvoiceForm({
                     titleText={invoiceTitleText.trim() || 'INVOICE'}
                     backgroundImage={invoiceBackground}
                     textColor={invoiceTextColor}
+                    boxColor={invoiceBoxColor}
                     hidePricing={hidePricing}
                     hideServiceCharges={hideServiceCharges}
                   />
@@ -1339,6 +1344,7 @@ export default function CustomInvoiceForm({
           titleText={invoiceTitleText.trim() || 'INVOICE'}
           backgroundImage={invoiceBackground}
           textColor={invoiceTextColor}
+          boxColor={invoiceBoxColor}
           hidePricing={hidePricing}
           hideServiceCharges={hideServiceCharges}
         />

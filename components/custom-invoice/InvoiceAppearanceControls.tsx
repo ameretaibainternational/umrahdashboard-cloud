@@ -7,7 +7,9 @@ import {
   DEFAULT_CUSTOM_INVOICE_BACKGROUND,
   DEFAULT_INVOICE_TEXT_COLOR,
   INVOICE_BACKGROUNDS,
+  INVOICE_BOX_COLOR_PRESETS,
   INVOICE_TEXT_COLOR_PRESETS,
+  defaultInvoiceBoxColor,
   type InvoiceBackgroundOption,
 } from '@/lib/invoice-backgrounds'
 import { cn } from '@/lib/utils'
@@ -17,6 +19,8 @@ interface Props {
   onBackgroundChange: (src: string) => void
   textColor: string
   onTextColorChange: (color: string) => void
+  boxColor: string
+  onBoxColorChange: (color: string) => void
   defaultBackground?: string
   defaultTextColor?: string
   backgrounds?: InvoiceBackgroundOption[]
@@ -27,12 +31,17 @@ export default function InvoiceAppearanceControls({
   onBackgroundChange,
   textColor,
   onTextColorChange,
+  boxColor,
+  onBoxColorChange,
   defaultBackground = DEFAULT_CUSTOM_INVOICE_BACKGROUND,
   defaultTextColor = DEFAULT_INVOICE_TEXT_COLOR,
   backgrounds = INVOICE_BACKGROUNDS,
 }: Props) {
+  const defaultBoxColor = defaultInvoiceBoxColor(backgroundSrc)
   const isDefaultAppearance =
-    backgroundSrc === defaultBackground && textColor === defaultTextColor
+    backgroundSrc === defaultBackground
+    && textColor === defaultTextColor
+    && boxColor === defaultBoxColor
 
   return (
     <div className="space-y-4">
@@ -45,7 +54,10 @@ export default function InvoiceAppearanceControls({
               <button
                 key={bg.id}
                 type="button"
-                onClick={() => onBackgroundChange(bg.src)}
+                onClick={() => {
+                  onBackgroundChange(bg.src)
+                  onBoxColorChange(defaultInvoiceBoxColor(bg.src))
+                }}
                 className={cn(
                   'flex flex-col items-center gap-1.5 rounded-2xl border-2 p-1.5 transition-all min-w-[4.75rem]',
                   selected
@@ -65,6 +77,44 @@ export default function InvoiceAppearanceControls({
             )
           })}
         </div>
+      </div>
+
+      <div className="space-y-2">
+        <Label className="text-xs">Content Box Color</Label>
+        <div className="flex flex-wrap items-center gap-2">
+          <Input
+            type="color"
+            value={boxColor.startsWith('rgba') ? '#e8dcc8' : boxColor}
+            onChange={e => onBoxColorChange(e.target.value)}
+            className="h-9 w-12 cursor-pointer p-1 shrink-0"
+            aria-label="Pick content box color"
+          />
+          <Input
+            value={boxColor}
+            onChange={e => onBoxColorChange(e.target.value)}
+            placeholder={defaultBoxColor}
+            className="h-9 w-36 font-mono text-xs"
+          />
+          <div className="flex flex-wrap gap-1.5">
+            {INVOICE_BOX_COLOR_PRESETS.map(preset => (
+              <button
+                key={preset}
+                type="button"
+                onClick={() => onBoxColorChange(preset)}
+                className={cn(
+                  'h-7 w-7 rounded-full border-2 transition-transform hover:scale-105',
+                  boxColor === preset ? 'border-navy ring-2 ring-navy/25' : 'border-black/15',
+                )}
+                style={{ backgroundColor: preset.startsWith('rgba') ? '#e8dcc8' : preset }}
+                title={preset}
+                aria-label={`Use box color ${preset}`}
+              />
+            ))}
+          </div>
+        </div>
+        <p className="text-[10px] text-muted-foreground">
+          Solid panels behind billing, table, and totals — visible on light backgrounds.
+        </p>
       </div>
 
       <div className="space-y-2">
@@ -114,6 +164,7 @@ export default function InvoiceAppearanceControls({
         onClick={() => {
           onBackgroundChange(defaultBackground)
           onTextColorChange(defaultTextColor)
+          onBoxColorChange(defaultInvoiceBoxColor(defaultBackground))
         }}
       >
         Reset appearance

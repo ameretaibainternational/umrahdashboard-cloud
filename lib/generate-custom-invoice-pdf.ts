@@ -91,7 +91,7 @@ export async function generateCustomInvoicePdfBytes(
     ctx.drawImage(bgImg, 0, 0, composite.width, composite.height)
     ctx.drawImage(contentCanvas, 0, 0)
 
-    if (i === 0 && logoImg) {
+    if (logoImg) {
       const { x, y, w, h } = resolveLogoRect(branding)
       const rect = scaleRect(x, y, w, h)
       drawImageContain(

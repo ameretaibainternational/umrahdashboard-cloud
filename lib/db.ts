@@ -6,9 +6,10 @@
 
 import { isDemoMode } from './is-demo'
 import { demoStore } from './demo-store'
-import { isAdminPermission } from './permissions'
+import { isAdminPermission, isSuperAdminPermission } from './permissions'
 import { hasDirectDb, isDirectDbConnectionError, isDirectDbRecoverableError, markDirectDbAuthFailed, requireSql } from './sql'
 import { parseFlightCities, DEFAULT_PK_FLIGHT_CITIES, DEFAULT_SA_FLIGHT_CITIES } from './flight-cities'
+import { storedFileEditHref } from './stored-file-links'
 import type { Airline, Hotel, Booking, Payment, Expense, StaffUser, VisaSettings, CurrencySettings, TransportRate, Company, InvoiceSettings, InvoiceClient, InvoicePaymentMethod, InvoiceService, CustomInvoice, HotelVoucherSettings, HotelVoucherRecord, UmrahPosterRecord, StorageUsage, StoredFileRow, StaffActivityStats, ZiaratOption, HotelContact, TransportContact, CustomTransport, TransportRoute, TransportVehicle, RouteVehicleRate } from './types'
 import { DEFAULT_TRANSPORT_RATE_SAR, TRANSPORT_VEHICLES, transportServiceName } from './transport'
 import { customTransportToRateRows } from './custom-transports'
@@ -400,6 +401,7 @@ export async function getPayments(): Promise<Payment[]> {
     ...p,
     amount_pkr: Number(p.amount_pkr),
     booking_id: p.booking_id || (p.invoice_id ? `invoice-${p.invoice_id}` : p.booking_id),
+    voided: (p.note || '').startsWith('[VOID]'),
   }))
 }
 
@@ -662,6 +664,7 @@ export async function getStoredFiles(): Promise<StoredFileRow[]> {
           date: inv.invoice_date,
           file_size_bytes: inv.file_size_bytes,
           created_at: inv.created_at,
+          edit_href: storedFileEditHref('invoice', inv.id, inv.invoice_kind ?? 'custom'),
         })
       }
     }
@@ -676,6 +679,7 @@ export async function getStoredFiles(): Promise<StoredFileRow[]> {
           date: v.voucher_date,
           file_size_bytes: v.file_size_bytes,
           created_at: v.created_at,
+          edit_href: storedFileEditHref('voucher', v.id),
         })
       }
     }
@@ -690,6 +694,7 @@ export async function getStoredFiles(): Promise<StoredFileRow[]> {
           date: p.poster_date,
           file_size_bytes: p.file_size_bytes,
           created_at: p.created_at,
+          edit_href: storedFileEditHref('poster', p.id),
         })
       }
     }
@@ -727,7 +732,7 @@ export async function getStaff(): Promise<StaffUser[]> {
  */
 export async function getCurrentStaff(): Promise<StaffUser | null> {
   if (isDemoMode()) {
-    return { id: 'demo', name: 'Demo Admin', username: 'admin', role: 'Admin', permission: 'Full Access', status: 'Active', created_at: new Date().toISOString() }
+    return { id: 'demo', name: 'Demo Admin', username: 'admin', role: 'Super Admin', permission: 'Super Admin', status: 'Active', created_at: new Date().toISOString() }
   }
   const sb = await getSupabase()
   const { data: { session } } = await sb.auth.getSession()
@@ -739,7 +744,7 @@ export async function getCurrentStaff(): Promise<StaffUser | null> {
 
 export async function getStaffActivityStats(): Promise<StaffActivityStats[]> {
   const staff = await getCurrentStaff()
-  if (!staff || !isAdminPermission(staff.permission)) return []
+  if (!staff || !isSuperAdminPermission(staff.permission)) return []
 
   if (isDemoMode()) {
     return demoStore.staff.map(s => ({

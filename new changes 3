@@ -1,0 +1,18 @@
+make the logo appar of second and third pages of custom invoices too.
+
+when we choose a light theme of custom invoices or package calculator invoices, there are boxes in the invoices that contains tet contents. the boxes are glass effect that are visible on dark backgrounds but they are not visible on light backgrounds. so instead of using glass efect, use a solid colo for those boxes and also give color chooser so we can change the color of boxes too.
+
+In hotel voucer where there is contacts select dropdown, add an option to unselect those when one is selected.
+
+Umrah poster is not downloading on iphone. it says load failed.
+
+Add a super admin role in user and accounts too. it should be only 1 super admin he can can see progess of admins, viewers and modifiers.
+
+In umrah poster where there is a dropdown to select hotel, make that list sory by price low to high.
+
+In storage page in settings, where there invoices being shown, add an edit option next to the invoices from where we can click that and the invoice opens whether in package calculator, custom invoices,or in hotel vouceher whatever the pdf is.
+
+when we create hotel voucher in iphone, the second page where there are guidelines, it crops from bottom . it os fine on desktop but not on iphone.
+
+also on andriod, when we make hotel voucher pdf, the logo becomes in verticaly center of pdf instead of its original position fix this too.
+

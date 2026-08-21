@@ -136,8 +136,12 @@ export async function downloadStoredFile(
   if (!data.url) throw new Error('No download URL returned')
 
   if (isAppleMobile() && type === 'poster') {
-    const imageRes = await fetch(data.url)
-    if (!imageRes.ok) throw new Error('Download failed')
+    const proxyUrl = `/api/storage/download?id=${encodeURIComponent(id)}&type=${type}`
+    const imageRes = await fetch(proxyUrl)
+    if (!imageRes.ok) {
+      const err = await imageRes.json().catch(() => ({})) as { error?: string }
+      throw new Error(err.error ?? 'Download failed')
+    }
     const blob = await imageRes.blob()
     return downloadImageBlob(blob, `poster-${id}.jpg`)
   }

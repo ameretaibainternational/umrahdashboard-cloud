@@ -7,6 +7,7 @@ import {
   requireSql,
   requireWriteSql,
 } from '@/lib/sql'
+import { storedFileEditHref } from '@/lib/stored-file-links'
 import type { CustomInvoice, CustomInvoiceLineItem, HotelVoucherRecord, UmrahPosterRecord, PackageInvoiceData, StorageUsage, StoredFileRow, StoredFileType, StaffActivityStats } from '@/lib/types'
 import { decodePackageDataFromTerms, encodePackageDataInTerms } from '@/lib/package-invoice'
 
@@ -927,17 +928,17 @@ export async function deleteHotelVouchers(ids: string[]) {
 export async function fetchStoredFiles(createdBy?: string | null): Promise<StoredFileRow[]> {
   const sql = requireSql()
   const invoices = createdBy
-    ? await sql<StoredFileRow[]>`
+    ? await sql<Array<StoredFileRow & { invoice_kind?: string | null }>>`
         SELECT id, 'invoice'::text AS type, invoice_number AS number,
                billed_to_name AS label, invoice_date::text AS date,
-               file_size_bytes, created_at
+               file_size_bytes, created_at, invoice_kind
         FROM custom_invoices
         WHERE file_deleted_at IS NULL AND storage_key IS NOT NULL AND created_by = ${createdBy}
       `
-    : await sql<StoredFileRow[]>`
+    : await sql<Array<StoredFileRow & { invoice_kind?: string | null }>>`
         SELECT id, 'invoice'::text AS type, invoice_number AS number,
                billed_to_name AS label, invoice_date::text AS date,
-               file_size_bytes, created_at
+               file_size_bytes, created_at, invoice_kind
         FROM custom_invoices
         WHERE file_deleted_at IS NULL AND storage_key IS NOT NULL
       `
@@ -972,12 +973,25 @@ export async function fetchStoredFiles(createdBy?: string | null): Promise<Store
         WHERE file_deleted_at IS NULL AND storage_key IS NOT NULL
       `
   return [...invoices, ...vouchers, ...posters]
-    .map(r => ({
-      ...r,
-      date: pgDate(r.date),
-      created_at: pgTimestamp(r.created_at),
-      file_size_bytes: Number(r.file_size_bytes),
-    }))
+    .map(r => {
+      const row = {
+        ...r,
+        date: pgDate(r.date),
+        created_at: pgTimestamp(r.created_at),
+        file_size_bytes: Number(r.file_size_bytes),
+      }
+      const invoiceKind = 'invoice_kind' in row
+        ? (row.invoice_kind as 'custom' | 'package' | null | undefined)
+        : undefined
+      return {
+        ...row,
+        edit_href: storedFileEditHref(
+          row.type,
+          row.id,
+          row.type === 'invoice' ? (invoiceKind ?? 'custom') : undefined,
+        ),
+      }
+    })
     .sort((a, b) => a.created_at.localeCompare(b.created_at))
 }
 

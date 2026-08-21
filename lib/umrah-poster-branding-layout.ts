@@ -1,5 +1,7 @@
 /** Umrah poster canvas size matches `POSTER_W` × `POSTER_H` in umrah-poster-canvas.ts. */
 
+import { absoluteImageSrc } from '@/lib/company-logo'
+
 export const POSTER_CANVAS_W = 1587
 export const POSTER_CANVAS_H = 2245
 
@@ -112,9 +114,16 @@ export async function loadPosterCorner(color = DEFAULT_POSTER_CORNER_COLOR): Pro
 function loadPosterImage(src: string, label: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const img = new Image()
-    img.crossOrigin = 'anonymous'
+    const resolved = absoluteImageSrc(src)
+    if (
+      typeof window !== 'undefined'
+      && resolved.startsWith('http')
+      && !resolved.startsWith(window.location.origin)
+    ) {
+      img.crossOrigin = 'anonymous'
+    }
     img.onload = () => resolve(img)
     img.onerror = () => reject(new Error(`Failed to load ${label}`))
-    img.src = src
+    img.src = resolved
   })
 }

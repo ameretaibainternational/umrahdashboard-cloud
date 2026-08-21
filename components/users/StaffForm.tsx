@@ -15,16 +15,19 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Badge } from '@/components/ui/badge'
 import { Pencil, Trash2, Plus, Loader2, UserCog, BarChart3 } from 'lucide-react'
 
-const ROLES: StaffRole[] = ['Admin', 'Moderator', 'Viewer']
+const BASE_ROLES: StaffRole[] = ['Admin', 'Moderator', 'Viewer']
+const SUPER_ADMIN_ROLES: StaffRole[] = ['Super Admin', ...BASE_ROLES]
 
 interface Props {
   staff: StaffUser[]
   activityStats: StaffActivityStats[]
+  isSuperAdmin?: boolean
 }
 
 type EditState = Partial<StaffUser & { email: string; password: string }> | null
 
-export default function StaffForm({ staff, activityStats }: Props) {
+export default function StaffForm({ staff, activityStats, isSuperAdmin = false }: Props) {
+  const roles = isSuperAdmin ? SUPER_ADMIN_ROLES : BASE_ROLES
   const [editing, setEditing] = useState<EditState>(null)
   const [deleteId, setDeleteId] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
@@ -56,6 +59,7 @@ export default function StaffForm({ staff, activityStats }: Props) {
 
   return (
     <>
+      {isSuperAdmin && (
       <Card className="shadow-sm border-0 mb-4">
         <CardHeader className="pb-3">
           <div className="flex items-center gap-2">
@@ -109,6 +113,7 @@ export default function StaffForm({ staff, activityStats }: Props) {
           )}
         </CardContent>
       </Card>
+      )}
 
       <Card className="shadow-sm border-0">
         <CardHeader className="pb-3 flex flex-row items-center justify-between">
@@ -225,7 +230,7 @@ export default function StaffForm({ staff, activityStats }: Props) {
               <Select name="role" defaultValue={editing?.role ?? 'Moderator'}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  {ROLES.map(r => (
+                  {roles.map(r => (
                     <SelectItem key={r} value={r}>
                       {r === 'Admin'
                         ? 'Admin — full access'

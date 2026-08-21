@@ -10,7 +10,7 @@ import {
 } from 'lucide-react'
 import { logout } from '@/app/actions/auth'
 import { cn } from '@/lib/utils'
-import { isAdminPermission, isViewerPermission } from '@/lib/permissions'
+import { isAdminPermission, isSuperAdminPermission, isViewerPermission } from '@/lib/permissions'
 import type { StaffPermission } from '@/lib/types'
 
 const NAV_ITEMS = [
@@ -22,8 +22,8 @@ const NAV_ITEMS = [
   { href: '/hotel-voucher',   label: 'Hotel Voucher',    icon: BedDouble, adminOnly: false, moderator: true, viewer: false },
   { href: '/umrah-poster',    label: 'Umrah Poster',     icon: ImageIcon, adminOnly: false, moderator: true, viewer: false },
   { href: '/accounts',        label: 'Accounts',         icon: Wallet, adminOnly: false, moderator: true, viewer: false },
-  { href: '/settings/visa',   label: 'Settings',         icon: Settings, adminOnly: true, moderator: false, viewer: false },
-  { href: '/users',           label: 'Users & Staff',    icon: UserCog, adminOnly: true, moderator: false, viewer: false },
+  { href: '/settings/visa',   label: 'Settings',         icon: Settings, adminOnly: true, superAdminOnly: false, moderator: false, viewer: false },
+  { href: '/users',           label: 'Users & Staff',    icon: UserCog, adminOnly: false, superAdminOnly: true, moderator: false, viewer: false },
 ] as const
 
 interface SidebarProps {
@@ -46,6 +46,9 @@ export default function Sidebar({ companyName, open, onClose, collapsed, onToggl
   }
 
   const visibleItems = NAV_ITEMS.filter(item => {
+    if ('superAdminOnly' in item && item.superAdminOnly) {
+      return isSuperAdminPermission(permission)
+    }
     if (isAdmin) return true
     if (isViewer) return item.viewer
     return item.moderator

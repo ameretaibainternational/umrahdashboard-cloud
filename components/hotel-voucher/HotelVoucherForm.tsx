@@ -25,6 +25,7 @@ import { updateHotelVoucherGuidelines } from '@/app/actions/hotel-voucher'
 import { createHotelVoucherWithPdf, updateHotelVoucherWithPdf, deleteHotelVoucher, deleteHotelVouchers } from '@/app/actions/hotel-vouchers'
 import { upsertHotel } from '@/app/actions/settings'
 import { downloadPdfBytes, downloadStoredPdf } from '@/lib/storage-client'
+import { absoluteImageSrc } from '@/lib/company-logo'
 import { uint8ToBase64 } from '@/lib/pdf-utils'
 import { applyVoucherPdfCloneStyles } from '@/lib/invoice-pdf-onclone'
 import type { Hotel, HotelVoucherSettings, HotelVoucherRecord, HotelContact, TransportContact } from '@/lib/types'
@@ -74,9 +75,17 @@ function readFileAsDataUrl(file: File): Promise<string> {
 function loadImage(src: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const img = new Image()
+    const resolved = absoluteImageSrc(src)
+    if (
+      typeof window !== 'undefined'
+      && resolved.startsWith('http')
+      && !resolved.startsWith(window.location.origin)
+    ) {
+      img.crossOrigin = 'anonymous'
+    }
     img.onload = () => resolve(img)
     img.onerror = () => reject(new Error('Failed to load image'))
-    img.src = src
+    img.src = resolved
   })
 }
 
@@ -97,6 +106,25 @@ function drawImageContain(
 function hideBrandingLogoInClone(clonedDoc: Document) {
   clonedDoc.querySelectorAll<HTMLElement>('[data-voucher-branding-logo]').forEach(el => {
     el.style.display = 'none'
+    el.style.visibility = 'hidden'
+    el.style.opacity = '0'
+  })
+}
+
+function scaleUrduPageToFit(clonedDoc: Document) {
+  clonedDoc.querySelectorAll<HTMLElement>('[data-voucher-p2]').forEach(page => {
+    const inner = page.querySelector<HTMLElement>('[dir="rtl"]')
+    if (!inner) return
+    inner.style.height = 'auto'
+    inner.style.maxHeight = 'none'
+    const available = VOUCHER_TEMPLATE_H - 24
+    const needed = inner.scrollHeight
+    if (needed > available) {
+      const scale = available / needed
+      inner.style.transform = `scale(${scale})`
+      inner.style.transformOrigin = 'top center'
+      inner.style.width = `${100 / scale}%`
+    }
   })
 }
 
@@ -170,6 +198,10 @@ async function captureUrduPage(
     logging: false,
     scrollX: 0,
     scrollY: 0,
+    width: VOUCHER_TEMPLATE_W,
+    height: VOUCHER_TEMPLATE_H,
+    windowWidth: VOUCHER_TEMPLATE_W,
+    windowHeight: VOUCHER_TEMPLATE_H,
     onclone: (clonedDoc: Document) => {
       // Copy preloaded fonts to cloned document to fix web fonts in iframe
       document.fonts.forEach(font => {
@@ -189,6 +221,7 @@ async function captureUrduPage(
         node.style.backgroundColor = 'transparent'
       })
       hideBrandingLogoInClone(clonedDoc)
+      scaleUrduPageToFit(clonedDoc)
     },
   }
 
@@ -466,6 +499,30 @@ export default function HotelVoucherForm({
       ...prev,
       madinaHotelContactId: contactId,
       madinaHotelContact: contact?.contact_number ?? '',
+    }))
+  }
+
+  function clearJeddahTransportContact() {
+    setData(prev => ({
+      ...prev,
+      jeddahTransportContactId: undefined,
+      jeddahTransportContact: '',
+    }))
+  }
+
+  function clearMakkahTransportContact() {
+    setData(prev => ({
+      ...prev,
+      makkahTransportContactId: undefined,
+      makkahTransportContact: '',
+    }))
+  }
+
+  function clearMadinaTransportContact() {
+    setData(prev => ({
+      ...prev,
+      madinaTransportContactId: undefined,
+      madinaTransportContact: '',
     }))
   }
 
@@ -1304,7 +1361,18 @@ export default function HotelVoucherForm({
                 )}
               </div>
               <div className="space-y-1 col-span-2">
-                <Label className="text-xs">Makkah Transport Contact</Label>
+                <div className="flex items-center justify-between gap-2">
+                  <Label className="text-xs">Makkah Transport Contact</Label>
+                  {resolvedMakkahTransportContactId && (
+                    <button
+                      type="button"
+                      onClick={clearMakkahTransportContact}
+                      className="text-[10px] text-muted-foreground hover:text-navy underline"
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
                 {makkahTransportOptions.length === 0 ? (
                   <p className="text-xs text-muted-foreground py-2">
                     Add contacts in Settings → Transport Contacts.
@@ -1335,7 +1403,18 @@ export default function HotelVoucherForm({
                 )}
               </div>
               <div className="space-y-1 col-span-2">
-                <Label className="text-xs">Madina Transport Contact</Label>
+                <div className="flex items-center justify-between gap-2">
+                  <Label className="text-xs">Madina Transport Contact</Label>
+                  {resolvedMadinaTransportContactId && (
+                    <button
+                      type="button"
+                      onClick={clearMadinaTransportContact}
+                      className="text-[10px] text-muted-foreground hover:text-navy underline"
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
                 {madinahTransportOptions.length === 0 ? (
                   <p className="text-xs text-muted-foreground py-2">
                     Add contacts in Settings → Transport Contacts.
@@ -1366,7 +1445,18 @@ export default function HotelVoucherForm({
                 )}
               </div>
               <div className="space-y-1 col-span-2">
-                <Label className="text-xs">Jeddah Transport Contact</Label>
+                <div className="flex items-center justify-between gap-2">
+                  <Label className="text-xs">Jeddah Transport Contact</Label>
+                  {resolvedJeddahTransportContactId && (
+                    <button
+                      type="button"
+                      onClick={clearJeddahTransportContact}
+                      className="text-[10px] text-muted-foreground hover:text-navy underline"
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
                 {jeddahTransportOptions.length === 0 ? (
                   <p className="text-xs text-muted-foreground py-2">
                     Add contacts in Settings → Transport Contacts.

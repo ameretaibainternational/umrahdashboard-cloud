@@ -10,6 +10,7 @@ import {
   loadPosterLogo,
   type PosterBranding,
 } from '@/lib/umrah-poster-branding-layout'
+import { absoluteImageSrc } from '@/lib/company-logo'
 
 export const CM_TO_PX = 37.78
 export const POSTER_W = 1587
@@ -733,24 +734,29 @@ export function renderUmrahPoster(
   }
 }
 
-export function loadBaseImage(src = BASE_IMAGE_SRC): Promise<HTMLImageElement> {
+function loadCanvasImage(src: string, label: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const img = new Image()
-    img.crossOrigin = 'anonymous'
+    const resolved = absoluteImageSrc(src)
+    if (
+      typeof window !== 'undefined'
+      && resolved.startsWith('http')
+      && !resolved.startsWith(window.location.origin)
+    ) {
+      img.crossOrigin = 'anonymous'
+    }
     img.onload = () => resolve(img)
-    img.onerror = () => reject(new Error(`Failed to load poster base image: ${src}`))
-    img.src = src
+    img.onerror = () => reject(new Error(`Failed to load ${label}: ${src}`))
+    img.src = resolved
   })
 }
 
+export function loadBaseImage(src = BASE_IMAGE_SRC): Promise<HTMLImageElement> {
+  return loadCanvasImage(src, 'poster base image')
+}
+
 export function loadAirplaneImage(src = '/Airplane.png'): Promise<HTMLImageElement> {
-  return new Promise((resolve, reject) => {
-    const img = new Image()
-    img.crossOrigin = 'anonymous'
-    img.onload = () => resolve(img)
-    img.onerror = () => reject(new Error(`Failed to load airplane image: ${src}`))
-    img.src = src
-  })
+  return loadCanvasImage(src, 'airplane image')
 }
 
 export async function renderPosterToCanvas(

@@ -3,7 +3,7 @@
 import { useState, useMemo, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
-import { deleteLedgerEntries } from '@/app/actions/accounts'
+import { deleteLedgerEntries, voidPayment } from '@/app/actions/accounts'
 import type { Payment, Booking } from '@/lib/types'
 import { pkr, formatDate, bookingInvoiceId, sar } from '@/lib/formatters'
 import { formatLedgerInvoices, ledgerCustomerKey, ledgerDisplayName } from '@/lib/ledger-utils'
@@ -15,7 +15,8 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { BookOpen, Printer, Copy, Trash2, Loader2 } from 'lucide-react'
+import { BookOpen, Printer, Copy, Trash2, Loader2, History, Ban } from 'lucide-react'
+import { cn } from '@/lib/utils'
 
 interface Props {
   payments: Payment[]
@@ -66,6 +67,7 @@ function buildBookingLedgerRows(
   }>()
 
   for (const p of payments) {
+    if (p.voided) continue  // exclude voided payments from totals
     const key = p.booking_id || ''
     let entry = byBooking.get(key)
     if (!entry) {
@@ -165,6 +167,8 @@ export default function ClientLedger({ payments, bookings, companyName, sarToPkr
   const [selectedCurrency, setSelectedCurrency] = useState<'PKR' | 'SAR'>('PKR')
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false)
   const [isPending, startTransition] = useTransition()
+  const [historyCustomer, setHistoryCustomer] = useState<LedgerRow | null>(null)
+  const [voidingId, setVoidingId] = useState<string | null>(null)
 
   const formatVal = (valInPkr: number) => {
     if (selectedCurrency === 'SAR') {
@@ -178,6 +182,41 @@ export default function ClientLedger({ payments, bookings, companyName, sarToPkr
     for (const b of bookings) m.set(b.id, b)
     return m
   }, [bookings])
+
+  // All payments (including voided) keyed by booking_id for Payment History lookup
+  const paymentsByBookingId = useMemo(() => {
+    const m = new Map<string, Payment[]>()
+    for (const p of payments) {
+      const key = p.booking_id || ''
+      if (!m.has(key)) m.set(key, [])
+      m.get(key)!.push(p)
+    }
+    return m
+  }, [payments])
+
+  function getCustomerPayments(row: LedgerRow): Payment[] {
+    const result: Payment[] = []
+    for (const bid of row.bookingIds) {
+      for (const p of paymentsByBookingId.get(bid) ?? []) {
+        result.push(p)
+      }
+    }
+    return result.sort((a, b) => b.payment_date.localeCompare(a.payment_date))
+  }
+
+  function handleVoid(paymentId: string) {
+    setVoidingId(paymentId)
+    startTransition(async () => {
+      const result = await voidPayment(paymentId)
+      setVoidingId(null)
+      if ('error' in result && result.error) {
+        toast.error(result.error)
+      } else {
+        toast.success('Payment voided — balance updated. Re-enter the correct amount.')
+        router.refresh()
+      }
+    })
+  }
 
   // One row per customer — amounts sum across all invoices/bookings for that client
   const allRows = useMemo<LedgerRow[]>(
@@ -489,12 +528,13 @@ export default function ClientLedger({ payments, bookings, companyName, sarToPkr
                 <TableHead className="text-xs">Method</TableHead>
                 <TableHead className="text-xs">Recorded By</TableHead>
                 <TableHead className="text-xs">Note</TableHead>
+                <TableHead className="text-xs text-center">Payments</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {filteredRows.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={10} className="text-center text-muted-foreground py-10 text-sm">
+                  <TableCell colSpan={11} className="text-center text-muted-foreground py-10 text-sm">
                     No payment entries found.
                   </TableCell>
                 </TableRow>
@@ -516,6 +556,23 @@ export default function ClientLedger({ payments, bookings, companyName, sarToPkr
                   <TableCell><Badge variant="outline" className="text-[10px]">{r.method}</Badge></TableCell>
                   <TableCell className="text-xs font-mono text-muted-foreground">{staffUsernames(staffMap, r.recordedByIds)}</TableCell>
                   <TableCell className="text-xs text-muted-foreground">{r.note || '—'}</TableCell>
+                  <TableCell className="text-center">
+                    {(() => {
+                      const custPayments = getCustomerPayments(r)
+                      const count = custPayments.length
+                      const voidedCount = custPayments.filter(p => p.voided).length
+                      return (
+                        <button
+                          type="button"
+                          onClick={() => setHistoryCustomer(r)}
+                          className="inline-flex items-center gap-1 text-xs text-navy hover:underline"
+                        >
+                          <History className="w-3.5 h-3.5" />
+                          {count}{voidedCount > 0 ? ` (${voidedCount} voided)` : ''}
+                        </button>
+                      )
+                    })()}
+                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>
@@ -560,6 +617,88 @@ export default function ClientLedger({ payments, bookings, companyName, sarToPkr
             <Button variant="destructive" onClick={handleBulkDelete} disabled={isPending}>
               {isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Delete'}
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Payment History Dialog ───────────────────────────────────── */}
+      <Dialog open={!!historyCustomer} onOpenChange={open => { if (!open) setHistoryCustomer(null) }}>
+        <DialogContent className="max-w-5xl w-[min(1024px,95vw)]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <History className="w-4 h-4" />
+              Payment History — {historyCustomer?.customerName}
+            </DialogTitle>
+            <DialogDescription>
+              Click <strong>Void</strong> on a wrong entry to cancel it and restore the due amount. Then record the correct payment below.
+              Voided entries stay visible for your records.
+            </DialogDescription>
+          </DialogHeader>
+
+          {historyCustomer && (() => {
+            const custPayments = getCustomerPayments(historyCustomer)
+            if (custPayments.length === 0) {
+              return <p className="text-sm text-muted-foreground py-4 text-center">No payment records found.</p>
+            }
+            return (
+              <div className="overflow-auto max-h-96 rounded-lg border">
+                <table className="w-full text-sm">
+                  <thead className="bg-muted/50 sticky top-0">
+                    <tr>
+                      <th className="text-left text-xs font-medium p-3">Date</th>
+                      <th className="text-right text-xs font-medium p-3">Amount</th>
+                      <th className="text-left text-xs font-medium p-3">Method</th>
+                      <th className="text-left text-xs font-medium p-3">Note</th>
+                      <th className="text-center text-xs font-medium p-3 w-20">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y">
+                    {custPayments.map(p => (
+                      <tr key={p.id} className={cn('hover:bg-muted/20', p.voided && 'opacity-50')}>
+                        <td className={cn('p-3 text-xs whitespace-nowrap', p.voided && 'line-through text-muted-foreground')}>
+                          {formatDate(p.payment_date)}
+                        </td>
+                        <td className={cn('p-3 text-right tabular-nums font-semibold', p.voided ? 'line-through text-muted-foreground' : 'text-emerald-600')}>
+                          {pkr(p.amount_pkr)}
+                        </td>
+                        <td className="p-3">
+                          <Badge variant="outline" className="text-[10px]">{p.method}</Badge>
+                        </td>
+                        <td className={cn('p-3 text-xs text-muted-foreground', p.voided && 'line-through')}>
+                          {p.voided
+                            ? p.note.replace(/^\[VOID\]\s*/i, '') || '—'
+                            : p.note || '—'}
+                        </td>
+                        <td className="p-3 text-center">
+                          {p.voided ? (
+                            <Badge variant="outline" className="text-[10px] text-rose-500 border-rose-300 gap-1">
+                              <Ban className="w-3 h-3" />Voided
+                            </Badge>
+                          ) : (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="h-7 text-xs text-rose-600 border-rose-300 hover:bg-rose-50 gap-1"
+                              disabled={voidingId === p.id || isPending}
+                              onClick={() => handleVoid(p.id)}
+                            >
+                              {voidingId === p.id
+                                ? <Loader2 className="w-3 h-3 animate-spin" />
+                                : <><Ban className="w-3 h-3" /> Void</>}
+                            </Button>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )
+          })()}
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setHistoryCustomer(null)}>Close</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

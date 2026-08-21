@@ -13,7 +13,7 @@ import {
   scaleFontSize,
   scaleRect,
 } from '@/lib/custom-invoice-branding-layout'
-import { DEFAULT_INVOICE_TEXT_COLOR, invoiceBackgroundUrl, invoiceTextColorWithAlpha } from '@/lib/invoice-backgrounds'
+import { DEFAULT_INVOICE_TEXT_COLOR, defaultInvoiceBoxColor, invoiceBackgroundUrl, invoiceTextColorWithAlpha } from '@/lib/invoice-backgrounds'
 
 const PDF_FONT = 'Arial, Helvetica, sans-serif'
 const W = 595.5
@@ -279,6 +279,57 @@ function TermsSection({
   )
 }
 
+function InvoicePanelOverlays({
+  boxColor,
+  showTerms,
+}: {
+  boxColor: string
+  showTerms?: boolean
+}) {
+  return (
+    <>
+      <div
+        style={{
+          position: 'absolute',
+          left: '26px',
+          top: '168px',
+          width: '521px',
+          height: '82px',
+          backgroundColor: boxColor,
+          borderRadius: '8px',
+          zIndex: 0,
+        }}
+      />
+      <div
+        style={{
+          position: 'absolute',
+          left: '26px',
+          top: '288px',
+          width: '533px',
+          height: '236px',
+          backgroundColor: boxColor,
+          borderRadius: '8px',
+          zIndex: 0,
+        }}
+      />
+      {showTerms && (
+        <div
+          style={{
+            position: 'absolute',
+            left: '26px',
+            top: '525px',
+            width: '521px',
+            height: '118px',
+            backgroundColor: boxColor,
+            borderRadius: '8px',
+            zIndex: 0,
+          }}
+        />
+      )}
+    </>
+  )
+}
+
 function BrandingLogo({ branding }: { branding: InvoiceBranding }) {
   if (!branding.logoUrl) return null
   const { x, y, w, h } = resolveLogoRect(branding)
@@ -366,6 +417,7 @@ interface Props {
   centerInvoiceId?: boolean
   backgroundImage?: string
   textColor?: string
+  boxColor?: string
   hidePricing?: boolean
   hideServiceCharges?: boolean
 }
@@ -382,10 +434,12 @@ const CustomInvoiceTemplate = forwardRef<HTMLDivElement, Props>(
     centerInvoiceId = false,
     backgroundImage = '/invoice-empty.jpg',
     textColor = DEFAULT_INVOICE_TEXT_COLOR,
+    boxColor,
     hidePricing = false,
     hideServiceCharges = false,
   }, ref) {
     const ink = textColor
+    const panelColor = boxColor ?? defaultInvoiceBoxColor(backgroundImage)
     const inkMuted = invoiceTextColorWithAlpha(ink, 0.65)
     const ruleColor = invoiceTextColorWithAlpha(ink, 0.45)
 
@@ -433,6 +487,8 @@ const CustomInvoiceTemplate = forwardRef<HTMLDivElement, Props>(
 
         {/* ── PAGE 1 ─────────────────────────────────────────────────── */}
         <div data-invoice-root style={pageBgStyle(backgroundImage)}>
+
+          <InvoicePanelOverlays boxColor={panelColor} showTerms={page1IsLast} />
 
           {branding?.logoUrl && <BrandingLogo branding={branding} />}
 
@@ -516,6 +572,10 @@ const CustomInvoiceTemplate = forwardRef<HTMLDivElement, Props>(
 
           return (
             <div key={pi} data-invoice-root style={pageBgStyle(backgroundImage)}>
+
+              <InvoicePanelOverlays boxColor={panelColor} showTerms={isLast} />
+
+              {branding?.logoUrl && <BrandingLogo branding={branding} />}
 
               {/* Compact page indicator */}
 

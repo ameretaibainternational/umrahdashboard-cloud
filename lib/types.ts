@@ -157,6 +157,8 @@ export interface Payment {
   method: 'Cash' | 'Bank' | 'JazzCash' | 'EasyPaisa'
   note: string
   created_by?: string | null
+  /** True when the payment note starts with [VOID] — computed client-side, no schema change */
+  voided?: boolean
 }
 
 export type ExpenseType =
@@ -203,8 +205,8 @@ export interface StaffUser {
   email?: string
 }
 
-export type StaffRole = 'Admin' | 'Moderator' | 'Viewer'
-export type StaffPermission = 'Full Access' | 'Moderator' | 'View Only'
+export type StaffRole = 'Super Admin' | 'Admin' | 'Moderator' | 'Viewer'
+export type StaffPermission = 'Super Admin' | 'Full Access' | 'Moderator' | 'View Only'
 
 // ── Custom Invoice ────────────────────────────────────────────────────────────
 
@@ -283,8 +285,10 @@ export interface PackageInvoiceData {
   hidePricing?: boolean
   hideServiceCharges?: boolean
   profit_sar?: number
-  /** When true, fixed profitValue is per passenger (new behavior). Omitted on legacy saves (total profit). */
   profitFixedPerPax?: boolean
+  invoiceBackground?: string
+  invoiceTextColor?: string
+  invoiceBoxColor?: string
 }
 
 export interface TransportRoute {
@@ -383,6 +387,7 @@ export interface StoredFileRow {
   date: string
   file_size_bytes: number
   created_at: string
+  edit_href?: string
 }
 
 export interface HotelVoucherSettings {

@@ -51,6 +51,7 @@ import InvoiceAppearanceControls from '@/components/custom-invoice/InvoiceAppear
 import {
   DEFAULT_INVOICE_TEXT_COLOR,
   DEFAULT_PACKAGE_INVOICE_BACKGROUND,
+  defaultInvoiceBoxColor,
 } from '@/lib/invoice-backgrounds'
 import {
   Dialog,
@@ -252,8 +253,19 @@ export default function CalculatorForm({
   const [logoSize, setLogoSize] = useState(DEFAULT_LOGO_SIZE)
   const [logoX, setLogoX] = useState(DEFAULT_LOGO_X)
   const [logoY, setLogoY] = useState(DEFAULT_LOGO_Y)
-  const [invoiceBackground, setInvoiceBackground] = useState(DEFAULT_PACKAGE_INVOICE_BACKGROUND)
-  const [invoiceTextColor, setInvoiceTextColor] = useState(DEFAULT_INVOICE_TEXT_COLOR)
+  const [invoiceBackground, setInvoiceBackground] = useState(
+    initial?.invoiceBackground ?? editInvoice?.package_data?.invoiceBackground ?? DEFAULT_PACKAGE_INVOICE_BACKGROUND,
+  )
+  const [invoiceTextColor, setInvoiceTextColor] = useState(
+    initial?.invoiceTextColor ?? editInvoice?.package_data?.invoiceTextColor ?? DEFAULT_INVOICE_TEXT_COLOR,
+  )
+  const [invoiceBoxColor, setInvoiceBoxColor] = useState(() =>
+    initial?.invoiceBoxColor
+    ?? editInvoice?.package_data?.invoiceBoxColor
+    ?? defaultInvoiceBoxColor(
+      initial?.invoiceBackground ?? editInvoice?.package_data?.invoiceBackground ?? DEFAULT_PACKAGE_INVOICE_BACKGROUND,
+    ),
+  )
   const [signatureUrl, setSignatureUrl] = useState<string | null>(null)
   const [signaturePersonName, setSignaturePersonName] = useState('')
   const [savedInvoiceId, setSavedInvoiceId] = useState<string | null>(editInvoice?.id ?? null)
@@ -627,6 +639,9 @@ export default function CalculatorForm({
       selectedTransportRouteIds,
       hidePricing,
       hideServiceCharges,
+      invoiceBackground,
+      invoiceTextColor,
+      invoiceBoxColor,
     }
   }, [
     adult, child, infant, airlineId, transportType,
@@ -639,6 +654,7 @@ export default function CalculatorForm({
     travelDate, departureCity, arrivalCity, saDepartureCity, returnCity,
     currencyUnit, currency, selectedTransportRouteIds,
     hidePricing, hideServiceCharges,
+    invoiceBackground, invoiceTextColor, invoiceBoxColor,
   ])
 
   function buildBookingPayload(sourceInvoiceId?: string | null) {
@@ -1527,6 +1543,8 @@ export default function CalculatorForm({
                 onBackgroundChange={setInvoiceBackground}
                 textColor={invoiceTextColor}
                 onTextColorChange={setInvoiceTextColor}
+                boxColor={invoiceBoxColor}
+                onBoxColorChange={setInvoiceBoxColor}
                 defaultBackground={DEFAULT_PACKAGE_INVOICE_BACKGROUND}
               />
 
@@ -1852,6 +1870,7 @@ export default function CalculatorForm({
                     centerInvoiceId
                     backgroundImage={invoiceBackground}
                     textColor={invoiceTextColor}
+                    boxColor={invoiceBoxColor}
                     hidePricing={hidePricing}
                     hideServiceCharges={hideServiceCharges}
                   />
@@ -1987,6 +2006,7 @@ export default function CalculatorForm({
             centerInvoiceId
             backgroundImage={invoiceBackground}
             textColor={invoiceTextColor}
+            boxColor={invoiceBoxColor}
             hidePricing={hidePricing}
             hideServiceCharges={hideServiceCharges}
           />

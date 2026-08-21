@@ -2,6 +2,7 @@ import { isDemoMode } from '@/lib/is-demo'
 import {
   isAdminPermission,
   isModeratorPermission,
+  isSuperAdminPermission,
   isViewerPermission,
   normalizePermission,
   type CallerContext,
@@ -12,7 +13,7 @@ export type { CallerContext } from '@/lib/permissions'
 
 export async function getCallerContext(): Promise<CallerContext | { error: string }> {
   if (isDemoMode()) {
-    return { userId: 'demo', permission: 'Full Access', isAdmin: true }
+    return { userId: 'demo', permission: 'Super Admin', isAdmin: true, isSuperAdmin: true }
   }
 
   const { createClient } = await import('@/lib/supabase/server')
@@ -27,6 +28,7 @@ export async function getCallerContext(): Promise<CallerContext | { error: strin
     userId: user.id,
     permission,
     isAdmin: isAdminPermission(permission),
+    isSuperAdmin: isSuperAdminPermission(permission),
   }
 }
 
@@ -58,5 +60,12 @@ export async function requireModeratorFeature(
   if (!moderatorAllowed[feature] || !isModeratorPermission(ctx.permission)) {
     return { error: 'You do not have permission for this action.' }
   }
+  return ctx
+}
+
+export async function requireSuperAdmin(): Promise<CallerContext | { error: string }> {
+  const ctx = await getCallerContext()
+  if ('error' in ctx) return ctx
+  if (!ctx.isSuperAdmin) return { error: 'Only the Super Admin can perform this action.' }
   return ctx
 }

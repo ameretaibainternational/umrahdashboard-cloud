@@ -100,6 +100,41 @@ export const INVOICE_TEXT_COLOR_PRESETS = [
   '#2b4d8f',
 ] as const
 
+const LIGHT_INVOICE_BACKGROUND_SRCS = new Set([
+  '/invoice-bg/Beige Solid.jpg',
+  '/invoice-bg/Pearl White.jpg',
+  '/invoice-bg/Silver Solid.jpg',
+  '/invoice-bg/Mint Gradient.jpg',
+  '/invoice-bg/Lime Gradient.jpg',
+  '/invoice-bg/Sky Blue.jpg',
+  '/invoice-bg/Ocean Gradient.jpg',
+  '/invoice-bg/Coral Gradient.jpg',
+  '/invoice-bg/Pink Gradient.jpg',
+])
+
+export const DEFAULT_INVOICE_BOX_COLOR_DARK = 'rgba(18, 17, 23, 0.88)'
+export const DEFAULT_INVOICE_BOX_COLOR_LIGHT = '#e8dcc8'
+
+export const INVOICE_BOX_COLOR_PRESETS = [
+  DEFAULT_INVOICE_BOX_COLOR_LIGHT,
+  '#ffffff',
+  '#f5f0e6',
+  '#d4c4a8',
+  DEFAULT_INVOICE_BOX_COLOR_DARK,
+  'rgba(7, 20, 38, 0.9)',
+  '#1b376e',
+] as const
+
+export function isLightInvoiceBackground(src: string): boolean {
+  return LIGHT_INVOICE_BACKGROUND_SRCS.has(src)
+}
+
+export function defaultInvoiceBoxColor(backgroundSrc: string): string {
+  return isLightInvoiceBackground(backgroundSrc)
+    ? DEFAULT_INVOICE_BOX_COLOR_LIGHT
+    : DEFAULT_INVOICE_BOX_COLOR_DARK
+}
+
 /** Apply alpha (0–1) to a #rrggbb color. */
 export function invoiceTextColorWithAlpha(hex: string, alpha: number): string {
   const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex.trim())

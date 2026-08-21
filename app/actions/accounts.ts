@@ -356,6 +356,183 @@ export async function deleteExpenses(ids: string[]) {
 
 const PAYMENT_REVALIDATE_PATHS = ['/accounts', '/bookings', '/dashboard', '/reports']
 
+/** Prefix used to flag voided payments — stored in the note field (no schema change needed). */
+const VOID_PREFIX = '[VOID]'
+
+function voidNote(original: string | null | undefined): string {
+  const n = (original || '').trim()
+  return n.startsWith(VOID_PREFIX) ? n : `${VOID_PREFIX} ${n}`.trim()
+}
+
+export async function voidPayment(paymentId: string) {
+  const ctx = await requireModeratorFeature('accounts')
+  if ('error' in ctx) return ctx
+
+  if (isDemoMode()) {
+    const payment = demoStore.payments.find(p => p.id === paymentId)
+    if (!payment) return { error: 'Payment not found.' }
+    if ((payment.note || '').startsWith(VOID_PREFIX)) return { error: 'Payment already voided.' }
+    if (!ctx.isAdmin && payment.created_by !== ctx.userId) {
+      return { error: 'You can only void your own payments.' }
+    }
+    const amount = Number(payment.amount_pkr)
+
+    if (payment.booking_id) {
+      const booking = demoStore.bookings.find(b => b.id === payment.booking_id)
+      if (booking) {
+        booking.paid_pkr = Math.max(0, booking.paid_pkr - amount)
+        booking.remaining_pkr = booking.total_pkr - booking.paid_pkr
+        if (booking.source_invoice_id) {
+          const inv = demoStore.customInvoices.find(i => i.id === booking.source_invoice_id)
+          if (inv) {
+            inv.received = Math.max(0, inv.received - amount)
+            inv.remaining = Math.max(0, inv.total - inv.received)
+          }
+        }
+      }
+    } else {
+      const invoiceId = (payment as unknown as { invoice_id?: string }).invoice_id
+      if (invoiceId) {
+        const inv = demoStore.customInvoices.find(i => i.id === invoiceId)
+        if (inv) {
+          inv.received = Math.max(0, inv.received - amount)
+          inv.remaining = Math.max(0, inv.total - inv.received)
+        }
+      }
+    }
+
+    payment.note = voidNote(payment.note)
+    PAYMENT_REVALIDATE_PATHS.forEach(p => revalidatePath(p))
+    return { success: true }
+  }
+
+  try {
+    if (hasDirectDb()) {
+      const sql = requireWriteSql()
+      const [payment] = await sql<{
+        id: string; amount_pkr: number; note: string | null
+        booking_id: string | null; invoice_id: string | null; created_by: string | null
+      }[]>`SELECT id, amount_pkr, note, booking_id, invoice_id, created_by FROM payments WHERE id = ${paymentId}`
+
+      if (!payment) return { error: 'Payment not found.' }
+      if ((payment.note || '').startsWith(VOID_PREFIX)) return { error: 'Payment already voided.' }
+      if (!ctx.isAdmin && payment.created_by !== ctx.userId) {
+        return { error: 'You can only void your own payments.' }
+      }
+      const amount = Number(payment.amount_pkr)
+      await sql`UPDATE payments SET note = ${voidNote(payment.note)} WHERE id = ${paymentId}`
+
+      if (payment.booking_id) {
+        await sql`
+          UPDATE bookings
+          SET paid_pkr      = GREATEST(0, paid_pkr - ${amount}),
+              remaining_pkr = LEAST(total_pkr, remaining_pkr + ${amount})
+          WHERE id = ${payment.booking_id}
+        `
+        const [booking] = await sql<{ source_invoice_id: string | null; package_data: unknown }[]>`
+          SELECT source_invoice_id, package_data FROM bookings WHERE id = ${payment.booking_id}
+        `
+        if (booking?.source_invoice_id) {
+          const pkg = typeof booking.package_data === 'string'
+            ? JSON.parse(booking.package_data) as Record<string, unknown>
+            : (booking.package_data as Record<string, unknown> | null)
+          const isSar = pkg?.currencyUnit === 'SAR'
+          const rate = Number((pkg?.sarToPkr as number | undefined) ?? 75)
+          const converted = isSar ? amount / rate : amount
+          await sql`
+            UPDATE custom_invoices
+            SET received  = GREATEST(0, received - ${converted}),
+                remaining = LEAST(total, remaining + ${converted})
+            WHERE id = ${booking.source_invoice_id}
+          `
+        }
+        await syncPackageExpenseFromBookingId(payment.booking_id)
+      } else if (payment.invoice_id) {
+        await sql`
+          UPDATE custom_invoices
+          SET received  = GREATEST(0, received - ${amount}),
+              remaining = LEAST(total, remaining + ${amount})
+          WHERE id = ${payment.invoice_id}
+        `
+      }
+    } else {
+      const { createClient } = await import('@/lib/supabase/server')
+      const supabase = await createClient()
+
+      const { data: payment, error: fetchErr } = await supabase
+        .from('payments')
+        .select('id, amount_pkr, note, booking_id, invoice_id, created_by')
+        .eq('id', paymentId)
+        .single()
+      if (fetchErr || !payment) return { error: 'Payment not found.' }
+      if ((payment.note || '').startsWith(VOID_PREFIX)) return { error: 'Payment already voided.' }
+      if (!ctx.isAdmin && payment.created_by !== ctx.userId) {
+        return { error: 'You can only void your own payments.' }
+      }
+      const amount = Number(payment.amount_pkr)
+
+      const { error: voidErr } = await supabase
+        .from('payments')
+        .update({ note: voidNote(payment.note) })
+        .eq('id', paymentId)
+      if (voidErr) return { error: friendlyDbError(voidErr.message) }
+
+      if (payment.booking_id) {
+        const { data: booking } = await supabase
+          .from('bookings')
+          .select('paid_pkr, remaining_pkr, total_pkr, source_invoice_id, package_data')
+          .eq('id', payment.booking_id)
+          .single()
+        if (booking) {
+          const newPaid = Math.max(0, booking.paid_pkr - amount)
+          const newRemaining = Math.min(booking.total_pkr, booking.remaining_pkr + amount)
+          await supabase.from('bookings')
+            .update({ paid_pkr: newPaid, remaining_pkr: newRemaining })
+            .eq('id', payment.booking_id)
+
+          if (booking.source_invoice_id) {
+            const { data: inv } = await supabase
+              .from('custom_invoices')
+              .select('received, total, package_data')
+              .eq('id', booking.source_invoice_id)
+              .single()
+            if (inv) {
+              const pkg = typeof inv.package_data === 'string'
+                ? JSON.parse(inv.package_data) as Record<string, unknown>
+                : (inv.package_data as Record<string, unknown> | null)
+              const isSar = pkg?.currencyUnit === 'SAR'
+              const rate = Number((pkg?.sarToPkr as number | undefined) ?? 75)
+              const converted = isSar ? amount / rate : amount
+              const newReceived = Math.max(0, Number(inv.received) - converted)
+              await supabase.from('custom_invoices')
+                .update({ received: newReceived, remaining: Math.max(0, Number(inv.total) - newReceived) })
+                .eq('id', booking.source_invoice_id)
+            }
+          }
+          await syncPackageExpenseFromBookingId(payment.booking_id)
+        }
+      } else if (payment.invoice_id) {
+        const { data: inv } = await supabase
+          .from('custom_invoices')
+          .select('received, total')
+          .eq('id', payment.invoice_id)
+          .single()
+        if (inv) {
+          const newReceived = Math.max(0, Number(inv.received) - amount)
+          await supabase.from('custom_invoices')
+            .update({ received: newReceived, remaining: Math.max(0, Number(inv.total) - newReceived) })
+            .eq('id', payment.invoice_id)
+        }
+      }
+    }
+  } catch (e) {
+    return { error: friendlyDbError(e instanceof Error ? e.message : 'Void failed') }
+  }
+
+  PAYMENT_REVALIDATE_PATHS.forEach(p => revalidatePath(p))
+  return { success: true }
+}
+
 export async function deleteLedgerEntry(bookingId: string) {
   const ctx = await requireModeratorFeature('accounts')
   if ('error' in ctx) return ctx

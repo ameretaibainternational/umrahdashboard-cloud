@@ -208,6 +208,10 @@ function defaultPosterZiaratIds(ziarats: ZiaratOption[]): string[] {
     .filter((id): id is string => Boolean(id))
 }
 
+function sortHotelsByPrice(hotels: Hotel[]): Hotel[] {
+  return [...hotels].sort((a, b) => Number(a.room_sar ?? 0) - Number(b.room_sar ?? 0))
+}
+
 export default function UmrahPosterForm({
   airlines,
   makkahHotels,
@@ -324,6 +328,9 @@ export default function UmrahPosterForm({
   const setSpacedField = (key: 'ziyarat', value: string) => {
     setField(key, withLeadingSpace(value) as UmrahPosterFormData[typeof key])
   }
+
+  const sortedMakkahHotels = useMemo(() => sortHotelsByPrice(makkahHotels), [makkahHotels])
+  const sortedMadinahHotels = useMemo(() => sortHotelsByPrice(madinahHotels), [madinahHotels])
 
   const airline = airlines.find(a => a.id === airlineId) ?? null
   const makkahHotel = makkahHotels.find(h => h.id === makkahHotelId) ?? null
@@ -1002,7 +1009,7 @@ export default function UmrahPosterForm({
                 onChange={e => handleMakkahHotelSelect(e.target.value)}
                 className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm"
               >
-                {makkahHotels.map(h => (
+                {sortedMakkahHotels.map(h => (
                   <option key={h.id} value={h.id}>{h.name} · {h.distance}</option>
                 ))}
               </select>
@@ -1014,7 +1021,7 @@ export default function UmrahPosterForm({
                 onChange={e => handleMadinahHotelSelect(e.target.value)}
                 className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm"
               >
-                {madinahHotels.map(h => (
+                {sortedMadinahHotels.map(h => (
                   <option key={h.id} value={h.id}>{h.name} · {h.distance}</option>
                 ))}
               </select>
@@ -1179,7 +1186,7 @@ export default function UmrahPosterForm({
                     onChange={e => handleMakkahHotelSelect(e.target.value)}
                     className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm"
                   >
-                    {makkahHotels.map(h => (
+                    {sortedMakkahHotels.map(h => (
                       <option key={h.id} value={h.id}>{h.name} · {h.distance}</option>
                     ))}
                   </select>
@@ -1239,7 +1246,7 @@ export default function UmrahPosterForm({
                     onChange={e => handleMadinahHotelSelect(e.target.value)}
                     className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm"
                   >
-                    {madinahHotels.map(h => (
+                    {sortedMadinahHotels.map(h => (
                       <option key={h.id} value={h.id}>{h.name} · {h.distance}</option>
                     ))}
                   </select>

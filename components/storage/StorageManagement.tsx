@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Download, Trash2 } from 'lucide-react'
+import { Download, Trash2, Pencil } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -16,6 +16,7 @@ import {
 import StorageUsageWidget from '@/components/storage/StorageUsageWidget'
 import { softDeleteStoredFiles, reconcileStorageUsage } from '@/app/actions/storage'
 import { downloadStorageZip } from '@/lib/storage-client'
+import { storedFileEditHref } from '@/lib/stored-file-links'
 import { formatFileSize } from '@/lib/pdf-utils'
 import type { StoredFileRow } from '@/lib/types'
 
@@ -188,6 +189,7 @@ export default function StorageManagement({ files, totalBytes }: StorageManageme
                       <th className="p-3 font-medium">Name</th>
                       <th className="p-3 font-medium">Date</th>
                       <th className="p-3 font-medium text-right">Size</th>
+                      <th className="p-3 font-medium text-right w-24">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y">
@@ -209,6 +211,15 @@ export default function StorageManagement({ files, totalBytes }: StorageManageme
                           </td>
                           <td className="p-3">{file.date}</td>
                           <td className="p-3 text-right tabular-nums">{formatFileSize(file.file_size_bytes)}</td>
+                          <td className="p-3 text-right">
+                            <a
+                              href={file.edit_href ?? storedFileEditHref(file.type, file.id)}
+                              className="inline-flex h-8 items-center gap-1 rounded-md px-2 text-xs font-medium text-navy hover:bg-muted"
+                            >
+                              <Pencil className="w-3.5 h-3.5" />
+                              Edit
+                            </a>
+                          </td>
                         </tr>
                       )
                     })}
